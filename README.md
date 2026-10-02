@@ -113,17 +113,17 @@ from src.chunking.chunker import UETChunker
 
 ## 4. Bảng Phân Công Nhiệm Vụ Chi Tiết
 
-| Thành viên | Thư mục & File cần code | Lớp kế thừa từ [`base.py`](base.py) | Đầu vào $\rightarrow$ Đầu ra | Nhiệm vụ cụ thể |
+| Tasks | Thư mục & File cần code | Lớp kế thừa từ [`base.py`](base.py) | Đầu vào $\rightarrow$ Đầu ra | Nhiệm vụ cụ thể |
 | :--- | :--- | :--- | :--- | :--- |
-| **Thành viên 1** | `src/ingestion/loader.py` | `BaseDataCrawler` | `DataSource` $\rightarrow$ `List[RawData]` | Đọc file PDF/Word từ `data/raw_data/` hoặc cào bài viết trên web UET. |
-| **Thành viên 2** | `src/chunking/chunker.py` | `BaseChunker` | `ProcessedData` $\rightarrow$ `List[DataChunk]` | Cắt văn bản thành từng đoạn 500-600 ký tự kèm overlap 100 ký tự. |
-| **Thành viên 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (dùng mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
-| **Thành viên 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Lưu trữ vector và thực hiện tìm kiếm tương đồng trên **ChromaDB**. |
-| **Thành viên 5** | `src/retrieval/retriever.py` | Điều phối tìm kiếm | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Nhận câu hỏi, gọi embedder và vector_store để lấy ra top 3-5 đoạn liên quan nhất. |
-| **Thành viên 6** | `src/prompts/prompt_templates.py` | `BasePromptAugmenter` | `UserQuery` + `Contexts` $\rightarrow$ `AugmentedPrompt` | Thiết kế lời nhắc chuyên viên đào tạo UET, ghép ngữ cảnh và câu hỏi vào mẫu chuẩn. |
-| **Thành viên 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Gọi Google GenAI SDK (`gemini-3.8-flash`) để đọc ngữ cảnh và viết câu trả lời. |
-| **Thành viên 8** | `src/evaluation/evaluator.py` | `BaseEvaluator` | Pipeline + Dataset $\rightarrow$ `EvaluationReport` | Đánh giá độ tin cậy (*Faithfulness, Relevance*) trên tập test chuẩn `test_qa_dataset.json`. |
-| **Thành viên 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, duy trì Web UI, CLI và điều phối dự án. |
+| **Task 1** | `src/ingestion/loader.py` | `BaseDataCrawler` | `DataSource` $\rightarrow$ `List[RawData]` | Đọc file PDF/Word từ `data/raw_data/` hoặc cào bài viết trên web UET. |
+| **Task 2** | `src/chunking/chunker.py` | `BaseChunker` | `ProcessedData` $\rightarrow$ `List[DataChunk]` | Cắt văn bản thành từng đoạn 500-600 ký tự kèm overlap 100 ký tự. |
+| **Task 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (dùng mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
+| **Task 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Lưu trữ vector và thực hiện tìm kiếm tương đồng trên **ChromaDB**. |
+| **Task 5** | `src/retrieval/retriever.py` | Điều phối tìm kiếm | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Nhận câu hỏi, gọi embedder và vector_store để lấy ra top 3-5 đoạn liên quan nhất. |
+| **Task 6** | `src/prompts/prompt_templates.py` | `BasePromptAugmenter` | `UserQuery` + `Contexts` $\rightarrow$ `AugmentedPrompt` | Thiết kế lời nhắc chuyên viên đào tạo UET, ghép ngữ cảnh và câu hỏi vào mẫu chuẩn. |
+| **Task 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Gọi Google GenAI SDK (`gemini-3.8-flash`) để đọc ngữ cảnh và viết câu trả lời. |
+| **Task 8** | `src/evaluation/evaluator.py` | `BaseEvaluator` | Pipeline + Dataset $\rightarrow$ `EvaluationReport` | Đánh giá độ tin cậy (*Faithfulness, Relevance*) trên tập test chuẩn `test_qa_dataset.json`. |
+| **Task 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, duy trì Web UI, CLI và điều phối dự án. |
 
 ---
 
