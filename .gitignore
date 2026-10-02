@@ -1,23 +1,45 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+# =========================================================================
+# GITIGNORE - UET CHATBOT RAG PROJECT
+# =========================================================================
+
+# 1. Byte-compiled / Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 2. Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# 3. Environment & Security Secrets
+.env
+.env.local
+*.env
+!.env.example
+
+# 4. Vector Database (Local SQLite & HNSW index - sinh tự động khi nạp)
+vector_db/
+
+# 5. Backup Code & Logs
+backup_code/
+logs/*
+!logs/doc.md
+*.log
+
+# 6. IDE & OS files
+.idea/
 .vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 7. Heavy Data files (Tránh đẩy hàng trăm MB tài liệu PDF lên GitHub)
+data/*
+
+# 8. Explicitly track metadata and benchmark test sets
+!data/doc.md
