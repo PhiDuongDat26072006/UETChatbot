@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import List, Optional
-from base import BaseEvaluator, EvaluationSample, EvaluationResult, EvaluationReport, Response
+from src.base import BaseEvaluator, EvaluationSample, EvaluationResult, EvaluationReport, Response
 from src.evaluation.metrics import compute_faithfulness, compute_context_relevance, compute_keyword_overlap
 from src.utils.helpers import get_logger
 

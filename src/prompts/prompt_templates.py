@@ -6,7 +6,7 @@ Nhiệm vụ: Thiết kế chỉ dẫn hệ thống (System Prompt) và kết h�
 
 from __future__ import annotations
 from typing import List
-from base import BasePromptAugmenter, UserQuery, RetrievedContext, AugmentedPrompt
+from src.base import BasePromptAugmenter, UserQuery, RetrievedContext, AugmentedPrompt
 from src.utils.helpers import get_logger
 
 logger = get_logger("prompts")

@@ -6,7 +6,7 @@ Nhiệm vụ: Nhận câu hỏi, phối hợp với mô hình Embedding và Vect
 
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-from base import BaseEmbeddingModel, BaseVectorStore, UserQuery, RetrievedContext
+from src.base import BaseEmbeddingModel, BaseVectorStore, UserQuery, RetrievedContext
 from src.utils.helpers import get_logger
 
 logger = get_logger("retrieval")

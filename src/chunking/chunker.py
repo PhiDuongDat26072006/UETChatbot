@@ -6,7 +6,7 @@ Nhiệm vụ: Cắt các tài liệu ProcessedData thành các đoạn DataChunk
 
 from __future__ import annotations
 from typing import List, Optional
-from base import BaseChunker, ProcessedData, DataChunk
+from src.base import BaseChunker, ProcessedData, DataChunk
 from src.utils.helpers import get_logger
 
 logger = get_logger("chunking")

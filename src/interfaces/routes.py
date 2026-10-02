@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
-from base import UserQuery
+from src.base import UserQuery
 from src.pipeline import get_rag_pipeline
 from src.utils.helpers import get_logger, Timer
 

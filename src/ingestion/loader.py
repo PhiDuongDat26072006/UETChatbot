@@ -7,7 +7,7 @@ Nhiệm vụ: Đọc và trích xuất dữ liệu từ PDF, Word (DOCX), Websit
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
-from base import BaseDataCrawler, DataSource, RawData
+from src.base import BaseDataCrawler, DataSource, RawData
 from src.utils.helpers import get_logger
 
 logger = get_logger("ingestion")

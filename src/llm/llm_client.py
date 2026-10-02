@@ -7,7 +7,7 @@ Nhiệm vụ: Gọi API của Google Gemini, OpenAI, Claude hoặc LLM cục b�
 from __future__ import annotations
 import os
 from typing import Optional, Generator
-from base import BaseLLM, AugmentedPrompt, Response
+from src.base import BaseLLM, AugmentedPrompt, Response
 from src.utils.helpers import get_logger, Timer
 
 logger = get_logger("llm")

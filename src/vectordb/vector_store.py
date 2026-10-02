@@ -7,7 +7,7 @@ Nhiệm vụ: Quản lý kết nối cơ sở dữ liệu vector (ChromaDB, FAIS
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from base import BaseVectorStore, DataChunk, EmbeddedVector, EmbeddedQueryVector, RetrievedContext
+from src.base import BaseVectorStore, DataChunk, EmbeddedVector, EmbeddedQueryVector, RetrievedContext
 from src.utils.helpers import get_logger
 
 logger = get_logger("vectordb")

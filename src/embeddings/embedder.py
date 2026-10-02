@@ -7,7 +7,7 @@ Nhiệm vụ: Chuyển đổi văn bản thành các vector số thực nhiều 
 from __future__ import annotations
 import os
 from typing import List, Optional
-from base import BaseEmbeddingModel
+from src.base import BaseEmbeddingModel
 from src.utils.helpers import get_logger
 
 logger = get_logger("embeddings")
