@@ -30,6 +30,7 @@ from src.base import (
     BaseLLM,
 )
 from src.utils.helpers import get_logger
+from src.retrieval import UETRetriever
 
 logger = get_logger("pipeline")
 
@@ -250,9 +251,47 @@ class SimpleEmbeddingModel(BaseEmbeddingModel):
 class UETRAGPipeline(BaseRAGPipeline):
     """
     [CỖ MÁY ONLINE]: Phục vụ Chatbot tra cứu thông tin học vụ.
-    Điều phối luồng: Nhận câu hỏi -> Tìm kiếm ngữ cảnh -> Ghép prompt -> Gọi LLM -> Trả lời.
+    Điều phối luồng: Nhận câu hỏi -> Truy xuất ngữ cảnh (UETRetriever: BM25 + Vector -> Hybrid RRF -> Rerank -> Top-K) -> Ghép prompt -> Gọi LLM -> Trả lời.
     """
-    pass
+
+    def __init__(
+        self,
+        embedding_model: BaseEmbeddingModel,
+        vector_store: BaseVectorStore,
+        prompt_augmenter: BasePromptAugmenter,
+        llm: BaseLLM,
+        retriever: Optional[UETRetriever] = None,
+    ):
+        super().__init__(
+            embedding_model=embedding_model,
+            vector_store=vector_store,
+            prompt_augmenter=prompt_augmenter,
+            llm=llm,
+        )
+        # Tích hợp UETRetriever (Task 5) điều phối quy trình BM25 + Vector + Hybrid RRF + Rerank
+        self.retriever = retriever or UETRetriever(
+            embedding_model=self.embedding_model,
+            vector_store=self.vector_store,
+        )
+
+    def query(self, query: UserQuery, top_k: int = 5) -> Response:
+        """
+        Thực thi quy trình trả lời câu hỏi:
+        1. Gọi UETRetriever (Task 5): BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K (5 chunks)
+        2. Ghép ngữ cảnh vào Prompt (AugmentedPrompt) theo chuẩn BaseRAGPipeline
+        3. Gọi LLM sinh câu trả lời
+        """
+        # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever (phân hệ Task 5)
+        contexts = self.retriever.retrieve(
+            query=query,
+            top_k=top_k,
+            filters=query.filters,
+        )
+
+        # Bước 2 & 3: Giữ nguyên vẹn hợp đồng luồng xử lý chuẩn của BaseRAGPipeline
+        augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
+        response = self.llm.generate(augmented_prompt)
+        return response
 
 
 class UETIngestionPipeline(BaseIngestionPipeline):
@@ -334,6 +373,17 @@ def get_rag_pipeline() -> UETRAGPipeline:
     )
     logger.info("Khởi tạo thành công UETRAGPipeline chính thức trong src/pipeline.py")
     return _active_rag_pipeline
+
+
+def get_retriever() -> UETRetriever:
+    """
+    [Phân hệ Retrieval - Task 5]: Khởi tạo và cung cấp UETRetriever điều phối tìm kiếm đa tầng.
+    """
+    vector_store = SmartVectorStore(persist_dir=BASE_DIR / "vector_db", collection_name="uet_knowledge_base")
+    return UETRetriever(
+        embedding_model=SimpleEmbeddingModel(),
+        vector_store=vector_store,
+    )
 
 
 if __name__ == "__main__":

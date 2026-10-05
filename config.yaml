@@ -29,6 +29,20 @@ embedding:
   dimension: 384
   gemini_model: "text-embedding-004"
 
+retrieval:
+  bm25_top_k: 100              # Số ứng viên BM25 lấy ra
+  vector_top_k: 100            # Số ứng viên Vector search lấy ra
+  candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
+  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
+  final_top_k: 5               # Số đoạn cuối cùng trả về cho LLM (K=5)
+  fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
+  rrf_k: 60                    # Hằng số làm mượt RRF
+  vector_weight: 0.6           # Trọng số nhánh Vector Search
+  bm25_weight: 0.4             # Trọng số nhánh BM25 Search
+  reranker_type: "auto"        # "auto", "heuristic", "flashrank", "cross_encoder"
+  reranker_model: "ms-marco-MiniLM-L-12-v2"
+  score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
+
 llm:
   provider: "gemini"
   # Mô hình Google Gemini thế hệ mới nhất

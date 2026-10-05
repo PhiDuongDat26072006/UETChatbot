@@ -32,6 +32,13 @@ def get_logger(name: str = "uet_chatbot") -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
+        # Đảm bảo UTF-8 trên Windows console
+        if sys.platform.startswith("win"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
         # Handler ghi ra console
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
