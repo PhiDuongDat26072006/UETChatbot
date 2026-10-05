@@ -1,0 +1,73 @@
+# =========================================================================
+# CẤU HÌNH THAM SỐ TOÀN DIỆN CHO HỆ THỐNG UET RAG CHATBOT
+# =========================================================================
+
+paths:
+  data_dir: "data/raw_data"
+  processed_dir: "data/processed_data"
+  eval_dir: "data/eval_data"
+  vector_db_dir: "vector_db"
+  collection_name: "uet_knowledge_base"
+  eval_dataset_file: "data/eval_data/test_qa_dataset.json"
+
+chunking:
+  chunk_size: 600
+  chunk_overlap: 100
+  separators:
+    - "\n\n"
+    - "\n"
+    - "### "
+    - "## "
+    - "# "
+    - ". "
+    - " "
+
+embedding:
+  # Lựa chọn: "chroma_default" (Mô hình all-MiniLM-L6-v2 chạy cục bộ, 384 chiều, 0đ, không cần mạng)
+  # hoặc "gemini" (Mô hình text-embedding-004 qua Google Gemini API, 768 chiều)
+  provider: "chroma_default"
+  dimension: 384
+  gemini_model: "text-embedding-004"
+
+retrieval:
+  bm25_top_k: 100              # Số ứng viên BM25 lấy ra
+  vector_top_k: 100            # Số ứng viên Vector search lấy ra
+  candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
+  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
+  final_top_k: 5               # Số đoạn cuối cùng trả về cho LLM (K=5)
+  fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
+  rrf_k: 60                    # Hằng số làm mượt RRF
+  vector_weight: 0.6           # Trọng số nhánh Vector Search
+  bm25_weight: 0.4             # Trọng số nhánh BM25 Search
+  reranker_type: "auto"        # "auto", "heuristic", "flashrank", "cross_encoder"
+  reranker_model: "ms-marco-MiniLM-L-12-v2"
+  score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
+
+llm:
+  provider: "gemini"
+  # Mô hình Google Gemini thế hệ mới nhất
+  model_name: "gemini-3.8-flash"
+  candidate_models:
+    - "gemini-3.8-flash"
+    - "gemini-3.5-flash"
+    - "gemini-3.5-flash-lite"
+    - "gemini-flash-latest"
+  temperature: 0.3
+  top_k_retrieval: 5
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  title: "UET Academic Regulations Chatbot API"
+  version: "1.0.0"
+
+prompt:
+  system_prompt: |
+    Bạn là trợ lý ảo tư vấn quy chế đào tạo và học vụ của Trường Đại học Công nghệ - ĐHQGHN (UET Chatbot).
+    Nhiệm vụ của bạn là giải đáp thắc mắc của sinh viên một cách chính xác, thân thiện, rõ ràng dựa trên các tài liệu quy chế được cung cấp.
+
+    Quy tắc bắt buộc:
+    1. Chỉ sử dụng thông tin có trong phần [NGỮ CẢNH] được trích xuất để trả lời.
+    2. Nếu ngữ cảnh không có thông tin hoặc không đủ để trả lời câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự bịa đặt thông tin.
+    3. Trả lời bằng tiếng Việt chuẩn mực, mạch lạc, có thể dùng gạch đầu dòng để làm rõ các điều kiện, tiêu chí.
+    4. Cuối câu trả lời, hãy nêu rõ nguồn tài liệu tham khảo (Tên file, văn bản hoặc số quyết định) được trích xuất từ ngữ cảnh.
