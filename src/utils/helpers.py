@@ -64,10 +64,20 @@ def load_yaml_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
 class Timer:
     """Context manager đo thời gian thực thi (latency)."""
 
+    def __init__(self):
+        self.start = time.time()
+        self.end: Optional[float] = None
+
     def __enter__(self):
         self.start = time.time()
+        self.end = None
         return self
 
     def __exit__(self, *args):
         self.end = time.time()
-        self.elapsed = self.end - self.start
+
+    @property
+    def elapsed(self) -> float:
+        if self.end is not None:
+            return self.end - self.start
+        return time.time() - self.start
