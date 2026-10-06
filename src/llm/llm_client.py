@@ -6,7 +6,14 @@ Nhiệm vụ: Gọi API của Google Gemini, OpenAI, Claude hoặc LLM cục b�
 
 from __future__ import annotations
 import os
+import sys
+from pathlib import Path
 from typing import Optional, Generator
+
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
 from src.base import BaseLLM, AugmentedPrompt, Response
 from src.utils.helpers import get_logger, Timer, load_yaml_config
 
@@ -20,19 +27,23 @@ class UETLLMClient(BaseLLM):
     Tự động đồng bộ các tham số (model_name, candidate_models, temperature) từ config.yaml.
     """
 
+    DEFAULT_CANDIDATE_MODELS = [
+        "gemini-3.8-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-flash-latest",
+    ]
+
     def __init__(self, model_name: Optional[str] = None, api_key: Optional[str] = None):
         config = load_yaml_config()
         llm_cfg = config.get("llm", {})
 
         self._model_name = model_name or llm_cfg.get("model_name", "gemini-3.8-flash")
-        self.candidate_models = llm_cfg.get("candidate_models", [
-            "gemini-3.8-flash",
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-flash-latest",
-        ])
+        self.candidate_models = list(llm_cfg.get("candidate_models", self.DEFAULT_CANDIDATE_MODELS))
+        # Thuộc tính tương thích ngược
+        self.CANDIDATE_MODELS = self.candidate_models
         self.temperature = float(llm_cfg.get("temperature", 0.3))
-        self.api_key = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
+        self.api_key = (api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")).strip()
         self._client = None
 
         if self.api_key:
@@ -62,12 +73,15 @@ class UETLLMClient(BaseLLM):
             # 1. Gọi Google GenAI SDK nếu có client
             if self._client:
                 # Danh sách model thử nghiệm ưu tiên model cấu hình, sau đó thử các fallback model
-                models_to_try = [self.model_name] + [m for m in self.CANDIDATE_MODELS if m != self.model_name]
+                models_to_try = [self.model_name] + [m for m in self.candidate_models if m != self.model_name]
+                generate_config = {"temperature": self.temperature}
+
                 for m in models_to_try:
                     try:
                         res = self._client.models.generate_content(
                             model=m,
                             contents=prompt.formatted_prompt,
+                            config=generate_config,
                         )
                         if res and res.text:
                             meta = {}
@@ -117,23 +131,36 @@ class UETLLMClient(BaseLLM):
         Sinh phản hồi dạng luồng (streaming) cho giao diện người dùng.
         """
         if self._client:
-            try:
-                stream = self._client.models.generate_content_stream(
-                    model=self.model_name,
-                    contents=prompt.formatted_prompt,
-                )
-                for chunk in stream:
-                    if chunk.text:
-                        yield chunk.text
-                return
-            except Exception as e:
-                logger.warning(f"Lỗi streaming từ mô hình {self.model_name}: {e}. Fallback về generate thường.")
+            models_to_try = [self.model_name] + [m for m in self.candidate_models if m != self.model_name]
+            generate_config = {"temperature": self.temperature}
+            for m in models_to_try:
+                try:
+                    stream = self._client.models.generate_content_stream(
+                        model=m,
+                        contents=prompt.formatted_prompt,
+                        config=generate_config,
+                    )
+                    has_content = False
+                    for chunk in stream:
+                        if chunk.text:
+                            has_content = True
+                            yield chunk.text
+                    if has_content:
+                        return
+                except Exception as e:
+                    logger.warning(f"Lỗi streaming từ mô hình {m}: {e}. Đang thử mô hình khác...")
 
         # Fallback stream nếu không có client hoặc streaming thất bại
         yield self.generate(prompt).answer
 
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    if str(_BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(_BASE_DIR))
+
     # Kiểm thử độc lập module LLM Client
     from src.prompts.prompt_templates import UETPromptAugmenter
     from src.base import UserQuery, RetrievedContext
