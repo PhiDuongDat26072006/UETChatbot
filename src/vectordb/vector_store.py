@@ -22,6 +22,8 @@ from src.base import (
     BaseEmbeddingModel,
     DataChunk,
     EmbeddedVector,
+    EmbeddedQueryVector,
+    RetrievedContext,
 )
 from src.utils.helpers import get_logger
 
@@ -144,7 +146,71 @@ class ChromaVectorStore(BaseVectorStore):
             logger.error(f"Lỗi khi lưu dữ liệu vào ChromaDB: {e}")
             raise e
 
+    def search(
+        self,
+        query_vector: EmbeddedQueryVector,
+        top_k: int = 5,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> List[RetrievedContext]:
+        """
+        Tìm kiếm top_k đoạn văn bản có độ tương đồng cao nhất với câu hỏi.
+        :param query_vector: Vector của câu hỏi
+        :param top_k: Số lượng văn bản liên quan cần lấy
+        :param filters: Bộ lọc metadata nếu có
+        :return: Danh sách RetrievedContext sắp xếp theo độ tương đồng giảm dần
+        """
+        if self.count() == 0:
+            logger.warning(f"Collection '{self.collection_name}' đang rỗng, không thể tìm kiếm.")
+            return []
 
+        try:
+            query_kwargs: Dict[str, Any] = {"n_results": min(top_k, self.count())}
+            if filters:
+                query_kwargs["where"] = filters
+
+            if query_vector.vector:
+                query_kwargs["query_embeddings"] = [query_vector.vector]
+            elif query_vector.query_text:
+                query_kwargs["query_texts"] = [query_vector.query_text]
+            else:
+                return []
+
+            res = self.collection.query(**query_kwargs)
+            contexts: List[RetrievedContext] = []
+
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                docs = res["documents"][0]
+                ids = res["ids"][0] if res.get("ids") else [f"chunk_{i}" for i in range(len(docs))]
+                metas = res["metadatas"][0] if res.get("metadatas") else [{} for _ in docs]
+                distances = res["distances"][0] if res.get("distances") else [0.5 for _ in docs]
+
+                for rank, (cid, doc_text, meta, dist) in enumerate(zip(ids, docs, metas, distances), 1):
+                    # Cosine distance sang cosine similarity: max(0, 1 - distance)
+                    similarity = round(max(0.0, min(1.0, 1.0 - dist)), 4)
+                    cleaned_meta = dict(meta or {})
+                    if "title" not in cleaned_meta:
+                        cleaned_meta["title"] = cleaned_meta.get("source") or f"Tài liệu UET ({cid})"
+
+                    contexts.append(
+                        RetrievedContext(
+                            chunk_id=cid,
+                            text=doc_text,
+                            similarity_score=similarity,
+                            rank=rank,
+                            metadata=cleaned_meta,
+                        )
+                    )
+            return contexts
+        except Exception as e:
+            logger.error(f"Lỗi khi tìm kiếm trên ChromaDB: {e}")
+            return []
+
+
+
+    @property
+    def _chroma_col(self):
+        """Thuộc tính tương thích để truy cập collection ChromaDB nội bộ."""
+        return self.collection
 
     def count(self) -> int:
         """Trả về tổng số chunk/vector trong collection ChromaDB."""
