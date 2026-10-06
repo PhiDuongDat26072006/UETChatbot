@@ -5,7 +5,14 @@ Nhiệm vụ: Thiết kế chỉ dẫn hệ thống (System Prompt) và kết h�
 """
 
 from __future__ import annotations
+import sys
+from pathlib import Path
 from typing import List, Optional
+
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
 from src.base import BasePromptAugmenter, UserQuery, RetrievedContext, AugmentedPrompt
 from src.utils.helpers import get_logger, load_yaml_config
 
@@ -50,7 +57,7 @@ class UETPromptAugmenter(BasePromptAugmenter):
         for i, ctx in enumerate(contexts, 1):
             meta = ctx.metadata or {}
             title = meta.get("title") or meta.get("source") or f"Tài liệu căn cứ {i}"
-            page_info = f" - Trang {meta['page']}" if "page" in meta else ""
+            page_info = f" - Trang {meta['page']}" if meta.get("page") is not None else ""
             score_info = f" [Độ phù hợp: {int(ctx.similarity_score * 100)}%]" if ctx.similarity_score is not None else ""
 
             header = f"[Tài liệu {i}: {title}{page_info}{score_info}]"
@@ -91,6 +98,12 @@ class UETPromptAugmenter(BasePromptAugmenter):
 
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    if str(_BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(_BASE_DIR))
+
     # Kiểm thử độc lập module Prompt Augmenter
     print("=" * 60)
     print("KIỂM THỬ ĐỘC LẬP: UETPromptAugmenter (src/prompts)")
