@@ -1,1 +1,0 @@
-Lịch sử chạy của mô hình
