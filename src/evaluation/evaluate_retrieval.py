@@ -285,7 +285,13 @@ def main():
         retrieval_results: Dict[str, List[str]] = {}
         for query in evaluator.queries:
             qid = query["query_id"]
-            relevant = query.get("highly_relevant_doc_ids", []) + query.get("relevant_doc_ids", [])
+            # Lấy danh sách doc IDs liên quan (đảm bảo khử trùng lặp)
+            seen_ids = set()
+            relevant = []
+            for did in query.get("highly_relevant_doc_ids", []) + query.get("relevant_doc_ids", []):
+                if did not in seen_ids:
+                    seen_ids.add(did)
+                    relevant.append(did)
             retrieval_results[qid] = relevant[:args.top_k]
 
         eval_result = evaluator.evaluate_batch(retrieval_results, k_values=[1, 3, 5, 10, 20])
