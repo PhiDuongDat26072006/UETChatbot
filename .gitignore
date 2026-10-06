@@ -43,3 +43,14 @@ data/*
 
 # 8. Explicitly track metadata and benchmark test sets
 !data/doc.md
+
+# 9. Tài liệu ngữ cảnh / hướng dẫn AI agent cá nhân (Module Ingestion)
+src/ingestion/contexts/
+src/ingestion/AGENTS.md
+contexts/
+AGENTS.md
+
+# 10. Lockfile & cấu hình uv cục bộ (repo dùng requirements.txt)
+uv.lock
+pyproject.toml
+.python-version
