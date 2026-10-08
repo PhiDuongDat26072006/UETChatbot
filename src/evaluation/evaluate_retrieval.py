@@ -221,14 +221,26 @@ class RetrievalEvaluator:
                 # contexts có thể là List[RetrievedContext] hoặc danh sách dict
                 retrieved_ids = []
                 for c in contexts:
-                    if hasattr(c, "chunk_id"):
-                        retrieved_ids.append(c.chunk_id)
-                    elif hasattr(c, "id"):
-                        retrieved_ids.append(c.id)
+                    doc_id = None
+                    if hasattr(c, "metadata") and isinstance(c.metadata, dict):
+                        doc_id = c.metadata.get("document_id")
+                    elif isinstance(c, dict) and isinstance(c.get("metadata"), dict):
+                        doc_id = c["metadata"].get("document_id")
                     elif isinstance(c, dict):
-                        retrieved_ids.append(c.get("chunk_id", c.get("id", "")))
-                    elif isinstance(c, str):
-                        retrieved_ids.append(c)
+                        doc_id = c.get("document_id")
+
+                    if not doc_id:
+                        if hasattr(c, "chunk_id"):
+                            doc_id = c.chunk_id
+                        elif hasattr(c, "id"):
+                            doc_id = c.id
+                        elif isinstance(c, dict):
+                            doc_id = c.get("chunk_id", c.get("id", ""))
+                        elif isinstance(c, str):
+                            doc_id = c
+
+                    if doc_id:
+                        retrieved_ids.append(str(doc_id))
                 retrieval_results[qid] = retrieved_ids
             except Exception as e:
                 logger.error(f"Lỗi khi retrieve cho query {qid}: {e}")
@@ -297,40 +309,18 @@ def main():
         eval_result = evaluator.evaluate_batch(retrieval_results, k_values=[1, 3, 5, 10, 20])
 
     elif args.mode == "live":
-        print("🚀 Đang khởi tạo UETRetriever từ src/retrieval/retriever.py...")
+        print("🚀 Đang khởi tạo UETRetriever từ src/pipeline.py...")
         try:
-            from src.retrieval.retriever import UETRetriever
-            from src.utils.helpers import load_yaml_config
+            from src.pipeline import get_retriever
 
-            config = load_yaml_config()
-            embedding_cfg = config.get("embedding", {})
-            provider = embedding_cfg.get("provider", "chroma_default")
-
-            if provider == "chroma_default":
-                from src.embedding.embedder import ChromaDefaultEmbedder
-                embedding_model = ChromaDefaultEmbedder()
-            else:
-                from src.embedding.embedder import GeminiEmbedder
-                embedding_model = GeminiEmbedder()
-
-            from src.vector_store.store import SmartVectorStore
-            vector_store = SmartVectorStore(
-                embedding_model=embedding_model,
-                persist_dir=config.get("paths", {}).get("vector_db_dir", "vector_db"),
-                collection_name=config.get("paths", {}).get("collection_name", "uet_knowledge_base"),
-            )
-
-            retriever = UETRetriever(
-                embedding_model=embedding_model,
-                vector_store=vector_store,
-                config=config,
-            )
+            retriever = get_retriever()
             print("  ✅ Khởi tạo UETRetriever thành công!")
             eval_result = evaluator.evaluate_retriever(retriever, top_k=args.top_k)
 
         except Exception as e:
             print(f"❌ Không thể chạy live mode: {e}")
-            print("   Vui lòng kiểm tra vector_db và dependencies trước khi chạy live.")
+            import traceback
+            traceback.print_exc()
             return
 
     # In kết quả tổng hợp

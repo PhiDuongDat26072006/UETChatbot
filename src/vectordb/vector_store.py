@@ -124,22 +124,32 @@ class ChromaVectorStore(BaseVectorStore):
             embedded_objs = self.embedding_model.embed_chunks(chunks)
             embeddings = [vec.vector for vec in embedded_objs]
 
-        # Thêm/cập nhật dữ liệu vào ChromaDB bằng upsert
+        # Thêm/cập nhật dữ liệu vào ChromaDB theo từng batch (mỗi batch tối đa 500 chunks để an toàn)
+        batch_size = 500
+        saved_count = 0
+        total_items = len(ids)
         try:
-            if embeddings is not None:
-                self.collection.upsert(
-                    ids=ids,
-                    embeddings=embeddings,
-                    documents=documents,
-                    metadatas=metadatas,
-                )
-            else:
-                self.collection.upsert(
-                    ids=ids,
-                    documents=documents,
-                    metadatas=metadatas,
-                )
-            saved_count = len(ids)
+            for i in range(0, total_items, batch_size):
+                b_ids = ids[i : i + batch_size]
+                b_docs = documents[i : i + batch_size]
+                b_metas = metadatas[i : i + batch_size]
+                b_embs = embeddings[i : i + batch_size] if embeddings is not None else None
+
+                if b_embs is not None:
+                    self.collection.upsert(
+                        ids=b_ids,
+                        embeddings=b_embs,
+                        documents=b_docs,
+                        metadatas=b_metas,
+                    )
+                else:
+                    self.collection.upsert(
+                        ids=b_ids,
+                        documents=b_docs,
+                        metadatas=b_metas,
+                    )
+                saved_count += len(b_ids)
+
             logger.info(f"Đã lưu thành công {saved_count} chunks vào collection '{self.collection_name}'. Tổng số lượng hiện tại: {self.collection.count()}.")
             return saved_count
         except Exception as e:

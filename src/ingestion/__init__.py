@@ -26,10 +26,12 @@ from .extractor import (
     table_to_markdown,
 )
 from .utils import clean_whitespace
+from .manifest import DataManifestTracker
 
 __version__ = "0.8.0"
 __all__ = [
     "UETDataLoader",
+    "DataManifestTracker",
     "crawl_domain",
     "crawl_target",
     "crawl_all_faculties",
