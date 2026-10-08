@@ -2,17 +2,18 @@
 
 > **UET Chatbot** là trợ lý ảo AI thông minh ứng dụng công nghệ **RAG (Retrieval-Augmented Generation)** nhằm giải đáp tự động các thắc mắc về học vụ, quy chế đào tạo, điều kiện xét tốt nghiệp, thang điểm rèn luyện và học bổng cho sinh viên **Trường Đại học Công nghệ – ĐHQGHN**.
 
-Dự án được thiết kế theo kiến trúc **Modular RAG** chuẩn kỹ nghệ phần mềm: Toàn bộ hệ thống được module hóa độc lập thông qua "bản giao ước" [`base.py`](base.py), giúp **8–9 thành viên trong nhóm có thể code song song cùng lúc mà không lo xung đột (Git conflict)**.
+Dự án được thiết kế theo kiến trúc **Modular RAG** chuẩn kỹ nghệ phần mềm: Toàn bộ hệ thống được module hóa độc lập thông qua "bản giao ước" [`base.py`](base.py), giúp **các thành viên trong nhóm có thể code song song cùng lúc mà không lo xung đột (Git conflict)**.
 
 ---
 
 ## 📌 Mục Lục
 1. [Sơ Đồ Kiến Trúc & Cách Hệ Thống Hoạt Động](#1-sơ-đồ-kiến-trúc--cách-hệ-thống-hoạt-động)
-2. [Nguyên Tắc Làm Việc Nhóm Song Song](#2-nguyên-tắc-làm-việc-nhóm-song-song-bản-giao-ước-basepy)
-3. [Hướng Dẫn Từng Bước Dành Cho Thành Viên (Developer Guide)](#3-hướng-dẫn-từng-bước-dành-cho-thành-viên-cách-làm)
-4. [Bảng Phân Công Nhiệm Vụ Chi Tiết](#4-bảng-phân-công-nhiệm-vụ-chi-tiết)
-5. [Cấu Trúc Thư Mục Dự Án](#5-cấu-trúc-thư-mục-dự-án)
-6. [Cài Đặt & 3 Lệnh Khởi Chạy](#6-cài-đặt--3-lệnh-khởi-chạy-chính)
+2. [Quy Trình Xử Lý Dữ Liệu Đa Chặng & Cơ Chế Chống Trùng Lặp](#2-quy-trình-xử-lý-dữ-liệu-đa-chặng--cơ-chế-chống-trùng-lặp)
+3. [Nguyên Tắc Làm Việc Nhóm Song Song (`base.py`)](#3-nguyên-tắc-làm-việc-nhóm-song-song-bản-giao-ước-basepy)
+4. [Hướng Dẫn Từng Bước Dành Cho Thành Viên (Developer Guide)](#4-hướng-dẫn-từng-bước-dành-cho-thành-viên-cách-làm)
+5. [Bảng Phân Công Nhiệm Vụ Chi Tiết](#5-bảng-phân-công-nhiệm-vụ-chi-tiết)
+6. [Cấu Trúc Thư Mục Dự Án](#6-cấu-trúc-thư-mục-dự-án)
+7. [Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)](#7-cài-đặt--các-lệnh-khởi-chạy-hệ-thống-mainpy)
 
 ---
 
@@ -28,29 +29,48 @@ Hệ thống RAG của chúng ta gồm 2 cỗ máy hoạt động độc lập n
 
 ```mermaid
 flowchart TD
-    subgraph OFFLINE ["⚙️ 1. CỖ MÁY OFFLINE: Ingestion & Indexing Pipeline (Nạp dữ liệu)"]
+    subgraph OFFLINE ["⚙️ 1. CỖ MÁY OFFLINE: Multi-stage Ingestion & Indexing Pipeline"]
         direction LR
-        A["1. Tài liệu UET<br/>(PDF, Web, Word)"] --> B["2. Data Crawler<br/>(Bóc tách text thô)"]
-        B --> C["3. Preprocessor<br/>(Làm sạch HTML/kí tự rác)"]
-        C --> D["4. Chunker<br/>(Cắt thành đoạn 600 từ)"]
-        D --> E["5. Embedding Model<br/>(all-MiniLM-L6-v2)"]
-        E --> F[("6. ChromaDB<br/>(vector_db/)<br/>452+ vectors")]
+        A["1. Raw Data<br/>(PDF, Web, Docs)"] --> B["2. Cleaner<br/>(Lọc rác, Unicode)"]
+        B --> C["3. Processed Data<br/>(Văn bản sạch)"]
+        C --> D["4. Chunker<br/>(Cắt đoạn 500-600 ký tự)"]
+        D --> E["5. Chunked Data<br/>(JSONL chunks)"]
+        E --> F["6. Embedding Model<br/>(all-MiniLM-L6-v2)"]
+        F --> G[("7. ChromaDB<br/>(Batching 500/lần)")]
     end
 
-    subgraph ONLINE ["💬 2. CỖ MÁY ONLINE: RAG Serving Pipeline (Hỏi đáp thời gian thực)"]
+    subgraph ONLINE ["💬 2. CỖ MÁY ONLINE: Hybrid RAG Serving Pipeline"]
         direction LR
-        Q["Sinh viên gõ câu hỏi<br/>(Text)"] --> QV["Vector hóa câu hỏi<br/>(Query Vector)"]
-        QV --> Search["Tìm kiếm tương đồng Cosine<br/>trong vector_db/"]
-        Search --> TopK["Rút ra 3-5 đoạn Text<br/>liên quan nhất"]
-        TopK --> Prompt["Ghép Context + Câu hỏi<br/>vào System Prompt"]
-        Prompt --> Gemini["Google Gemini LLM<br/>(gemini-3.8-flash)"]
-        Gemini --> Ans["Câu trả lời thông minh<br/>+ Trích dẫn nguồn (Web / CLI)"]
+        Q["Sinh viên gửi câu hỏi<br/>(Text Query)"] --> BM25["BM25 Lexical Search"]
+        Q --> VSearch["Dense Vector Search<br/>(Cosine / ChromaDB)"]
+        BM25 --> RRF["Hợp nhất Hybrid (RRF)"]
+        VSearch --> RRF
+        RRF --> Rerank["Cross-Encoder Reranker<br/>(Top K tối ưu)"]
+        Rerank --> Prompt["Ghép Context + Query<br/>vào System Prompt"]
+        Prompt --> LLM["Google Gemini LLM<br/>(gemini-3.8-flash)"]
+        LLM --> Ans["Câu trả lời thông minh<br/>+ Trích dẫn nguồn (Web / CLI)"]
     end
 ```
 
 ---
 
-## 2. Nguyên Tắc Làm Việc Nhóm Song Song: Bản Giao Ước `base.py`
+## 2. Quy Trình Xử Lý Dữ Liệu Đa Chặng & Cơ Chế Chống Trùng Lặp
+
+Để quản lý kho dữ liệu quy chế học vụ lớn mà không bị nghẽn hoặc xử lý lặp lại nhiều lần, hệ thống phân chia rõ rệt **4 giai đoạn (Stages)** và tích hợp **Sổ cái theo dõi chống trùng lặp (Data Manifest Tracker)**:
+
+### 4 Chặng Dữ Liệu:
+1. **`raw`** (`data/raw_data/`): Dữ liệu thô ban đầu (PDF, Word, HTML, văn bản quy chế thu thập được từ cổng thông tin UET).
+2. **`processed`** (`data/processed_data/`): Dữ liệu sau khi làm sạch qua [`CleanTextTransformation`](src/ingestion/cleaner.py) (loại bỏ thẻ HTML, ký tự dị biệt, chuẩn hóa khoảng trắng và định dạng UTF-8).
+3. **`chunked`** (`data/chunked_data/`): Dữ liệu sau khi được phân tách thành từng đoạn ngắn bởi [`DocumentChunker`](src/chunking/chunker.py) (mỗi đoạn 500-600 ký tự, overlap 100 ký tự để bảo toàn ngữ cảnh).
+4. **`vectordb`** (`vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
+
+### Cơ Chế Chống Trùng Lặp (Deduplication Manifest Tracker):
+- Được quản lý bởi lớp [`DataManifestTracker`](src/ingestion/manifest.py) và tệp lưu trữ `data/.ingest_manifest.json`.
+- Sử dụng mã băm nội dung **SHA-256** (Content Hash): Khi dữ liệu của một tài liệu hoặc chunk chưa hề thay đổi, hệ thống sẽ **tự động bỏ qua ngay lập tức ($O(1)$)** ở các lần chạy sau, đảm bảo dữ liệu không bị xử lý lặp lại.
+
+---
+
+## 3. Nguyên Tắc Làm Việc Nhóm Song Song: Bản Giao Ước `base.py`
 
 Để cả nhóm làm việc hiệu quả mà không phụ thuộc vào nhau, dự án áp dụng mô hình **Hợp đồng Lập trình (Interface-driven Development)**:
 
@@ -63,12 +83,12 @@ flowchart TD
 
 ---
 
-## 3. Hướng Dẫn Từng Bước Dành Cho Thành Viên (Cách Làm)
+## 4. Hướng Dẫn Từng Bước Dành Cho Thành Viên (Cách Làm)
 
 Khi bạn được phân công một phần việc, hãy làm theo đúng 5 bước sau:
 
 ### 🔹 Bước 1: Xác định nhiệm vụ của mình
-Xem [Bảng Phân Công Nhiệm Vụ](#4-bảng-phân-công-nhiệm-vụ-chi-tiết) bên dưới để biết mình phụ trách thư mục nào trong `src/` và cần kế thừa class nào từ [`base.py`](base.py).
+Xem [Bảng Phân Công Nhiệm Vụ](#5-bảng-phân-công-nhiệm-vụ-chi-tiết) bên dưới để biết mình phụ trách thư mục nào trong `src/` và cần kế thừa class nào từ [`base.py`](base.py).
 
 ### 🔹 Bước 2: Viết code trong thư mục được giao
 Ví dụ bạn phụ trách **Chunking**:
@@ -93,87 +113,89 @@ python src/chunking/chunker.py
 ### 🔹 Bước 4: Ghép vào cỗ máy tổng thể tại `src/pipeline.py`
 Mở file [`src/pipeline.py`](src/pipeline.py) (trái tim điều phối của dự án), thay thế class tạm bằng class thật mà bạn vừa viết:
 ```python
-# Thay vì dùng class mock, import class thật bạn vừa làm xong:
 from src.chunking.chunker import UETChunker
 ```
 
 ### 🔹 Bước 5: Chạy kiểm tra End-to-End toàn hệ thống
-- **Dành cho lập trình viên**: Gõ lệnh sau để kiểm tra luồng chạy từ đầu đến cuối trên console:
+- **Kiểm thử dòng lệnh**:
   ```bash
   python src/pipeline.py
   ```
-- **Dành cho trải nghiệm người dùng**: Khởi chạy Chatbot để hỏi đáp thử:
+- **Chạy toàn bộ bài kiểm thử tự động**:
   ```bash
-  python main.py --cli    # Chat trên terminal
-  # hoặc
-  python main.py --web    # Chat trên giao diện web
+  python -m unittest discover tests
   ```
 
 ---
 
-## 4. Bảng Phân Công Nhiệm Vụ Chi Tiết
+## 5. Bảng Phân Công Nhiệm Vụ Chi Tiết
 
 | Tasks | Thư mục & File cần code | Lớp kế thừa từ [`base.py`](base.py) | Đầu vào $\rightarrow$ Đầu ra | Nhiệm vụ cụ thể |
 | :--- | :--- | :--- | :--- | :--- |
-| **Task 1** | `src/ingestion/loader.py` | `BaseDataCrawler` | `DataSource` $\rightarrow$ `List[RawData]` | Đọc file PDF/Word từ `data/raw_data/` hoặc cào bài viết trên web UET. |
+| **Task 1** | `src/ingestion/loader.py`, `cleaner.py`, `manifest.py` | `BaseDataCrawler`, `BaseTransformation` | `DataSource` $\rightarrow$ `RawData` $\rightarrow$ `ProcessedData` | Đọc tệp, làm sạch dữ liệu, quản lý sổ cái chống trùng lặp SHA-256. |
 | **Task 2** | `src/chunking/chunker.py` | `BaseChunker` | `ProcessedData` $\rightarrow$ `List[DataChunk]` | Cắt văn bản thành từng đoạn 500-600 ký tự kèm overlap 100 ký tự. |
-| **Task 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (dùng mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
-| **Task 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Lưu trữ vector và thực hiện tìm kiếm tương đồng trên **ChromaDB**. |
-| **Task 5** | `src/retrieval/retriever.py` | Điều phối tìm kiếm | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Nhận câu hỏi, gọi embedder và vector_store để lấy ra top 3-5 đoạn liên quan nhất. |
+| **Task 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
+| **Task 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Quản lý ChromaDB, tìm kiếm tương đồng và nạp dữ liệu an toàn theo lô (`batch_size=500`). |
+| **Task 5** | `src/retrieval/retriever.py` | `BaseRetriever` | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Truy xuất lai (BM25 + Dense Vector), RRF Ranking và Reranker chọn top k. |
 | **Task 6** | `src/prompts/prompt_templates.py` | `BasePromptAugmenter` | `UserQuery` + `Contexts` $\rightarrow$ `AugmentedPrompt` | Thiết kế lời nhắc chuyên viên đào tạo UET, ghép ngữ cảnh và câu hỏi vào mẫu chuẩn. |
-| **Task 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Gọi Google GenAI SDK (`gemini-3.8-flash`) để đọc ngữ cảnh và viết câu trả lời. |
+| **Task 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Tích hợp Google Gemini (`gemini-3.8-flash`) để đọc ngữ cảnh và sinh câu trả lời. |
 | **Task 8** | `src/evaluation/evaluator.py` | `BaseEvaluator` | Pipeline + Dataset $\rightarrow$ `EvaluationReport` | Đánh giá độ tin cậy (*Faithfulness, Relevance*) trên tập test chuẩn `test_qa_dataset.json`. |
-| **Task 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, duy trì Web UI, CLI và điều phối dự án. |
+| **Task 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, điều phối Multi-stage Ingestion, duy trì Web UI và CLI. |
 
 ---
 
-## 5. Cấu Trúc Thư Mục Dự Án
+## 6. Cấu Trúc Thư Mục Dự Án
 
 ```text
 UET_chatbot/
 ├── README.md                 # 📖 Tài liệu hướng dẫn toàn diện này
 ├── base.py                   # ⚠️ BẢN GIAO ƯỚC CHUNG (Data Models & Abstract Classes)
-├── main.py                   # 🚀 ĐIỂM KHỞI CHẠY CHÍNH (Chứa đúng 3 lệnh: --web, --cli, --eval)
+├── main.py                   # 🚀 ĐIỂM KHỞI CHẠY CHÍNH (Hỗ trợ Web, CLI, Eval, Ingest)
 ├── config.yaml               # ⚙️ File cấu hình chung (Model, chunk_size, top_k...)
 ├── requirements.txt          # 📦 Danh sách thư viện Python cần cài đặt
 ├── .env                      # 🔑 Chứa GEMINI_API_KEY (Không commit lên Git)
 ├── .env.example              # 📝 File mẫu hướng dẫn tạo .env
-├── .gitignore                # 🛡️ Danh sách file bỏ qua trên Git (Bảo mật & nhẹ repo)
+├── .gitignore                # 🛡️ Danh sách file bỏ qua trên Git
 │
-├── vector_db/                # 🗄️ Thư mục ChromaDB cục bộ (Đã chứa sẵn 452+ vectors tài liệu UET)
+├── vector_db/                # 🗄️ Thư mục ChromaDB cục bộ (Chứa vector kho dữ liệu UET)
 │   └── chroma.sqlite3
 │
-├── src/                      # 💻 MÃ NGUỒN CÁC MODULE CHÍNH (Nơi thành viên làm việc)
-│   ├── pipeline.py           # ⚙️ Trái tim điều phối toàn bộ luồng Ingestion & RAG
-│   ├── ingestion/            # Module 1: Cào & đọc tài liệu
-│   ├── chunking/             # Module 2: Cắt nhỏ văn bản
-│   ├── embeddings/           # Module 3: Vector hóa văn bản
-│   ├── vectordb/             # Module 4: Quản lý ChromaDB
-│   ├── retrieval/            # Module 5: Truy xuất ngữ cảnh
-│   ├── prompts/              # Module 6: Quản lý mẫu Prompt
-│   ├── llm/                  # Module 7: Tích hợp Google Gemini
-│   ├── evaluation/           # Module 8: Đánh giá chất lượng RAG Triad
-│   ├── interfaces/           # Module 9: Tầng giao diện người dùng (Web UI & CLI)
-│   │   ├── routes.py         # REST API endpoints & Web server (/api/chat)
-│   │   ├── cli.py            # Giao diện dòng lệnh Terminal (CLI Mode)
-│   │   └── static/           # Giao diện web người dùng (HTML/CSS/JS)
+├── src/                      # 💻 MÃ NGUỒN CÁC MODULE CHÍNH
+│   ├── pipeline.py           # ⚙️ Trái tim điều phối Ingestion đa chặng & RAG Serving
+│   ├── ingestion/            # Module 1: Cào, làm sạch và sổ cái manifest dữ liệu
+│   │   ├── loader.py         # Đọc tệp thô (PDF, Word, TXT, HTML)
+│   │   ├── cleaner.py        # Làm sạch và chuẩn hóa văn bản
+│   │   └── manifest.py       # Sổ cái chống xử lý trùng lặp bằng SHA-256
+│   ├── chunking/             # Module 2: Cắt nhỏ văn bản (500-600 ký tự)
+│   ├── embeddings/           # Module 3: Vector hóa văn bản (Sentence-Transformers)
+│   ├── vectordb/             # Module 4: Quản lý ChromaDB & batch upsert
+│   ├── retrieval/            # Module 5: Hybrid Retrieval (BM25 + Dense + Reranker)
+│   ├── prompts/              # Module 6: Quản lý mẫu Prompt chuyên gia UET
+│   ├── llm/                  # Module 7: Tích hợp Google Gemini SDK
+│   ├── evaluation/           # Module 8: Đánh giá chất lượng RAG Triad & HitRate/MRR
+│   ├── interfaces/           # Module 9: Tầng giao diện người dùng
+│   │   ├── routes.py         # REST API endpoints (/api/chat, /api/health)
+│   │   ├── cli.py            # Giao diện dòng lệnh Terminal tương tác trực tiếp
+│   │   └── static/           # Giao diện Web HTML/CSS/JS hiện đại
 │   └── utils/                # Module 10: Tiện ích logger, đo thời gian, đọc config
 │
-├── data/                     # 📂 Dữ liệu học vụ UET
-│   ├── doc.md                # 📌 Hướng dẫn chuẩn bị dữ liệu nội bộ
-│   ├── raw_data/             # Chứa file PDF, Word gốc (được gitignore để nhẹ repo)
-│   ├── processed_data/       # Chứa text sạch sau tiền xử lý
-│   └── eval_data/            # Bộ dữ liệu Benchmark QA (test_qa_dataset.json)
+├── data/                     # 📂 Dữ liệu học vụ UET qua các giai đoạn
+│   ├── .ingest_manifest.json # Sổ cái cache chống xử lý lặp lại
+│   ├── raw_data/             # 1. Dữ liệu thô gốc (PDF, Word, HTML)
+│   ├── processed_data/       # 2. Dữ liệu văn bản đã làm sạch
+│   ├── chunked_data/         # 3. Dữ liệu đã chia thành các chunk JSONL
+│   └── eval_data/            # 4. Bộ câu hỏi Benchmark QA (test_qa_dataset.json)
 │
-├── examples/                 # 📚 Code mẫu tham khảo
-│   └── mock_pipeline_demo.py # Kịch bản chạy mẫu minh họa đầy đủ các bước
-└── tests/                    # 🧪 Kiểm thử tự động (Chạy bằng lệnh: pytest)
-    └── test_app.py
+├── examples/                 # 📚 Code mẫu tham khảo luồng kế thừa
+│   └── mock_pipeline_demo.py
+└── tests/                    # 🧪 Kiểm thử tự động
+    ├── test_app.py
+    └── test_ingestion_stages.py
 ```
 
 ---
 
-## 6. Cài Đặt & 3 Lệnh Khởi Chạy Chính
+## 7. Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)
 
 ### 1. Cài đặt môi trường ban đầu
 ```bash
@@ -193,35 +215,66 @@ cp .env.example .env
 
 ---
 
-### 2. Đúng 3 Lệnh Sử Dụng Cốt Lõi (`main.py`)
+### 2. Các Lệnh Điều Phối Dữ Liệu (Multi-stage Data Ingestion)
 
-Hệ thống đã được tinh gọn tối đa, phục vụ trọn vẹn 3 nhu cầu sử dụng:
+#### 📊 Xem báo cáo thống kê dữ liệu 4 chặng & Sổ cái manifest
+```bash
+python main.py --ingest-status
+```
+Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `vector_db` cùng tiến độ của sổ cái chống trùng lặp.
+
+#### ⚙️ Chạy nạp dữ liệu từ chặng xuất phát đến chặng đích
+Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `chunked` $\rightarrow$ `vectordb`.
+
+- **Từ dữ liệu thô `raw` sang dữ liệu sạch `processed`**:
+  ```bash
+  python main.py --ingest --from raw --to processed
+  ```
+
+- **Từ dữ liệu thô `raw` sang `chunked`** (tự động trải qua bước làm sạch trung gian):
+  ```bash
+  python main.py --ingest --from raw --to chunked
+  ```
+
+- **Từ dữ liệu sạch `processed` nạp thẳng vào `vectordb`** (tự động đi qua bước chunking):
+  ```bash
+  python main.py --ingest --from processed --to vectordb
+  ```
+
+- **Chạy toàn bộ quy trình từ đầu đến cuối (`raw` $\rightarrow$ `vectordb`)**:
+  ```bash
+  python main.py --ingest --from raw --to vectordb
+  ```
+
+---
+
+### 3. Các Lệnh Trải Nghiệm & Đánh Giá Chatbot
 
 #### 🌟 1. Khởi chạy Giao diện Web (Khuyên Dùng)
 ```bash
 python main.py --web
 ```
-- Tự động mở trình duyệt tại `http://127.0.0.1:8000`.
-- Giao diện chat hiện đại, hỗ trợ gợi ý câu hỏi nhanh, popup xem nguồn trích dẫn tài liệu UET.
-- Tài liệu REST API tự động tại: `http://127.0.0.1:8000/docs`.
+- Mở trình duyệt tại `http://127.0.0.1:8000`.
+- Giao diện chat hiện đại, hỗ trợ gợi ý câu hỏi, popup xem trích dẫn tài liệu quy chế UET.
+- Xem tài liệu Swagger REST API tại: `http://127.0.0.1:8000/docs`.
 
 #### 💻 2. Khởi chạy Chatbot trên Terminal (CLI Mode)
 ```bash
 python main.py --cli
 ```
-- Dành cho lúc cần hỏi đáp nhanh ngay trên cửa sổ dòng lệnh.
-- Các lệnh gõ trực tiếp trong khi chat: `stats` (xem thống kê vector), `clear` (xóa màn hình), `exit` (thoát).
+- Tương tác hỏi đáp tức thì ngay trên cửa sổ dòng lệnh.
+- Các lệnh hữu ích khi chat: `stats` (thống kê vector), `clear` (xóa màn hình), `exit` (thoát).
 
-#### 📊 3. Chấm điểm chất lượng RAG (Benchmark Evaluation)
+#### 📊 3. Chấm điểm chất lượng RAG (Benchmark QA Evaluation)
 ```bash
 python main.py --eval
 ```
-- Tự động tính toán điểm số **RAG Triad** (*Faithfulness, Answer Relevance, Context Relevance*) trên tập câu hỏi kiểm chuẩn `test_qa_dataset.json`.
-- Xuất báo cáo điểm số để đưa vào slide thuyết trình và báo cáo đồ án.
+- Tính toán điểm **RAG Triad** (*Faithfulness, Answer Relevance, Context Relevance*) trên tập benchmark `test_qa_dataset.json`.
+- Xuất báo cáo kết quả chi tiết phục vụ báo cáo và slide thuyết trình.
 
 ---
 
 > 💡 **Dành cho lập trình viên:**
-> - Chạy bộ kiểm thử tính toàn vẹn: `pytest`
-> - Chạy kiểm thử End-to-End nhanh trong code: `python src/pipeline.py`
-> - Đọc code mẫu ghép nối: `python examples/mock_pipeline_demo.py`
+> - Kiểm tra toàn bộ Unit Test: `python -m unittest discover tests`
+> - Kiểm tra riêng các giai đoạn Ingestion: `python -m unittest tests/test_ingestion_stages.py`
+> - Đọc code mẫu ghép nối các lớp: `python examples/mock_pipeline_demo.py`
