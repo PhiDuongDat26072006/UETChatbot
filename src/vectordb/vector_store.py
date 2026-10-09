@@ -226,6 +226,20 @@ class ChromaVectorStore(BaseVectorStore):
         """Trả về tổng số chunk/vector trong collection ChromaDB."""
         return self.collection.count()
 
+    def get_chunks(self) -> List[DataChunk]:
+        """Read stored chunks for index consistency checks and sparse migration."""
+        data = self.collection.get(include=["documents", "metadatas"])
+        return [DataChunk(chunk_id=cid, text=text,
+                          document_id=(meta or {}).get("document_id"),
+                          chunk_index=(meta or {}).get("chunk_index", 0),
+                          metadata=meta or {})
+                for cid, text, meta in zip(data["ids"], data["documents"], data["metadatas"])]
+
+    def delete(self, chunk_ids: List[str]) -> None:
+        """Remove obsolete chunks without replacing the collection."""
+        for start in range(0, len(chunk_ids), 500):
+            self.collection.delete(ids=chunk_ids[start:start + 500])
+
     def clear(self) -> None:
         """Xóa toàn bộ dữ liệu trong collection để reset lại database."""
         try:
@@ -237,6 +251,7 @@ class ChromaVectorStore(BaseVectorStore):
             logger.info(f"Đã xóa sạch dữ liệu trong collection '{self.collection_name}'.")
         except Exception as e:
             logger.error(f"Lỗi khi xóa dữ liệu collection '{self.collection_name}': {e}")
+            raise
 
 
 # Alias UETVectorStore tương thích quy chuẩn đặt tên các module UET

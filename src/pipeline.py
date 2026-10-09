@@ -119,7 +119,18 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         """
         logger.info(f"Bắt đầu quy trình Ingestion với {len(sources)} nguồn dữ liệu...")
         with Timer() as timer:
-            result = super().run(sources=sources, clear_existing=clear_existing)
+            from src.indexing import UETIndexer
+
+            raw_docs = self.crawler.crawl_all(sources)
+            processed_docs = self.preprocessor.process_batch(raw_docs)
+            chunks = self.chunker.chunk_batch(processed_docs)
+            indexed = UETIndexer(vector_store=self.vector_store,
+                                 embedding_model=self.embedding_model).index_chunks(
+                                     chunks, clear_existing=clear_existing)
+            result = {"status": indexed["status"], "sources_count": len(sources),
+                      "raw_docs_count": len(raw_docs), "processed_docs_count": len(processed_docs),
+                      "chunks_count": len(chunks), "saved_in_db": indexed["indexed_chunks"],
+                      "total_in_db": indexed["total_in_db"]}
         result["latency_seconds"] = round(timer.elapsed, 2)
         logger.info(
             f"Hoàn thành Ingestion trong {result['latency_seconds']}s: "
@@ -230,63 +241,19 @@ class UETIngestionPipeline(BaseIngestionPipeline):
     def _run_chunked_to_vectordb(
         self, batch_size: int = 500
     ) -> Dict[str, int]:
-        """Chuyển đổi dữ liệu từ chunked -> vectordb (nhúng vector và lưu vào ChromaDB)."""
-        chunked_dir = BASE_DIR / "data" / "chunked_data"
-        jsonl_files = sorted(chunked_dir.glob("*.jsonl"))
+        """Index both stores; mark the manifest only after successful synchronization."""
+        from src.indexing import UETIndexer, load_chunks_from_dir
 
-        total_indexed = 0
-        skipped_chunks = 0
-        batch: List[DataChunk] = []
-
-        for jf in jsonl_files:
-            try:
-                with open(jf, "r", encoding="utf-8") as f_in:
-                    for line in f_in:
-                        line = line.strip()
-                        if not line:
-                            continue
-
-                        item = json.loads(line)
-                        cid = str(item.get("chunk_id") or "")
-                        text = item.get("text") or ""
-                        doc_id = item.get("document_id")
-                        c_idx = item.get("chunk_index", 0)
-                        meta = item.get("metadata") or {}
-
-                        if self.manifest.is_processed(cid, "vectordb"):
-                            skipped_chunks += 1
-                            continue
-
-                        chunk_obj = DataChunk(
-                            chunk_id=cid,
-                            document_id=doc_id,
-                            text=text,
-                            chunk_index=c_idx,
-                            metadata=meta,
-                        )
-                        batch.append(chunk_obj)
-
-                        if len(batch) >= batch_size:
-                            vectors = self.embedding_model.embed_chunks(batch)
-                            self.vector_store.store(batch, vectors)
-                            for c in batch:
-                                self.manifest.mark_processed(c.chunk_id, "vectordb", content_hash=c.chunk_id)
-                            total_indexed += len(batch)
-                            logger.info(f"Đã nhúng & lưu {total_indexed} chunks vào Vector DB...")
-                            batch.clear()
-            except Exception as err:
-                logger.warning(f"Lỗi khi xử lý file chunk {jf}: {err}")
-
-        if batch:
-            vectors = self.embedding_model.embed_chunks(batch)
-            self.vector_store.store(batch, vectors)
-            for c in batch:
-                self.manifest.mark_processed(c.chunk_id, "vectordb", content_hash=c.chunk_id)
-            total_indexed += len(batch)
-            batch.clear()
-
+        chunks = load_chunks_from_dir(BASE_DIR / "data" / "chunked_data")
+        result = UETIndexer(vector_store=self.vector_store,
+                            embedding_model=self.embedding_model).index_chunks(
+                                chunks, batch_size=batch_size)
+        for chunk in chunks:
+            self.manifest.mark_processed(chunk.chunk_id, "vectordb",
+                                         content_hash=self.manifest.compute_hash(chunk.text))
         self.manifest.save()
-        return {"chunks_indexed": total_indexed, "skipped_chunks": skipped_chunks, "total_in_db": self.vector_store.count()}
+        return {"chunks_indexed": result["indexed_chunks"], "skipped_chunks": 0,
+                "total_in_db": result["total_in_db"]}
 
     def run_stages(
         self,
