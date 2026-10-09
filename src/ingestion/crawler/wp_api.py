@@ -1,85 +1,64 @@
-"""Module tương tác và trích xuất dữ liệu từ WordPress REST API."""
+"""WordPress discovery with shared pagination and graceful API fallback."""
 from __future__ import annotations
+
+import logging
+from collections.abc import Iterator
+from urllib.parse import urlparse
 
 import requests
 
-from ..config import REQUEST_TIMEOUT
-from ..filters import is_valid_html_endpoint, normalize_endpoint_url
-from .wp_media import fetch_wp_media_documents
+from ..config.session import REQUEST_TIMEOUT
+from ..filters import clean_url, is_document_file, is_valid_html_endpoint, normalize_endpoint_url
 
-__all__ = [
-    "fetch_wp_media_documents",
-    "fetch_wp_posts_and_pages",
-    "fetch_wp_category_posts",
-]
+logger = logging.getLogger(__name__)
+
+
+def _iter_wp_items(
+    session: requests.Session, base_url: str, endpoint: str, max_pages: int,
+) -> Iterator[dict]:
+    """Yield API items while closing every response; unavailable APIs end discovery.
+
+    WordPress is optional: missing endpoints, invalid payloads, and transport
+    failures leave HTML discovery available. Details are logged at DEBUG.
+    """
+    parsed = urlparse(base_url)
+    api_base = f"{parsed.scheme}://{parsed.netloc}/wp-json/wp/v2/{endpoint}"
+    for page in range(1, max_pages + 1):
+        api_url = f"{api_base}?per_page=100&page={page}"
+        try:
+            with session.get(api_url, timeout=REQUEST_TIMEOUT, verify=False) as response:
+                if response.status_code != 200 or "application/json" not in response.headers.get("Content-Type", ""):
+                    logger.debug("WordPress API unavailable: %s (HTTP %s)", api_url, response.status_code)
+                    return
+                items = response.json()
+                if not isinstance(items, list) or not items:
+                    return
+                yield from (item for item in items if isinstance(item, dict))
+                if page >= int(response.headers.get("X-WP-TotalPages", 1)):
+                    return
+        except (requests.RequestException, ValueError, TypeError) as error:
+            logger.debug("WordPress API unavailable: %s (%s)", api_url, error, exc_info=True)
+            return
+
+
+def fetch_wp_media_documents(session: requests.Session, base_url: str, max_pages: int = 5) -> set[str]:
+    """Collect document URLs from the site's global media API, excluding assets."""
+    return {
+        clean_url(item["source_url"])
+        for item in _iter_wp_items(session, base_url, "media", max_pages)
+        if isinstance(item.get("source_url"), str) and is_document_file(item["source_url"])
+    }
 
 
 def fetch_wp_posts_and_pages(
-    session: requests.Session,
-    base_url: str,
-    endpoint: str,
-    target_domain: str,
-    max_pages: int = 5,
+    session: requests.Session, base_url: str, endpoint: str, target_domain: str,
+    max_pages: int = 5, *, allowed_path_prefixes: list[str] | tuple[str, ...] = (),
 ) -> set[str]:
-    """Quét API /wp-json/wp/v2/posts và pages: chỉ lấy bài viết và trang HTML hợp lệ."""
-    endpoints = set()
-    page = 1
-    clean_base = base_url.rstrip("/")
-    while page <= max_pages:
-        api_url = f"{clean_base}/wp-json/wp/v2/{endpoint}?per_page=100&page={page}"
-        try:
-            res = session.get(api_url, timeout=REQUEST_TIMEOUT, verify=False)
-            if res.status_code != 200 or "application/json" not in res.headers.get("Content-Type", ""):
-                break
-            data = res.json()
-            if not data or not isinstance(data, list):
-                break
-
-            for item in data:
-                link = item.get("link")
-                if link:
-                    norm = normalize_endpoint_url(link)
-                    if is_valid_html_endpoint(norm, target_domain):
-                        endpoints.add(norm)
-
-            total_pages = int(res.headers.get("X-WP-TotalPages", 1))
-            if page >= total_pages:
-                break
-            page += 1
-        except Exception:
-            break
-    return endpoints
-
-
-def fetch_wp_category_posts(
-    session: requests.Session,
-    base_url: str,
-    category_id: int,
-    max_pages: int = 5,
-) -> set[str]:
-    """Quét bài viết theo category ID cụ thể qua WordPress API."""
-    endpoints = set()
-    page = 1
-    clean_base = base_url.rstrip("/")
-    while page <= max_pages:
-        api_url = f"{clean_base}/wp-json/wp/v2/posts?categories={category_id}&per_page=100&page={page}"
-        try:
-            res = session.get(api_url, timeout=REQUEST_TIMEOUT, verify=False)
-            if res.status_code != 200 or "application/json" not in res.headers.get("Content-Type", ""):
-                break
-            data = res.json()
-            if not data or not isinstance(data, list):
-                break
-
-            for item in data:
-                link = item.get("link")
-                if link:
-                    endpoints.add(normalize_endpoint_url(link))
-
-            total_pages = int(res.headers.get("X-WP-TotalPages", 1))
-            if page >= total_pages:
-                break
-            page += 1
-        except Exception:
-            break
+    """Collect normalized post/page links passing the shared host and path rules."""
+    endpoints: set[str] = set()
+    for item in _iter_wp_items(session, base_url, endpoint, max_pages):
+        if isinstance(item.get("link"), str):
+            normalized_url = normalize_endpoint_url(item["link"])
+            if is_valid_html_endpoint(normalized_url, target_domain, allowed_path_prefixes=allowed_path_prefixes):
+                endpoints.add(normalized_url)
     return endpoints

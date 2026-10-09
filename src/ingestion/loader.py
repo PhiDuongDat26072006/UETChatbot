@@ -1,48 +1,88 @@
 """src/ingestion/loader.py - UETDataLoader kế thừa BaseDataCrawler theo giao ước base.py."""
 from __future__ import annotations
 
+import json
+import logging
 import sys
-from collections import Counter
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
-from src.base import BaseDataCrawler, DataSource, RawData  # noqa: E402
-from src.utils.helpers import get_logger  # noqa: E402
+# Direct script invocation needs the repository root before application imports.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-try:
-    from .loader_helpers import (  # noqa: E402
-        METADATA_FIELDS,
-        default_processed_dir,
-        iter_jsonl,
-        resolve_uri,
-        to_raw_data,
+from src.base import BaseDataCrawler, DataSource, RawData
+from src.ingestion.config.paths import BASE_DIR, PROCESSED_DATA_DIR
+
+logger = logging.getLogger(__name__)
+
+METADATA_FIELDS: tuple[str, ...] = (
+    "title",
+    "domain",
+    "unit",
+    "category",
+    "published_date",
+    "summary",
+    "cloud_links",
+    "source_type",
+    "content_length",
+)
+
+
+def iter_jsonl(path: Path) -> Iterator[Optional[Dict[str, Any]]]:
+    """Đọc từng dòng JSONL; trả về None cho dòng lỗi để bên gọi thống kê."""
+    with open(path, "r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError("JSONL record must be an object")
+                yield record
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"{path.name}:{line_no} JSON không hợp lệ ({e})")
+                yield None
+
+
+def to_raw_data(
+    record: Dict[str, Any], content: str, jsonl_file: Path, source: DataSource
+) -> RawData:
+    """Chuyển bản ghi JSONL thành đối tượng RawData theo giao ước base.py."""
+    url = record.get("source_url_or_path") or ""
+    metadata: Dict[str, Any] = {k: record.get(k) for k in METADATA_FIELDS}
+    metadata["url"] = url
+    metadata["cloud_links"] = metadata.get("cloud_links") or []
+    metadata["processed_file"] = jsonl_file.name
+    metadata["source_id"] = source.source_id
+
+    kwargs: Dict[str, Any] = dict(
+        content=content,
+        source_uri=url or str(jsonl_file),
+        title=record.get("title"),
+        raw_metadata=metadata,
     )
-except ImportError:
-    from src.ingestion.loader_helpers import (  # noqa: E402
-        METADATA_FIELDS,
-        default_processed_dir,
-        iter_jsonl,
-        resolve_uri,
-        to_raw_data,
-    )
-
-logger = get_logger("ingestion")
+    if record.get("id"):
+        kwargs["id"] = str(record["id"])
+    return RawData(**kwargs)
 
 
 class UETDataLoader(BaseDataCrawler):
     """Bộ nạp dữ liệu cho UET Chatbot, kế thừa BaseDataCrawler (src/base.py)."""
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = Path(data_dir) if data_dir else default_processed_dir(_REPO_ROOT)
+        self.data_dir = Path(data_dir) if data_dir else Path(PROCESSED_DATA_DIR)
 
     def crawl(self, source: DataSource) -> List[RawData]:
         """Đọc dữ liệu đã bóc tách từ một nguồn (thư mục hoặc file JSONL)."""
-        path = resolve_uri(source.uri, _REPO_ROOT)
-        logger.info(f"Bắt đầu nạp dữ liệu từ: {path} (loại: {source.source_type})")
+        path = Path(source.uri)
+        if not path.is_absolute():
+            path = BASE_DIR / path
+        started = time.monotonic()
+        logger.info("[START] Loading records from %s", path)
 
         if source.source_type == "directory" or path.is_dir():
             files = sorted(path.glob("*.jsonl"))
@@ -76,12 +116,10 @@ class UETDataLoader(BaseDataCrawler):
                     seen_ids.add(raw.id)
                     results.append(raw)
                     file_count += 1
-            logger.info(f"  - {jsonl_file.name}: {file_count} tài liệu")
+            logger.debug("%s: %s records", jsonl_file.name, file_count)
 
-        logger.info(
-            f"Hoàn tất: {len(results)} tài liệu từ {len(files)} file "
-            f"(bỏ qua: {skipped_empty} rỗng, {skipped_dup} trùng id, {skipped_bad} lỗi JSON)"
-        )
+        logger.debug("Skipped %s empty, %s duplicate, and %s malformed records", skipped_empty, skipped_dup, skipped_bad)
+        logger.info("[DONE] Loaded %s records in %.1fs from %s", len(results), time.monotonic() - started, path)
         return results
 
     def load_all(self) -> List[RawData]:
@@ -90,8 +128,6 @@ class UETDataLoader(BaseDataCrawler):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     loader = UETDataLoader()
-    docs = loader.load_all()
-    print(f"\nĐã nạp thành công: {len(docs)} tài liệu từ {loader.data_dir}")
-    by_unit = Counter(d.raw_metadata.get("unit") for d in docs)
-    print("Phân bố theo đơn vị:", dict(by_unit.most_common()))
+    loader.load_all()

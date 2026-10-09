@@ -1,99 +1,132 @@
-"""Cấu hình các Khoa, Viện, domain và hàm resolve_unit chuẩn hóa."""
+"""Cấu hình các Khoa, Viện và hàm chuẩn hóa đơn vị (resolve_unit)."""
 from __future__ import annotations
 
-# Danh sách tên miền chính thức của các Khoa và Viện trực thuộc UET
-FACULTY_TARGETS = [
+import posixpath
+from typing import TypedDict
+from urllib.parse import unquote, urlparse
+
+
+class FacultyTarget(TypedDict):
+    """A source's identity, real host, crawl seeds, and optional path scope."""
+
+    faculty_id: str
+    name: str
+    domain: str
+    start_urls: list[str]
+    allowed_path_prefixes: list[str]
+
+
+# Danh sách tên miền chính thức của các Khoa/Viện trực thuộc UET và Cổng chính
+FACULTY_TARGETS: list[FacultyTarget] = [
     {
-        "code": "FIT",
+        "faculty_id": "FIT",
         "name": "Khoa Công nghệ thông tin",
-        "url": "https://fit.uet.vnu.edu.vn",
+        "start_urls": ["https://fit.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fit.uet.vnu.edu.vn",
-        "output_filename": "fit.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "FET",
+        "faculty_id": "FET",
         "name": "Khoa Điện tử Viễn thông",
-        "url": "https://fet.uet.vnu.edu.vn",
+        "start_urls": ["https://fet.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fet.uet.vnu.edu.vn",
-        "output_filename": "fet.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "FEPN",
+        "faculty_id": "FEPN",
         "name": "Khoa Vật lý kỹ thuật & Công nghệ Nano",
-        "url": "https://fepn.uet.vnu.edu.vn",
+        "start_urls": ["https://fepn.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fepn.uet.vnu.edu.vn",
-        "output_filename": "fepn.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "FEMA",
+        "faculty_id": "FEMA",
         "name": "Khoa Cơ học kỹ thuật & Tự động hoá",
-        "url": "https://fema.uet.vnu.edu.vn",
+        "start_urls": ["https://fema.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fema.uet.vnu.edu.vn",
-        "output_filename": "fema.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "FAT",
+        "faculty_id": "FAT",
         "name": "Khoa Công nghệ Nông nghiệp",
-        "url": "https://fat.uet.vnu.edu.vn",
+        "start_urls": ["https://fat.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fat.uet.vnu.edu.vn",
-        "output_filename": "fat.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "FCE",
+        "faculty_id": "FCE",
         "name": "Khoa Công nghệ Xây dựng – Giao thông",
-        "url": "https://fce.uet.vnu.edu.vn",
+        "start_urls": ["https://fce.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "fce.uet.vnu.edu.vn",
-        "output_filename": "fce.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "SAE",
+        "faculty_id": "SAE",
         "name": "Viện Công nghệ Hàng không Vũ trụ",
-        "url": "https://sae.uet.vnu.edu.vn",
+        "start_urls": ["https://sae.uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
         "domain": "sae.uet.vnu.edu.vn",
-        "output_filename": "sae.uet.vnu.edu.vn.txt",
     },
     {
-        "code": "IAI",
+        "faculty_id": "IAI",
         "name": "Viện Trí tuệ nhân tạo",
-        "url": "https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/",
-        "domain": "iai.uet.vnu.edu.vn",
-        "target_domain": "uet.vnu.edu.vn",
-        "subpath": "vien-tri-tue-nhan-tao",
-        "category_id": 146,
-        "output_filename": "iai.uet.vnu.edu.vn.txt",
+        "start_urls": ["https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/"],
+        "allowed_path_prefixes": ["/vien-tri-tue-nhan-tao/"],
+        "domain": "uet.vnu.edu.vn",
+    },
+    {
+        "faculty_id": "UET",
+        "name": "Trường Đại học Công nghệ",
+        "start_urls": ["https://uet.vnu.edu.vn"],
+        "allowed_path_prefixes": [],
+        "domain": "uet.vnu.edu.vn",
     },
 ]
 
-TARGET_DOMAINS = [t["url"] for t in FACULTY_TARGETS]
 
-# Danh sách tên thư mục dữ liệu cho từng đơn vị (dẫn xuất từ FACULTY_TARGETS)
-DOMAIN_FOLDERS: list[dict[str, str]] = [
-    {"code": t["code"], "name": t["name"], "folder": t["domain"]}
-    for t in FACULTY_TARGETS
-]
-# Thêm UET chính (không nằm trong FACULTY_TARGETS)
-DOMAIN_FOLDERS.append({"code": "UET", "name": "Trang chủ ĐH Công nghệ", "folder": "uet.edu.vn"})
-
-# Bảng ánh xạ chuẩn hóa tên miền sang mã định danh đơn vị (Unit Code) viết hoa
-DOMAIN_TO_UNIT_MAP: dict[str, str] = {
-    "fit.uet.vnu.edu.vn": "FIT",
-    "fet.uet.vnu.edu.vn": "FET",
-    "fepn.uet.vnu.edu.vn": "FEPN",
-    "fema.uet.vnu.edu.vn": "FEMA",
-    "fat.uet.vnu.edu.vn": "FAT",
-    "fce.uet.vnu.edu.vn": "FCE",
-    "sae.uet.vnu.edu.vn": "SAE",
-    "iai.uet.vnu.edu.vn": "IAI",
-    "uet.vnu.edu.vn": "UET",
-    "uet.edu.vn": "UET",
-}
+def faculty_storage_name(faculty_id: str) -> str:
+    """Derive established storage names independently of the request host."""
+    return "uet.edu.vn" if faculty_id == "UET" else f"{faculty_id.lower()}.uet.vnu.edu.vn"
 
 
-def resolve_unit(domain: str) -> str:
-    """Trả về mã unit chuẩn hóa (FIT, FET, IAI, UET...). Mặc định trả về 'UET' nếu không khớp."""
-    if not domain or not isinstance(domain, str):
-        return "UET"
-    clean_domain = domain.lower().strip()
-    if clean_domain.startswith("www."):
-        clean_domain = clean_domain[4:]
-    return DOMAIN_TO_UNIT_MAP.get(clean_domain, "UET")
+def find_faculty(source: str, source_url: str | None = None) -> FacultyTarget | None:
+    """Resolve an ID, storage name, or host; URL paths disambiguate shared hosts.
+
+    Explicit IDs and storage names take precedence. Unknown sources return None
+    so callers can retain their own domain and storage conventions.
+    """
+    if not isinstance(source, str) or not source.strip():
+        return None
+    source = source.strip()
+    for target in FACULTY_TARGETS:
+        if source.upper() == target["faculty_id"] or source.lower().removeprefix("www.") == faculty_storage_name(target["faculty_id"]):
+            return target
+    parsed = urlparse(source_url or (source if "://" in source else f"https://{source}"))
+    candidates = [target for target in FACULTY_TARGETS if url_in_scope(parsed.geturl(), target["domain"])]
+    for target in candidates:
+        if target["allowed_path_prefixes"] and url_in_scope(parsed.geturl(), target["domain"], target["allowed_path_prefixes"]):
+            return target
+    return next((target for target in candidates if not target["allowed_path_prefixes"]), None)
+
+
+def resolve_unit(domain: str, source_url: str | None = None) -> str:
+    """Normalize known source identities to faculty IDs, defaulting to UET."""
+    target = find_faculty(domain, source_url)
+    return target["faculty_id"] if target else "UET"
+
+
+def url_in_scope(url: str, domain: str, prefixes: list[str] | tuple[str, ...] = ()) -> bool:
+    """Match source hosts and path segments after decoding and resolving dot paths."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    domain = domain.lower().split(":")[0].removeprefix("www.")
+    aliases = ("uet.vnu.edu.vn", "uet.edu.vn")
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if host != domain and not (host in aliases and domain in aliases):
+        return False
+    path = posixpath.normpath(unquote(parsed.path or "/"))
+    return not prefixes or any(
+        path == prefix.rstrip("/") or path.startswith(prefix.rstrip("/") + "/")
+        for prefix in prefixes
+    )

@@ -6,8 +6,10 @@ Cách chạy (từ thư mục gốc repo):
     python -m src.ingestion.main --classify [--domain fit.uet.vnu.edu.vn]
     python -m src.ingestion.main --extract  [--domain fit.uet.vnu.edu.vn] [--force]
 """
-import sys
 import argparse
+import logging
+import sys
+import time
 from pathlib import Path
 
 # Đảm bảo thư mục gốc repo nằm trong sys.path khi chạy trực tiếp `python src/ingestion/main.py`
@@ -17,11 +19,15 @@ if repo_root not in sys.path:
 
 from src.ingestion.crawler import crawl_all_faculties
 from src.ingestion.validator import verify_all_endpoints
-from src.ingestion.classifier import classify_all_domains, classify_domain, print_classification_summary
+from src.ingestion.classifier import classify_all_domains, classify_domain
 from src.ingestion.extractor import extract_all_domains, extract_domain_documents
 
 
-def main():
+logger = logging.getLogger(__name__)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the selected stage; return nonzero for incomplete or failed work."""
     parser = argparse.ArgumentParser(
         description="Hệ thống Crawler, Phân loại & Bóc tách Dữ liệu UET Chatbot"
     )
@@ -39,7 +45,7 @@ def main():
         "--domain",
         type=str,
         default=None,
-        help="Chỉ định domain cụ thể để xử lý (ví dụ: fema.uet.vnu.edu.vn, fit.uet.vnu.edu.vn, fepn.uet.vnu.edu.vn)."
+        help="Faculty ID, storage folder, or domain to classify/extract (use IAI for the AI Institute)."
     )
     parser.add_argument(
         "--verify",
@@ -65,28 +71,49 @@ def main():
         "--workers",
         type=int,
         default=10,
-        help="Số luồng xử lý đồng thời khi tải/bóc tách dữ liệu (mặc định: 10)."
+        help="Số luồng bóc tách nội dung (mặc định: 10)."
     )
 
-    args = parser.parse_args()
-
-    if args.extract:
-        if args.domain:
-            extract_domain_documents(args.domain, max_workers=args.workers, force=args.force)
+    parser.add_argument("--debug", action="store_true", help="Enable detailed diagnostics.")
+    args = parser.parse_args(argv)
+    if args.workers < 1:
+        parser.error("--workers must be positive")
+    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format="%(message)s")
+    if args.debug:
+        logging.getLogger("src.ingestion").setLevel(logging.DEBUG)
+    started = time.monotonic()
+    single_target = args.domain and (args.extract or args.classify)
+    if single_target:
+        logger.info("[START] %s started", "Extraction" if args.extract else "Classification")
+        logger.info("[%s] %s", "EXTRACTING" if args.extract else "CLASSIFYING", args.domain)
+    try:
+        if args.extract:
+            if args.domain:
+                result = extract_domain_documents(args.domain, max_workers=args.workers, force=args.force)
+                if result.get("failed"):
+                    raise RuntimeError("Extraction incomplete; successful records were saved")
+            else:
+                extract_all_domains(max_workers=args.workers, force=args.force)
+        elif args.classify:
+            if args.domain:
+                result = classify_domain(args.domain)
+                if result.get("failed"):
+                    raise RuntimeError("Classification incomplete; available results were saved")
+            else:
+                classify_all_domains()
+        elif args.verify:
+            verify_all_endpoints()
         else:
-            extract_all_domains(max_workers=args.workers, force=args.force)
-    elif args.classify:
-        if args.domain:
-            stat = classify_domain(args.domain)
-            print_classification_summary([stat])
-        else:
-            classify_all_domains()
-    elif args.verify:
-        verify_all_endpoints()
-    else:
-        # Mặc định chạy crawler nếu gọi --crawl hoặc không có flag
-        crawl_all_faculties(download_files=not args.no_download)
+            crawl_all_faculties(download_files=not args.no_download)
+    except Exception as error:
+        logger.error("[FAILED] Ingestion failed after %.1fs | %s", time.monotonic() - started, error)
+        logger.debug("Ingestion failure", exc_info=True)
+        return 1
+    if single_target:
+        count = result["total_docs"] if args.extract else result["total"]
+        logger.info("[DONE] Completed in %.1fs | %s records saved", time.monotonic() - started, count)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

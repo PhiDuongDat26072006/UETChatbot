@@ -4,7 +4,7 @@ from .loader import UETDataLoader
 from .crawler import crawl_domain, crawl_target, crawl_all_faculties
 from .validator import verify_all_endpoints
 from .classifier import Category, classify_endpoint, classify_domain, classify_all_domains
-from .config import DOMAIN_TO_UNIT_MAP, resolve_unit
+from .config import resolve_unit
 from .filters import is_cloud_storage_url
 from .extractor import (
     COURSE_CODE_PATTERN,
@@ -40,7 +40,6 @@ __all__ = [
     "classify_endpoint",
     "classify_domain",
     "classify_all_domains",
-    "DOMAIN_TO_UNIT_MAP",
     "resolve_unit",
     "is_cloud_storage_url",
     "extract_html_content",

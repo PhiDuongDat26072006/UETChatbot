@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+from .cloud_links import (
+    extract_cloud_links,
+    format_cloud_links_markdown,
+)
 from .date_extractor import (
     extract_doc_date,
     extract_html_date,
@@ -8,19 +14,15 @@ from .doc_extractor import extract_document_text
 from .html_cleaner import (
     COURSE_CODE_PATTERN,
     EMAIL_PATTERN,
-    extract_cloud_links,
-    format_cloud_links_markdown,
     is_thin_content,
     table_to_markdown,
 )
 from .html_extractor import extract_html_content
 from .pipeline import (
-    extract_all_domains,
-    extract_domain_documents,
-)
-from .pipeline_helpers import (
     DUPLICATE_STUB_MAX_LENGTH,
     canonicalize_url,
+    extract_all_domains,
+    extract_domain_documents,
     generate_doc_id,
     is_duplicate_stub,
     load_existing_processed_docs,

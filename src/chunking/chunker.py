@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import List, Optional
 from src.base import BaseChunker, ProcessedData, DataChunk
 from src.utils.helpers import get_logger
+from src.ingestion.config.faculties import faculty_storage_name, find_faculty
 
 logger = get_logger("chunking")
 
@@ -214,8 +215,9 @@ class UETChunker(BaseChunker):
         # Phân loại chunk theo từng khoa dựa vào domain (hoặc category/source)
         chunks_by_faculty = defaultdict(list)
         for chunk in all_chunks:
-            # Ưu tiên lấy domain từ metadata, nếu không có thì lấy chuỗi mặc định
-            faculty = chunk.metadata.get("domain", "other")
+            # A shared request host must not merge distinct faculty output files.
+            target = find_faculty(chunk.metadata.get("unit", ""))
+            faculty = faculty_storage_name(target["faculty_id"]) if target else chunk.metadata.get("domain", "other")
             chunks_by_faculty[faculty].append(chunk)
 
         # Đảm bảo thư mục lưu trữ chunk_data tồn tại

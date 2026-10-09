@@ -1,53 +1,53 @@
-"""Bóc tách thẻ liên kết HTML và tài liệu nhúng trên một trang đơn lẻ."""
+"""Discover HTML endpoints and attachments from accepted source pages."""
 from __future__ import annotations
 
+import re
 from urllib.parse import urljoin
+
 import requests
 
-from ..config import A_HREF_REGEX, EMBED_SRC_REGEX, REQUEST_TIMEOUT
+from ..config.session import get_source_response
 from ..filters import (
-    clean_url,
-    is_allowed_file_domain,
-    is_document_file,
-    is_media_or_asset_file,
-    is_valid_html_endpoint,
-    normalize_endpoint_url,
+    clean_url, is_allowed_file_domain, is_document_file,
+    is_media_or_asset_file, is_valid_html_endpoint, normalize_endpoint_url,
 )
+
+A_HREF_REGEX = re.compile(r"<a\b[^>]*?\bhref=[\"']([^\"'#\s>]+)", re.IGNORECASE)
+EMBED_SRC_REGEX = re.compile(r"<(?:embed|iframe)\b[^>]*?\bsrc=[\"']([^\"'#\s>]+)", re.IGNORECASE)
 
 
 def scrape_single_page(
-    session: requests.Session,
-    base_url: str,
-    target_domain: str,
-    url: str,
-    subpath: str = None,
+    session: requests.Session, target_domain: str, url: str,
+    *, allowed_path_prefixes: list[str] | tuple[str, ...] = (),
 ) -> tuple[set[str], set[str]]:
-    """Cào nội dung trang: bóc tách <a href="..."> và embed/iframe tài liệu."""
-    endpoints = set()
-    files = set()
-    try:
-        res = session.get(url, timeout=REQUEST_TIMEOUT, verify=False)
-        if res.status_code == 200 and "text/html" in res.headers.get("Content-Type", ""):
-            for raw_link in A_HREF_REGEX.findall(res.text):
-                raw_link = raw_link.strip()
-                if not raw_link or raw_link.startswith(("javascript:", "mailto:", "tel:", "data:", "#")):
-                    continue
+    """Collect links from one page; relative links use the final response URL.
 
-                full_url = clean_url(urljoin(base_url, raw_link))
-                if is_document_file(full_url):
-                    if is_allowed_file_domain(full_url, target_domain):
-                        files.add(full_url)
-                elif is_media_or_asset_file(full_url):
-                    continue
-                else:
-                    norm_url = normalize_endpoint_url(full_url)
-                    if is_valid_html_endpoint(norm_url, target_domain, subpath):
-                        endpoints.add(norm_url)
-
-            for emb in EMBED_SRC_REGEX.findall(res.text):
-                full_emb = clean_url(urljoin(base_url, emb.strip()))
-                if is_document_file(full_emb) and is_allowed_file_domain(full_emb, target_domain):
-                    files.add(full_emb)
-    except Exception:
-        pass
+    Scope is checked before requesting or following redirects. Request failures
+    propagate to the crawler, which records partial failure without discarding
+    successful pages. Non-HTML responses produce no links.
+    """
+    endpoints: set[str] = set()
+    files: set[str] = set()
+    if not is_valid_html_endpoint(url, target_domain, allowed_path_prefixes=allowed_path_prefixes):
+        return endpoints, files
+    with get_source_response(session, url, target_domain, allowed_path_prefixes) as response:
+        response.raise_for_status()
+        if "text/html" not in response.headers.get("Content-Type", ""):
+            return endpoints, files
+        for raw_link in A_HREF_REGEX.findall(response.text):
+            raw_link = raw_link.strip()
+            if not raw_link or raw_link.startswith(("javascript:", "mailto:", "tel:", "data:", "#")):
+                continue
+            source_url = clean_url(urljoin(response.url, raw_link))
+            if is_document_file(source_url):
+                if is_allowed_file_domain(source_url, target_domain):
+                    files.add(source_url)
+            elif not is_media_or_asset_file(source_url):
+                normalized_url = normalize_endpoint_url(source_url)
+                if is_valid_html_endpoint(normalized_url, target_domain, allowed_path_prefixes=allowed_path_prefixes):
+                    endpoints.add(normalized_url)
+        for embedded_url in EMBED_SRC_REGEX.findall(response.text):
+            source_url = clean_url(urljoin(response.url, embedded_url.strip()))
+            if is_document_file(source_url) and is_allowed_file_domain(source_url, target_domain):
+                files.add(source_url)
     return endpoints, files
