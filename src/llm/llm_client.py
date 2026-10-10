@@ -69,6 +69,8 @@ class UETLLMClient(BaseLLM):
         """
         logger.info(f"Đang gửi yêu cầu sinh câu trả lời đến mô hình '{self.model_name}'...")
 
+        errors_encountered: List[str] = []
+
         with Timer() as timer:
             # 1. Gọi Google GenAI SDK nếu có client
             if self._client:
@@ -98,31 +100,89 @@ class UETLLMClient(BaseLLM):
                                 metadata=meta,
                             )
                     except Exception as e:
-                        logger.warning(f"Mô hình {m} gặp lỗi ({e}), đang chuyển sang mô hình dự phòng tiếp theo...")
+                        err_str = str(e)
+                        errors_encountered.append(f"{m}: {err_str}")
+                        logger.warning(f"Mô hình {m} gặp lỗi ({err_str}), đang chuyển sang mô hình dự phòng tiếp theo...")
 
-            # 2. Chế độ Fallback thông minh khi chưa có API key hoặc mất mạng
-            logger.info("Sử dụng chế độ fallback trích đoạn tài liệu quy chế.")
-            if prompt.contexts:
-                context_preview = "\n\n".join([
-                    f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
-                    for c in prompt.contexts[:3]
-                ])
-                fallback_answer = (
-                    f"Dựa trên các văn bản quy chế đào tạo UET được tra cứu:\n\n"
-                    f"{context_preview}\n\n"
-                    f"*(Lưu ý: Để kích hoạt phản hồi tổng hợp thông minh từ AI, vui lòng kiểm tra GEMINI_API_KEY trong file .env)*"
-                )
+            # 2. Xử lý trường hợp mô hình LLM từ chối dịch vụ hoặc chưa có API Key
+            logger.info("Sử dụng chế độ thông báo lỗi / fallback trích đoạn tài liệu quy chế.")
+
+            if errors_encountered:
+                # Phân loại nguyên nhân từ chối dịch vụ từ Gemini
+                combined_err = " | ".join(errors_encountered)
+                if "503" in combined_err or "UNAVAILABLE" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 503 - SERVER QUÁ TẢI)**"
+                    error_detail = (
+                        "Máy chủ Google Gemini hiện đang chịu tải quá lớn (High Demand) trên toàn cầu "
+                        "và tạm thời từ chối xử lý yêu cầu lúc này."
+                    )
+                elif "429" in combined_err or "RESOURCE_EXHAUSTED" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 429 - HẾT HẠN MỨC / RATE LIMIT)**"
+                    error_detail = (
+                        "Tài khoản Google Gemini API đã vượt quá hạn mức yêu cầu miễn phí (Quota Exceeded) "
+                        "hoặc gửi quá số lượng request cho phép trong một phút."
+                    )
+                elif "403" in combined_err or "PERMISSION_DENIED" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 403 - LỖI QUYỀN TRUY CẬP)**"
+                    error_detail = "Khóa API không có quyền truy cập mô hình này hoặc đã bị Google vô hiệu hóa."
+                elif "SAFETY" in combined_err or "BLOCK" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (BỘ LỌC AN TOÀN - SAFETY FILTER)**"
+                    error_detail = "Nội dung câu hỏi hoặc phản hồi đã bị bộ lọc an toàn của Google Gemini từ chối."
+                else:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ / LỖI KẾT NỐI API**"
+                    short_err = errors_encountered[-1].split("\n")[0][:120]
+                    error_detail = f"Không thể nhận phản hồi từ dịch vụ Google Gemini ({short_err})."
+
+                if prompt.contexts:
+                    context_preview = "\n\n".join([
+                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
+                        for c in prompt.contexts[:3]
+                    ])
+                    fallback_answer = (
+                        f"{error_title}\n\n"
+                        f"> {error_detail}\n\n"
+                        f"---\n"
+                        f"📂 **HỆ THỐNG TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ TRÍCH XUẤT TÀI LIỆU CĂN CỨ:**\n\n"
+                        f"{context_preview}\n\n"
+                        f"*(Bạn có thể thử gửi lại câu hỏi sau ít giây khi máy chủ Gemini giảm tải, hoặc đối chiếu với các trích đoạn văn bản trên).*"
+                    )
+                else:
+                    fallback_answer = (
+                        f"{error_title}\n\n"
+                        f"> {error_detail}\n\n"
+                        f"Đồng thời, hệ thống chưa tìm thấy văn bản quy chế nào phù hợp với câu hỏi này trong cơ sở dữ liệu. Vui lòng thử lại sau."
+                    )
+                resp_model_name = "gemini-service-denied-fallback"
+
+            elif not self.api_key:
+                if prompt.contexts:
+                    context_preview = "\n\n".join([
+                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
+                        for c in prompt.contexts[:3]
+                    ])
+                    fallback_answer = (
+                        f"Dựa trên các văn bản quy chế đào tạo UET được tra cứu:\n\n"
+                        f"{context_preview}\n\n"
+                        f"*(Lưu ý: Để kích hoạt phản hồi tổng hợp thông minh từ AI, vui lòng kiểm tra GEMINI_API_KEY trong file .env)*"
+                    )
+                else:
+                    fallback_answer = (
+                        "Xin lỗi, hiện tôi chưa tìm thấy quy định cụ thể về vấn đề này trong tài liệu hiện có. "
+                        "Bạn vui lòng liên hệ trực tiếp Phòng Đào tạo (uet.vnu.edu.vn) để được hỗ trợ chính xác nhất."
+                    )
+                resp_model_name = "offline-fallback"
+
             else:
                 fallback_answer = (
-                    "Xin lỗi, hiện tôi chưa tìm thấy quy định cụ thể về vấn đề này trong tài liệu hiện có. "
-                    "Bạn vui lòng liên hệ trực tiếp Phòng Đào tạo (uet.vnu.edu.vn) để được hỗ trợ chính xác nhất."
+                    "Xin lỗi em, hiện tại hệ thống chưa nhận được phản hồi phù hợp từ mô hình AI. Vui lòng thử lại sau."
                 )
+                resp_model_name = f"{self.model_name}-fallback"
 
         return Response(
             query_id=prompt.user_query.query_id,
             answer=fallback_answer,
             sources=prompt.contexts,
-            model_name=f"{self.model_name}-fallback",
+            model_name=resp_model_name,
             latency_seconds=round(timer.elapsed, 3),
         )
 

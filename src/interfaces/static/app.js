@@ -21,9 +21,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalMeta = document.getElementById("modal-source-meta");
     const btnCloseModal = document.getElementById("btn-close-modal");
     const btnModalDone = document.getElementById("btn-modal-done");
+    const modelBadge = document.getElementById("model-badge");
 
     let isGenerating = false;
     let sessionId = "session_" + Math.random().toString(36).substring(2, 9);
+
+    // Dynamic model fetch
+    async function loadServerInfo() {
+        try {
+            const res = await fetch("/api/health");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.model_name && modelBadge) {
+                    modelBadge.textContent = `Mô hình: ${data.model_name}`;
+                }
+            }
+        } catch (e) {
+            console.warn("Could not load server health:", e);
+        }
+    }
+    loadServerInfo();
 
     // Auto-resize textarea
     queryInput.addEventListener("input", () => {
@@ -109,6 +126,9 @@ document.addEventListener("DOMContentLoaded", () => {
             typingEl.remove();
 
             if (response.ok) {
+                if (data.model_name && modelBadge) {
+                    modelBadge.textContent = `Mô hình: ${data.model_name}`;
+                }
                 appendBotMessage(data.answer, data.sources || [], data.latency_seconds);
             } else {
                 appendBotMessage(
