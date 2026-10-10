@@ -6,7 +6,8 @@ paths:
   data_dir: "data/raw_data"
   processed_dir: "data/processed_data"
   eval_dir: "data/eval_data"
-  vector_db_dir: "vector_db"
+  vector_db_dir: "database/vector_db"
+  bm25_index_file: "database/bm25_index.pkl"
   collection_name: "uet_knowledge_base"
   eval_dataset_file: "data/eval_data/test_qa_dataset.json"
 
@@ -48,7 +49,6 @@ llm:
   # Mô hình Google Gemini thế hệ mới nhất
   model_name: "gemini-3.8-flash"
   candidate_models:
-    - "gemini-3.8-flash"
     - "gemini-3.5-flash"
     - "gemini-3.5-flash-lite"
     - "gemini-flash-latest"
@@ -67,7 +67,7 @@ prompt:
     Nhiệm vụ của bạn là giải đáp thắc mắc của sinh viên một cách chính xác, thân thiện, rõ ràng dựa trên các tài liệu quy chế được cung cấp.
 
     Quy tắc bắt buộc:
-    1. Chỉ sử dụng thông tin có trong phần [NGỮ CẢNH] được trích xuất để trả lời.
+    1. Chỉ sử dụng thông tin có trong phần [NGỮ CẢNH ĐƯỢC CUNG CẤP] được trích xuất để trả lời.
     2. Nếu ngữ cảnh không có thông tin hoặc không đủ để trả lời câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự bịa đặt thông tin.
     3. Trả lời bằng tiếng Việt chuẩn mực, mạch lạc, có thể dùng gạch đầu dòng để làm rõ các điều kiện, tiêu chí.
     4. Cuối câu trả lời, hãy nêu rõ nguồn tài liệu tham khảo (Tên file, văn bản hoặc số quyết định) được trích xuất từ ngữ cảnh.

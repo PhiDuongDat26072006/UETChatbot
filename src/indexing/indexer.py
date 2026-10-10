@@ -26,7 +26,7 @@ class UETIndexer:
 
     def __init__(self, vector_store=None, embedding_model=None, persist_dir=None,
                  collection_name="uet_knowledge_base"):
-        self.persist_dir = Path(persist_dir or getattr(vector_store, "persist_dir", BASE_DIR / "vector_db"))
+        self.persist_dir = Path(persist_dir or getattr(vector_store, "persist_dir", BASE_DIR / "database" / "vector_db"))
         self.collection_name = collection_name
         self.embedding_model = embedding_model or UETEmbedder()
         self.vector_store = vector_store or UETVectorStore(
@@ -130,7 +130,7 @@ class UETIndexer:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/chunk_data")
-    parser.add_argument("--persist-dir", default=str(BASE_DIR / "vector_db"))
+    parser.add_argument("--persist-dir", default=str(BASE_DIR / "database" / "vector_db"))
     parser.add_argument("--collection-name", default="uet_knowledge_base")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--sample", type=int)

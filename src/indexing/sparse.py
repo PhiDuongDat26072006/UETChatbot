@@ -6,8 +6,61 @@ import tempfile
 import unicodedata
 from pathlib import Path
 
-from rank_bm25 import BM25Plus
-from underthesea import word_tokenize
+from src.utils.helpers import get_logger
+
+logger = get_logger("indexing.sparse")
+
+try:
+    from rank_bm25 import BM25Plus
+except ImportError:
+    logger.warning("Không tìm thấy thư viện 'rank_bm25'. Đang sử dụng lớp BM25Plus dự phòng (Pure-Python fallback).")
+    class BM25Plus:
+        """Pure-Python fallback for BM25Plus when rank_bm25 is not installed."""
+        def __init__(self, corpus, k1=1.5, b=0.75, delta=1.0):
+            import math
+            self.k1 = k1
+            self.b = b
+            self.delta = delta
+            self.corpus_size = len(corpus)
+            self.doc_len = [len(doc) for doc in corpus]
+            self.avgdl = sum(self.doc_len) / self.corpus_size if self.corpus_size > 0 else 0.0
+            self.doc_freqs = []
+            self.nd = {}
+            for doc in corpus:
+                frequencies = {}
+                for word in doc:
+                    frequencies[word] = frequencies.get(word, 0) + 1
+                self.doc_freqs.append(frequencies)
+                for word in frequencies:
+                    self.nd[word] = self.nd.get(word, 0) + 1
+            self.idf = {}
+            for word, freq in self.nd.items():
+                self.idf[word] = math.log((self.corpus_size - freq + 0.5) / (freq + 0.5) + 1.0)
+
+        def get_scores(self, query):
+            scores = [0.0] * self.corpus_size
+            for q in query:
+                q_idf = self.idf.get(q, 0.0)
+                for idx, doc_freq in enumerate(self.doc_freqs):
+                    freq = doc_freq.get(q, 0)
+                    if freq > 0:
+                        len_norm = 1.0 - self.b + self.b * (self.doc_len[idx] / (self.avgdl or 1.0))
+                        tf_comp = (freq * (self.k1 + 1.0)) / (freq + self.k1 * len_norm)
+                        scores[idx] += q_idf * (tf_comp + self.delta)
+            return scores
+
+try:
+    from underthesea import word_tokenize
+except ImportError:
+    logger.warning("Không tìm thấy thư viện 'underthesea'. Đang sử dụng hàm word_tokenize dự phòng (Regex fallback).")
+    def word_tokenize(text):
+        clean = text.lower().strip()
+        words = re.findall(r"[\w\-]+", clean)
+        tokens = list(words)
+        for i in range(len(words) - 1):
+            if len(words[i]) > 1 and len(words[i+1]) > 1:
+                tokens.append(f"{words[i]}_{words[i+1]}")
+        return tokens
 
 from src.base import RetrievedContext
 from src.indexing.chunks import normalize_chunks
@@ -42,6 +95,10 @@ class BM25Index:
         self.tokens = [tokenize(chunk.text) for chunk in self.chunks]
         self.model = BM25Plus(self.tokens) if any(self.tokens) else None
 
+    def count(self) -> int:
+        """Trả về tổng số chunk trong chỉ mục."""
+        return len(self.chunks)
+
     def save(self, path):
         """Atomically replace a trusted local artifact, including fitted statistics."""
         path = Path(path)
@@ -60,11 +117,16 @@ class BM25Index:
     @classmethod
     def load(cls, path):
         """Load fitted statistics directly; never load an untrusted pickle."""
-        with Path(path).open("rb") as stream:
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Không tìm thấy file BM25 index tại: {path}")
+        with path.open("rb") as stream:
             state = pickle.load(stream)
-        if state.get("version") != 1 or not isinstance(state.get("index"), cls):
-            raise ValueError("Unsupported sparse index format; rebuild required")
-        return state["index"]
+        if isinstance(state, dict) and "index" in state:
+            return state["index"]
+        if isinstance(state, cls):
+            return state
+        return state
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedContext]:
         """Return lexical matches with raw BM25 scores (not cosine similarities)."""
