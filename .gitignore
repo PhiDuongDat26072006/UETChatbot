@@ -20,6 +20,8 @@ ENV/
 .env.local
 *.env
 !.env.example
+api_keys.txt
+!.api_keys.txt.example
 
 # 4. Database (Vector DB & BM25 index - sinh tự động khi nạp)
 vector_db/
