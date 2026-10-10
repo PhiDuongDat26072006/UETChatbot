@@ -55,8 +55,7 @@ class UETLLMClient(BaseLLM):
         self._clients: dict[str, Any] = {}
 
         if self.api_keys:
-            masked = [self._mask_key(k) for k in self.api_keys]
-            logger.info(f"Đã phát hiện {len(self.api_keys)} API Key Google Gemini: {', '.join(masked)} (Hỗ trợ Auto-Failover).")
+            logger.info(f"Đã phát hiện {len(self.api_keys)} API Key Google Gemini (Hỗ trợ Auto-Failover).")
             # Khởi tạo trước client cho key đầu tiên
             self._get_client_for_key(self.api_keys[0])
         else:
@@ -190,11 +189,11 @@ class UETLLMClient(BaseLLM):
                 generate_config = {"temperature": self.temperature}
 
                 for key_idx, key in enumerate(ordered_keys):
+                    key_num = self.api_keys.index(key) + 1
                     client = self._get_client_for_key(key)
                     if not client:
                         continue
 
-                    key_exhausted = False
                     for m in models_to_try:
                         try:
                             res = client.models.generate_content(
@@ -221,22 +220,20 @@ class UETLLMClient(BaseLLM):
                                 )
                         except Exception as e:
                             err_str = str(e)
-                            errors_encountered.append(f"Key[{self._mask_key(key)}]-Model[{m}]: {err_str}")
-                            logger.warning(f"Key [{self._mask_key(key)}] - Model {m} gặp lỗi ({err_str}).")
+                            errors_encountered.append(f"Key#{key_num}-Model[{m}]: {err_str}")
+                            logger.warning(f"API Key #{key_num} - Model '{m}' gặp lỗi ({err_str}).")
 
-                            # Nếu gặp lỗi quá hạn mức (429) hoặc lỗi quyền (403), chuyển ngay sang API Key tiếp theo
-                            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "403" in err_str:
-                                if len(ordered_keys) > 1 and key_idx < len(ordered_keys) - 1:
-                                    next_k = ordered_keys[key_idx + 1]
-                                    logger.warning(
-                                        f"🔄 API Key [{self._mask_key(key)}] hết hạn mức / từ chối. "
-                                        f"Tự động chuyển sang API Key dự phòng: [{self._mask_key(next_k)}]..."
-                                    )
-                                key_exhausted = True
+                            # Nếu gặp lỗi quyền (403 - khóa không hợp lệ), bỏ qua ngay các model còn lại của key này
+                            if "403" in err_str or "PERMISSION_DENIED" in err_str:
                                 break
 
-                    if key_exhausted:
-                        continue
+                    # Nếu tất cả các model của key này đều gặp lỗi, chuyển sang API Key tiếp theo
+                    if len(ordered_keys) > 1 and key_idx < len(ordered_keys) - 1:
+                        next_key_num = self.api_keys.index(ordered_keys[key_idx + 1]) + 1
+                        logger.warning(
+                            f"🔄 API Key #{key_num} đã hết hạn mức ở tất cả model. "
+                            f"Tự động chuyển sang API Key dự phòng #{next_key_num}..."
+                        )
 
             # 2. Xử lý trường hợp tất cả mô hình và tất cả API Key đều từ chối dịch vụ hoặc chưa có API Key
             logger.info("Sử dụng chế độ thông báo lỗi / fallback trích đoạn tài liệu quy chế.")
@@ -332,7 +329,8 @@ class UETLLMClient(BaseLLM):
             models_to_try = [self.model_name] + [m for m in self.candidate_models if m != self.model_name]
             generate_config = {"temperature": self.temperature}
 
-            for key in ordered_keys:
+            for key_idx, key in enumerate(ordered_keys):
+                key_num = self.api_keys.index(key) + 1
                 client = self._get_client_for_key(key)
                 if not client:
                     continue
@@ -354,9 +352,16 @@ class UETLLMClient(BaseLLM):
                             return
                     except Exception as e:
                         err_str = str(e)
-                        logger.warning(f"Streaming thất bại với Key [{self._mask_key(key)}] - Model {m}: {err_str}")
-                        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "403" in err_str:
+                        logger.warning(f"Streaming thất bại với API Key #{key_num} - Model '{m}': {err_str}")
+                        if "403" in err_str or "PERMISSION_DENIED" in err_str:
                             break
+
+                if len(ordered_keys) > 1 and key_idx < len(ordered_keys) - 1:
+                    next_key_num = self.api_keys.index(ordered_keys[key_idx + 1]) + 1
+                    logger.warning(
+                        f"🔄 Streaming: API Key #{key_num} đã hết hạn mức ở tất cả model. "
+                        f"Tự động chuyển sang API Key dự phòng #{next_key_num}..."
+                    )
 
         # Fallback stream nếu không có client hoặc streaming thất bại
         yield self.generate(prompt).answer
