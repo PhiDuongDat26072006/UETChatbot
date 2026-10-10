@@ -121,7 +121,7 @@ class MockVectorStore(BaseVectorStore):
     """
     def __init__(self, persist_dir: Optional[Path] = None, collection_name: str = "uet_knowledge_base"):
         self._db: List[DataChunk] = []
-        self.persist_dir = persist_dir or (BASE_DIR / "vector_db")
+        self.persist_dir = persist_dir or (BASE_DIR / "database" / "vector_db" if (BASE_DIR / "database" / "vector_db").exists() else BASE_DIR / "vector_db")
         self.collection_name = collection_name
         self._chroma_col = None
 

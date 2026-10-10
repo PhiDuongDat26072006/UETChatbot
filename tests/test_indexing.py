@@ -1,7 +1,14 @@
 """Index lifecycle tests using real Chroma and deterministic local embeddings."""
 import json
 import unicodedata
+import unittest
 from unittest.mock import Mock, patch
+
+try:
+    import rank_bm25
+    import underthesea
+except ImportError:
+    raise unittest.SkipTest("Bỏ qua test_indexing do chưa cài đặt rank-bm25 hoặc underthesea")
 
 import pytest
 

@@ -65,7 +65,7 @@ flowchart TD
 1. **`raw`** (`data/raw_data/`): Dữ liệu thô ban đầu (PDF, Word, HTML, văn bản quy chế thu thập được từ cổng thông tin UET).
 2. **`processed`** (`data/processed_data/`): Dữ liệu sau khi làm sạch qua [`CleanTextTransformation`](src/ingestion/cleaner.py) (loại bỏ thẻ HTML, ký tự dị biệt, chuẩn hóa khoảng trắng và định dạng UTF-8).
 3. **`chunked`** (`data/chunked_data/`): Dữ liệu sau khi được phân tách thành từng đoạn ngắn bởi [`DocumentChunker`](src/chunking/chunker.py) (mỗi đoạn 500-600 ký tự, overlap 100 ký tự để bảo toàn ngữ cảnh).
-4. **`vectordb`** (`vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
+4. **`vectordb`** (`database/vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
 
 ### Cơ Chế Chống Trùng Lặp (Deduplication Manifest Tracker):
 - Được quản lý bởi lớp [`DataManifestTracker`](src/ingestion/manifest.py) và tệp lưu trữ `data/.ingest_manifest.json`.
@@ -160,8 +160,9 @@ UET_chatbot/
 ├── .env.example              # 📝 File mẫu hướng dẫn tạo .env
 ├── .gitignore                # 🛡️ Danh sách file bỏ qua trên Git
 │
-├── vector_db/                # 🗄️ Thư mục ChromaDB cục bộ (Chứa vector kho dữ liệu UET)
-│   └── chroma.sqlite3
+├── database/                 # 🗄️ Thư mục cơ sở dữ liệu cục bộ
+│   ├── vector_db/            # Kho lưu trữ ChromaDB (Chứa 62,703 vectors UET)
+│   └── bm25_index.pkl        # File chỉ mục từ khóa BM25 Index
 │
 ├── src/                      # 💻 MÃ NGUỒN CÁC MODULE CHÍNH
 │   ├── pipeline.py           # ⚙️ Trái tim điều phối Ingestion đa chặng & RAG Serving
@@ -220,11 +221,11 @@ cp .env.example .env
 
 ### 2. Các Lệnh Điều Phối Dữ Liệu (Multi-stage Data Ingestion)
 
-#### 📊 Xem báo cáo thống kê dữ liệu 4 chặng & Sổ cái manifest
+#### 📊 Xem báo cáo thống kê dữ liệu 5 chặng & Sổ cái manifest
 ```bash
-python main.py --ingest-status
+python main.py --ingest --status
 ```
-Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `vector_db` cùng tiến độ của sổ cái chống trùng lặp.
+Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `database/vector_db` cùng tiến độ của sổ cái chống trùng lặp.
 
 #### ⚙️ Chạy nạp dữ liệu từ chặng xuất phát đến chặng đích
 Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `chunked` $\rightarrow$ `vectordb`.
@@ -244,6 +245,11 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
   python main.py --ingest --from processed --to vectordb
   ```
 
+- **Từ các đoạn `chunked` lập chỉ mục từ khóa BM25 sang `indexed_data`** (tạo file `database/bm25_index.pkl` siêu tốc ~25s):
+  ```bash
+  python main.py --ingest --from chunked --to indexed_data
+  ```
+
 - **Chạy toàn bộ quy trình từ đầu đến cuối (`raw` $\rightarrow$ `vectordb`)**:
   ```bash
   python main.py --ingest --from raw --to vectordb
@@ -255,7 +261,7 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
 
 #### 🌟 1. Khởi chạy Giao diện Web (Khuyên Dùng)
 ```bash
-python main.py --web
+python main.py --run --web
 ```
 - Mở trình duyệt tại `http://127.0.0.1:8000`.
 - Giao diện chat hiện đại, hỗ trợ gợi ý câu hỏi, popup xem trích dẫn tài liệu quy chế UET.
@@ -263,17 +269,20 @@ python main.py --web
 
 #### 💻 2. Khởi chạy Chatbot trên Terminal (CLI Mode)
 ```bash
-python main.py --cli
+python main.py --run --cli
 ```
 - Tương tác hỏi đáp tức thì ngay trên cửa sổ dòng lệnh.
 - Các lệnh hữu ích khi chat: `stats` (thống kê vector), `clear` (xóa màn hình), `exit` (thoát).
 
-#### 📊 3. Chấm điểm chất lượng RAG (Benchmark QA Evaluation)
-```bash
-python main.py --eval
-```
-- Tính toán điểm **RAG Triad** (*Faithfulness, Answer Relevance, Context Relevance*) trên tập benchmark `test_qa_dataset.json`.
-- Xuất báo cáo kết quả chi tiết phục vụ báo cáo và slide thuyết trình.
+#### 📊 3. Chấm điểm chất lượng hệ thống (Evaluation)
+- **Đánh giá toàn trình RAG End-to-End** (tính toán bộ metrics RAG Triad: Faithfulness, Answer Relevance, Context Relevance):
+  ```bash
+  python main.py --eval --e2e
+  ```
+- **Đánh giá riêng hiệu quả phân hệ truy xuất Retrieval** (tính toán Precision@K, Recall@K, NDCG@K, MRR, MAP trên 50 queries benchmark):
+  ```bash
+  python main.py --eval --retrieval
+  ```
 
 ---
 
