@@ -45,6 +45,9 @@ data/*
 
 # 8. Explicitly track metadata and benchmark test sets
 !data/doc.md
+!data/eval_data/
+data/eval_data/**/*.jsonl
+data/eval_data/**/eval_results_*.json
 
 # 9. Tài liệu ngữ cảnh / hướng dẫn AI agent cá nhân (Module Ingestion)
 src/ingestion/contexts/

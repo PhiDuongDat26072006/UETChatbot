@@ -1,0 +1,182 @@
+[
+  {
+    "id": "eval_001",
+    "query": "Điều kiện để sinh viên K68 ngành Trí tuệ nhân tạo được đăng ký làm khóa luận tốt nghiệp bảo vệ sớm đợt 2 năm 2026 là gì?",
+    "ground_truth": "Sinh viên khóa K68 bảo vệ sớm cần có điểm trung bình chung tích lũy (GPA) ≥ 3.0 và tổng số tín chỉ tích lũy (STCTL) ≥ 90.",
+    "expected_source": "Đăng ký đề tài, cán bộ hướng dẫn KLTN bảo vệ đợt 2 năm 2026"
+  },
+  {
+    "id": "eval_002",
+    "query": "Sinh viên khóa K67 ngành Trí tuệ nhân tạo cần điều kiện gì để đăng ký làm khóa luận tốt nghiệp đợt 2 năm 2026?",
+    "ground_truth": "Đối với sinh viên K67, điều kiện là có GPA ≥ 2.5 và số tín chỉ tích lũy ≥ 95.",
+    "expected_source": "Đăng ký đề tài, cán bộ hướng dẫn KLTN bảo vệ đợt 2 năm 2026"
+  },
+  {
+    "id": "eval_003",
+    "query": "Tiến trình đào tạo tích cực ngành Trí tuệ nhân tạo giúp sinh viên rút ngắn thời gian học trong bao lâu?",
+    "ground_truth": "Tiến trình đào tạo tích cực giúp sinh viên có năng lực học tập vượt trội hoàn thành chương trình trong 3 năm đến 3.5 năm, thay vì 4 năm như tiến trình chuẩn.",
+    "expected_source": "Hướng dẫn SV K67 ngành Trí tuệ nhân tạo tham gia tiến trình đào tạo tích cực"
+  },
+  {
+    "id": "eval_004",
+    "query": "Sinh viên đạt giải Nhất kỳ thi Olympic Toán học môn Đại số được miễn thi môn nào?",
+    "ground_truth": "Sinh viên đạt giải Nhất môn Đại số kỳ thi Olympic Toán học được miễn thi môn Đại số (mã MAT1093) hoặc một môn thuộc Khối kiến thức M2/M3 với điểm công nhận là 10.",
+    "expected_source": "Đăng ký miễn thi hoặc cộng điểm cho sinh viên tham gia các cuộc thi Olympic, kỳ thi quốc tế học kỳ I năm học 2024-2025"
+  },
+  {
+    "id": "eval_005",
+    "query": "Sinh viên đạt giải Olympic Tin học hoặc ACM/ICPC được cộng điểm hoặc miễn thi những môn học nào?",
+    "ground_truth": "Sinh viên được cộng điểm một môn thuộc khối M4, hoặc miễn thi một trong hai môn: INT1009 (Tin học cơ sở), INT1008 (Nhập môn lập trình), hoặc 1 môn thuộc khối M5 (trừ môn bổ trợ).",
+    "expected_source": "Đăng ký miễn thi hoặc cộng điểm cho sinh viên tham gia các cuộc thi Olympic, kỳ thi quốc tế học kỳ I năm học 2024-2025"
+  },
+  {
+    "id": "eval_006",
+    "query": "Giải Nhất của cuộc thi IAI Hackathon 2024 nhận được bao nhiêu tiền thưởng?",
+    "ground_truth": "Đội đạt giải Nhất nhận được Giấy chứng nhận và 30.000.000 VNĐ tiền mặt (chưa bao gồm các hiện vật tài trợ).",
+    "expected_source": "Cuộc thi lập trình IAI Hackathon 2024 - Chủ đề Intelligence Decode-a-thon"
+  },
+  {
+    "id": "eval_007",
+    "query": "Quyết định ban hành chương trình đào tạo cử nhân ngành Trí tuệ nhân tạo có mã số ngành đào tạo là gì và thời gian đào tạo bao lâu?",
+    "ground_truth": "Mã số ngành đào tạo là 7480207, danh hiệu tốt nghiệp là Cử nhân, và thời gian đào tạo chuẩn là 4 năm.",
+    "expected_source": "Quyết định ban hành chương trình và giao nhiệm vụ đào tạo cử nhân ngành Trí tuệ nhân tạo (Mã số: 7480207)"
+  },
+  {
+    "id": "eval_008",
+    "query": "Mẫu đơn xin miễn học và công nhận điểm của trường UET áp dụng cho đối tượng sinh viên nào?",
+    "ground_truth": "Mẫu đơn dành cho sinh viên có thành tích nghiên cứu khoa học (NCKH) hoặc đạt giải trong các kỳ thi Olympic.",
+    "expected_source": "Đơn xin miễn học và công nhận điểm (dành cho sinh viên có thành tích NCKH, đạt giải các kỳ thi Olympic)"
+  },
+  {
+    "id": "eval_009",
+    "query": "Lớp khóa học QH-2022-I/CQ-AI1 (K67AI1) sinh hoạt lớp vào ngày 08/10/2022 ở giảng đường nào và thời gian nào?",
+    "ground_truth": "Lớp QH-2022-I/CQ-AI1 sinh hoạt tại Giảng đường 106-GĐ3 (Khu giảng đường 3, số 8 Tôn Thất Thuyết) từ 9h00 đến 11h00 ngày 08/10/2022.",
+    "expected_source": "Phụ lục 2: Phân công giảng đường sinh hoạt lớp khóa học QH-2022-I/CQ (K67)"
+  },
+  {
+    "id": "eval_010",
+    "query": "Sinh viên Trần Nam Anh (MSV 22022569) có đủ điều kiện làm khóa luận tốt nghiệp sớm đợt tháng 5/2024 không và đạt điểm TBC bao nhiêu?",
+    "ground_truth": "Sinh viên Trần Nam Anh (MSV 22022569, lớp K67A-AI2) đủ điều kiện làm KLTN sớm đợt tháng 5/2024 với điểm TBC là 3.07 và số tín chỉ tích lũy là 96.",
+    "expected_source": "Danh sách sinh viên lớp tích cực Khóa QH-2022/I-CQ-A-AI đủ điều kiện thực hiện Khóa luận tốt nghiệp sớm"
+  },
+  {
+    "id": "eval_011",
+    "query": "Quy trình xét chọn sinh viên K67 vào tiến trình đào tạo tích cực ngành AI diễn ra như thế nào?",
+    "ground_truth": "Sinh viên đăng ký trước ngày 07/10/2022, sau đó được giảng viên giao một vấn đề AI tự tìm hiểu trong 2 tuần (từ ngày 10-11/10/2022), tiếp theo tham gia phỏng vấn tư vấn và đánh giá vào ngày 24, 25/10/2022 trước khi công bố kết quả.",
+    "expected_source": "Hướng dẫn SV K67 ngành Trí tuệ nhân tạo tham gia tiến trình đào tạo tích cực"
+  },
+  {
+    "id": "eval_012",
+    "query": "Mỗi đội thi tham gia IAI Hackathon 2024 được phép có tối đa bao nhiêu thành viên?",
+    "ground_truth": "Mỗi đội thi tham gia IAI Hackathon 2024 có tối đa 04 thành viên.",
+    "expected_source": "Cuộc thi lập trình IAI Hackathon 2024 - Chủ đề Intelligence Decode-a-thon"
+  },
+  {
+    "id": "eval_013",
+    "query": "Sinh viên có thể tra cứu thông tin nợ học phí hoặc giải đáp thắc mắc về học phí tại phòng ban nào của trường UET?",
+    "ground_truth": "Sinh viên có thể liên hệ trực tiếp Phòng Kế hoạch Tài chính tại Phòng 104-E3.",
+    "expected_source": "Thông báo danh sách sinh viên còn nợ học phí các kỳ trước tính đến ngày 04/11/2022"
+  },
+  {
+    "id": "eval_014",
+    "query": "Điểm chuẩn trúng tuyển ngành Y khoa của Đại học Y Hà Nội năm 2025 là bao nhiêu?",
+    "ground_truth": "Tài liệu của Trường Đại học Công nghệ (UET) không có thông tin về điểm chuẩn của trường Đại học Y Hà Nội.",
+    "expected_source": "Out of domain"
+  },
+  {
+    "id": "eval_015",
+    "query": "Ký túc xá Mễ Trì của Đại học Khoa học Xã hội và Nhân văn có bao nhiêu phòng?",
+    "ground_truth": "Dữ liệu văn bản của UET không chứa thông tin về số lượng phòng của Ký túc xá Mễ Trì thuộc trường ĐHKHXH&NV.",
+    "expected_source": "Out of domain"
+  },
+  {
+    "id": "eval_016",
+    "query": "Khoa Công nghệ Thông tin (FIT - UET) có những bộ môn trực thuộc nào?",
+    "ground_truth": "Khoa Công nghệ Thông tin gồm có 5 bộ môn trực thuộc: Bộ môn Các Hệ thống Thông tin, Bộ môn Công nghệ Phần mềm, Bộ môn Khoa học Máy tính, Bộ môn Khoa học và Kỹ thuật tính toán, và Bộ môn Mạng và Truyền thông Máy tính.",
+    "expected_source": "Các bộ môn và phòng thí nghiệm - Khoa Công nghệ Thông tin"
+  },
+  {
+    "id": "eval_017",
+    "query": "Chương trình đào tạo Cử nhân Khoa học Máy tính Chất lượng cao đáp ứng Thông tư 23 của Bộ GD&ĐT tại Khoa CNTT bắt đầu tuyển sinh từ năm nào?",
+    "ground_truth": "Khoa Công nghệ Thông tin bắt đầu tuyển sinh Chương trình Cử nhân Khoa học Máy tính Chất lượng cao đáp ứng Thông tư 23 của Bộ GD&ĐT từ năm 2016.",
+    "expected_source": "Đào tạo Đại học - Khoa Công nghệ Thông tin"
+  },
+  {
+    "id": "eval_018",
+    "query": "Chương trình đào tạo ngành Kỹ thuật Robot của Khoa Điện tử Viễn thông có thời gian đào tạo chuẩn là bao lâu và cấp bằng gì khi tốt nghiệp?",
+    "ground_truth": "Chương trình đào tạo ngành Kỹ thuật Robot có thời gian đào tạo chuẩn là 4,5 năm, trình độ đào tạo là Kĩ sư và văn bằng tốt nghiệp được cấp là Kỹ sư ngành Kỹ thuật Robot (The Degree of Engineer in Robotics Engineering).",
+    "expected_source": "Giới thiệu về Chương trình đào tạo ngành Kỹ thuật robot - Khoa Điện tử Viễn thông"
+  },
+  {
+    "id": "eval_019",
+    "query": "Bộ môn Vi cơ điện tử và Vi hệ thống (MEMS) thuộc Khoa Điện tử Viễn thông được thành lập từ năm nào và có định hướng nghiên cứu nổi bật trong lĩnh vực nào?",
+    "ground_truth": "Bộ môn Vi cơ điện tử và Vi hệ thống (MEMS) thuộc Khoa Điện tử Viễn thông được thành lập từ năm 2005, và được biết đến là một trong những nhóm nghiên cứu tích cực nhất trong lĩnh vực BioMEMS tại Việt Nam.",
+    "expected_source": "Bộ môn Vi cơ điện tử và Vi hệ thống - Khoa Điện tử Viễn thông"
+  },
+  {
+    "id": "eval_020",
+    "query": "Sứ mạng của Khoa Công nghệ Nông nghiệp (FAT) - Trường Đại học Công nghệ là gì?",
+    "ground_truth": "Sứ mạng của Khoa Công nghệ Nông nghiệp là đào tạo nguồn nhân lực công nghệ chất lượng cao, trình độ cao; nghiên cứu phát triển và ứng dụng khoa học công nghệ tiên tiến trong lĩnh vực nông nghiệp, góp phần phát triển nền nông nghiệp theo hướng hiện đại, sản xuất hàng hóa lớn với năng suất, chất lượng, hiệu quả và sức cạnh tranh cao.",
+    "expected_source": "Chiến lược khoa - Khoa Công nghệ Nông nghiệp"
+  },
+  {
+    "id": "eval_021",
+    "query": "Mã ngành tuyển sinh và các vị trí việc làm tiêu biểu mà ngành Công nghệ Sinh học tại Khoa Công nghệ Nông nghiệp UET hướng tới là gì?",
+    "ground_truth": "Mã ngành tuyển sinh Công nghệ Sinh học tại UET là CN21 (định hướng Sinh học kết hợp AI). Các vị trí việc làm tiêu biểu gồm: Chuyên gia Tin sinh học / Phân tích dữ liệu sinh học (Bioinformatics & Data Analyst) và Kỹ sư Công nghệ Sinh học - Y sinh học công nghệ cao.",
+    "expected_source": "Tuyển sinh ngành Công nghệ Sinh học (CN21) - Khoa Công nghệ Nông nghiệp"
+  },
+  {
+    "id": "eval_022",
+    "query": "Khoa Công nghệ Xây dựng - Giao thông (FCE) thuộc Trường Đại học Công nghệ được thành lập theo quyết định nào và vào ngày nào?",
+    "ground_truth": "Khoa Công nghệ Xây dựng - Giao thông trực thuộc Trường Đại học Công nghệ được thành lập theo Quyết định số 1204/QĐ-TCCB do Hiệu trưởng Trường ĐH Công nghệ ký vào ngày 02/12/2022 (đúng ngày khai mạc Hội nghị Cơ học Toàn quốc lần thứ XI).",
+    "expected_source": "ĐHQGHN thành lập Khoa Công nghệ Xây dựng - Giao thông"
+  },
+  {
+    "id": "eval_023",
+    "query": "Bộ môn Cơ điện tử và Tự động hóa thuộc Khoa Cơ học kỹ thuật và Tự động hóa (FEMA) tập trung nghiên cứu và đào tạo vào những lĩnh vực nào?",
+    "ground_truth": "Bộ môn Cơ điện tử và Tự động hóa (FEMA) tập trung vào đào tạo, nghiên cứu và ứng dụng các công nghệ tiên tiến trong lĩnh vực cơ khí, điện tử, công nghệ thông tin và hệ thống điều khiển; bao gồm thiết kế hệ thống cơ điện tử, lập trình điều khiển, phát triển giải pháp tự động hóa cho công nghiệp 4.0 và ứng dụng trí tuệ nhân tạo trong hệ thống điều khiển.",
+    "expected_source": "Bộ môn Cơ điện tử và Tự động hóa - Khoa Cơ học kỹ thuật và Tự động hóa"
+  },
+  {
+    "id": "eval_024",
+    "query": "Khoa Vật lý kỹ thuật và Công nghệ Nano (FEPN) đào tạo bậc Thạc sĩ với chuyên ngành nào và số điện thoại hotline liên hệ là gì?",
+    "ground_truth": "Khoa Vật lý kỹ thuật và Công nghệ Nano đào tạo bậc Thạc sĩ chuyên ngành Vật liệu và Linh kiện nano. Số điện thoại hotline liên hệ của Khoa là 024 3754 9429 (email: vlkt-cnnn@vnu.edu.vn).",
+    "expected_source": "Giới thiệu Khoa Vật lý kỹ thuật và Công nghệ Nano"
+  },
+  {
+    "id": "eval_025",
+    "query": "Theo quy định chương trình đào tạo của Trường Đại học Công nghệ, các học phần Giáo dục thể chất và Giáo dục quốc phòng - an ninh có được tính vào điểm trung bình chung tích lũy không?",
+    "ground_truth": "Các học phần Giáo dục thể chất, Giáo dục quốc phòng - an ninh và Kỹ năng bổ trợ không được tính vào tổng số tín chỉ của chương trình đào tạo, không tính vào điểm trung bình chung học kỳ, điểm trung bình chung các học phần và điểm trung bình chung tích lũy (nhưng là điều kiện bắt buộc để được công nhận tốt nghiệp).",
+    "expected_source": "Quy chế đào tạo và Khung chương trình đào tạo đại học UET"
+  },
+  {
+    "id": "eval_026",
+    "query": "Tổng số tín chỉ của chương trình đào tạo chuẩn trình độ cử nhân ngành An toàn thông tin tại Trường Đại học Công nghệ là bao nhiêu tín chỉ?",
+    "ground_truth": "Tổng số tín chỉ của chương trình đào tạo chuẩn trình độ cử nhân ngành An toàn thông tin tại Trường Đại học Công nghệ là 135 tín chỉ (không bao gồm các học phần Giáo dục thể chất, Giáo dục quốc phòng - an ninh và Kỹ năng bổ trợ).",
+    "expected_source": "Chương trình đào tạo ngành An toàn thông tin"
+  },
+  {
+    "id": "eval_027",
+    "query": "Quyết định nào của Giám đốc Đại học Quốc gia Hà Nội quy định về Tổ chức và Hoạt động của các đơn vị thành viên làm căn cứ pháp lý cấp học bổng khuyến khích học tập tại UET?",
+    "ground_truth": "Căn cứ theo Quyết định số 3568/QĐ-ĐHQGHN ngày 08 tháng 10 năm 2014 của Giám đốc Đại học Quốc gia Hà Nội ban hành Quy định về Tổ chức và Hoạt động của các đơn vị thành viên và đơn vị trực thuộc ĐHQGHN.",
+    "expected_source": "Quyết định cấp học bổng khuyến khích học tập - Trường Đại học Công nghệ"
+  },
+  {
+    "id": "eval_028",
+    "query": "Điều kiện về kết quả học tập và rèn luyện trong toàn khóa học để sinh viên tốt nghiệp được xét cấp học bổng khuyến khích học tập kỳ cuối là gì?",
+    "ground_truth": "Để được xét cấp học bổng khuyến khích học tập kỳ cuối khi tốt nghiệp, sinh viên phải thỏa mãn điều kiện kết quả học tập và rèn luyện trong toàn khóa học đạt loại Khá trở lên.",
+    "expected_source": "Cấp học bổng khuyến khích học tập kỳ cuối cho sinh viên tốt nghiệp"
+  },
+  {
+    "id": "eval_029",
+    "query": "Học phí một năm của chương trình Tiên tiến tại Trường Đại học Ngoại thương (FTU) là bao nhiêu tiền?",
+    "ground_truth": "Tài liệu của Trường Đại học Công nghệ (UET) không có thông tin về học phí của Trường Đại học Ngoại thương (FTU).",
+    "expected_source": "Out of domain"
+  },
+  {
+    "id": "eval_030",
+    "query": "Trường Đại học Bách khoa Hà Nội hiện nay có bao nhiêu trường trực thuộc và viện đào tạo thành viên?",
+    "ground_truth": "Cơ sở dữ liệu của Trường Đại học Công nghệ (UET) không chứa thông tin về cơ cấu tổ chức và các đơn vị trực thuộc của Đại học Bách khoa Hà Nội.",
+    "expected_source": "Out of domain"
+  }
+]

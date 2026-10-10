@@ -1,0 +1,1208 @@
+[
+  {
+    "query_id": "ret_001",
+    "query_text": "Chương trình đào tạo cử nhân ngành Công nghệ thông tin tại trường Đại học Công nghệ gồm bao nhiêu tín chỉ?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FIT",
+    "notes": "Hỏi về CTĐT cử nhân CNTT (Khoa FIT)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "4857ad8abb33d836",
+      "5ec68099dd51672e",
+      "3f24464445f38fc8",
+      "6833716ea3df8967",
+      "957bfc903f7d2062",
+      "41b7b6d844b916d0"
+    ],
+    "relevant_doc_ids": [
+      "1971f7ffe81d1eca",
+      "978fc5f38d7b9322",
+      "528557cac0aacb65",
+      "9bb5352837468197",
+      "87f615bb20b4b05e"
+    ]
+  },
+  {
+    "query_id": "ret_002",
+    "query_text": "Điều kiện xét tốt nghiệp đại học tại trường Đại học Công nghệ là gì?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy chế xét tốt nghiệp áp dụng toàn trường",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "34702b80fc0fe55b",
+      "d566fff88515dc79",
+      "bd78da4943c0285c",
+      "a7614208710a7cb4",
+      "81d9d2d7b180a1cc",
+      "f917a2ccfeab7eeb"
+    ],
+    "relevant_doc_ids": [
+      "3fa62b342e407bfe",
+      "5794ac28f1d701c6",
+      "90a898817b952c7d",
+      "bb8a47ca843a5800",
+      "277de924b93b9048"
+    ]
+  },
+  {
+    "query_id": "ret_003",
+    "query_text": "Sinh viên có thể đăng ký bao nhiêu tín chỉ tối đa trong một học kỳ?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy định số tín chỉ tối đa mỗi học kỳ (toàn trường)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "2fafcb4ba3f8ca11",
+      "41b7b6d844b916d0",
+      "49fa0dc383a76850",
+      "537e2324ada82acd",
+      "753358ac5b065ab6",
+      "320f94de6a1899a3"
+    ],
+    "relevant_doc_ids": [
+      "eeca765d055311e2",
+      "b9fecedeea4f2a42",
+      "4840310ea96eb69b",
+      "35c12e4ce5140480",
+      "b2e2530d59f713ae"
+    ]
+  },
+  {
+    "query_id": "ret_004",
+    "query_text": "Quy định về việc cảnh báo học tập và buộc thôi học đối với sinh viên trường Đại học Công nghệ như thế nào?",
+    "difficulty": "medium",
+    "query_type": "procedure",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy chế cảnh báo học vụ và buộc thôi học",
+    "num_highly_relevant": 2,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [
+      "9dfdcb2221d171f2",
+      "9ff4c25544ec3265"
+    ],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_005",
+    "query_text": "Khóa luận tốt nghiệp tại Đại học Công nghệ được đánh giá theo thang điểm nào?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy định đánh giá và chấm khóa luận tốt nghiệp",
+    "num_highly_relevant": 1,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "ea96af38895e82b0"
+    ],
+    "relevant_doc_ids": [
+      "ada8bff026aece31",
+      "61141e25bbba2154",
+      "ee3acc760081be36",
+      "e607170f12abddf8",
+      "e4ec0fbd144ae3fc"
+    ]
+  },
+  {
+    "query_id": "ret_006",
+    "query_text": "Chương trình đào tạo chất lượng cao ngành Khoa học máy tính khác gì so với hệ chuẩn?",
+    "difficulty": "hard",
+    "query_type": "comparison",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FIT",
+    "notes": "So sánh CTĐT CLC và Chuẩn ngành Khoa học máy tính",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "1971f7ffe81d1eca",
+      "7c65ac957128d199",
+      "4fef9582a6ecdd6f",
+      "20ea55d815b627dd",
+      "51a6a1f3493da473",
+      "0ac594761c911b53"
+    ],
+    "relevant_doc_ids": [
+      "89fbb8eefa86792b",
+      "487c9728a3c682d9",
+      "64b814c2616b37eb",
+      "e3faf143767c1f4c",
+      "c5e416d4e0b5a444"
+    ]
+  },
+  {
+    "query_id": "ret_007",
+    "query_text": "Sinh viên muốn chuyển ngành từ Điện tử viễn thông sang Công nghệ thông tin cần điều kiện gì?",
+    "difficulty": "hard",
+    "query_type": "procedure",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy định chuyển ngành học trong trường UET",
+    "num_highly_relevant": 2,
+    "num_relevant": 3,
+    "highly_relevant_doc_ids": [
+      "d08d30093b8399b6",
+      "aad7acd0e8bac285"
+    ],
+    "relevant_doc_ids": [
+      "a9b87918757f4d46",
+      "1d447ddd18020b66",
+      "bb8a47ca843a5800"
+    ]
+  },
+  {
+    "query_id": "ret_008",
+    "query_text": "Danh sách các môn học bắt buộc trong năm nhất ngành Trí tuệ nhân tạo tại UET là gì?",
+    "difficulty": "medium",
+    "query_type": "list",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "IAI",
+    "notes": "Khung chương trình ngành Trí tuệ nhân tạo (Viện IAI)",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "45441f5dd9ad0991",
+      "6200541e81070873",
+      "6530c83f1ae3d584",
+      "41c113c3e0d5a962",
+      "ad552b1bf3208cc4",
+      "5794ac28f1d701c6",
+      "90a898817b952c7d",
+      "c59b3022b0d49b26"
+    ],
+    "relevant_doc_ids": [
+      "da4505ef15612351",
+      "cf51aa7ded04a884",
+      "867cfcfff816116b",
+      "ff7aae7c0c5362b4",
+      "afd7268e7999d542",
+      "5f913da3778b4ccd"
+    ]
+  },
+  {
+    "query_id": "ret_009",
+    "query_text": "Các phương thức tuyển sinh đại học năm 2026 tại trường Đại học Công nghệ gồm những gì?",
+    "difficulty": "easy",
+    "query_type": "list",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "UET",
+    "notes": "Đề án tuyển sinh đại học chính quy toàn trường",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "0f34c5b52d195f85",
+      "14297a1d08048092",
+      "2c734d48a4bdfeb2",
+      "baaa280ac472329d",
+      "4c11edfafaca403e",
+      "579fa0832af251c0",
+      "392f2356405e08b8",
+      "dd68770125b6a8eb"
+    ],
+    "relevant_doc_ids": [
+      "028b2ddf6d6da7b4",
+      "179cce7b1ee4f2f9",
+      "a8a4ae40faacd2cb",
+      "537e2324ada82acd",
+      "753358ac5b065ab6",
+      "320f94de6a1899a3"
+    ]
+  },
+  {
+    "query_id": "ret_010",
+    "query_text": "Điểm chuẩn ngành Khoa học máy tính của trường Đại học Công nghệ năm gần nhất là bao nhiêu?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "FIT",
+    "notes": "Điểm chuẩn trúng tuyển ngành KHMT",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "a8a4ae40faacd2cb",
+      "14297a1d08048092",
+      "162922587e18004e",
+      "2c734d48a4bdfeb2",
+      "baaa280ac472329d",
+      "392f2356405e08b8"
+    ],
+    "relevant_doc_ids": [
+      "1971f7ffe81d1eca",
+      "528557cac0aacb65",
+      "427b4344fd963a8c",
+      "b4ca3004292ca078",
+      "95eb9ba5af195666"
+    ]
+  },
+  {
+    "query_id": "ret_011",
+    "query_text": "Trường Đại học Công nghệ tuyển sinh những ngành nào và chỉ tiêu bao nhiêu?",
+    "difficulty": "medium",
+    "query_type": "list",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "UET",
+    "notes": "Danh mục ngành và chỉ tiêu tuyển sinh toàn trường",
+    "num_highly_relevant": 11,
+    "num_relevant": 10,
+    "highly_relevant_doc_ids": [
+      "5caf9d24c63b16f5",
+      "17818d4247389423",
+      "28130b7b7bbae059",
+      "b5b9a37f022cf25e",
+      "14297a1d08048092",
+      "8e74d2ea5ae1ebdf",
+      "2250ca8842820556",
+      "c12bac77a1847ec9",
+      "e0e4a3f2f585546b",
+      "0029969437e13645",
+      "ae644e8dd4f0b14c"
+    ],
+    "relevant_doc_ids": [
+      "2c734d48a4bdfeb2",
+      "baaa280ac472329d",
+      "028b2ddf6d6da7b4",
+      "579fa0832af251c0",
+      "392f2356405e08b8",
+      "179cce7b1ee4f2f9",
+      "2c71673875d64609",
+      "a8a4ae40faacd2cb",
+      "0f34c5b52d195f85",
+      "537e2324ada82acd"
+    ]
+  },
+  {
+    "query_id": "ret_012",
+    "query_text": "Ngành Công nghệ hàng không vũ trụ tại UET học những gì và cơ hội việc làm ra sao?",
+    "difficulty": "medium",
+    "query_type": "multi_hop",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "SAE",
+    "notes": "Giới thiệu ngành Hàng không vũ trụ (Viện SAE)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "ad0ac26b41bf1883",
+      "68ef1dfade1a8396",
+      "01eab3b8ad8ef8c9",
+      "91dbc64ac5951dd6",
+      "c78e4fbed8848adb",
+      "e0b76d198294917e"
+    ],
+    "relevant_doc_ids": [
+      "d3deb80eb1e03366",
+      "04201a553f01708f",
+      "f4ae1ec24792838b",
+      "c454c274bb91974d",
+      "22481b67eb230586"
+    ]
+  },
+  {
+    "query_id": "ret_013",
+    "query_text": "Thông tin tuyển sinh sau đại học (thạc sĩ, tiến sĩ) năm 2026 tại trường Đại học Công nghệ?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "UET",
+    "notes": "Tuyển sinh SĐH toàn trường",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "17818d4247389423",
+      "b5b9a37f022cf25e",
+      "537e2324ada82acd",
+      "753358ac5b065ab6",
+      "320f94de6a1899a3",
+      "04a60cafe1f82003"
+    ],
+    "relevant_doc_ids": [
+      "98d8134cb0fbbdcc",
+      "baaa280ac472329d",
+      "392f2356405e08b8",
+      "876487bb0dfebd24",
+      "3cc64f0cbab020d4"
+    ]
+  },
+  {
+    "query_id": "ret_014",
+    "query_text": "Mẫu đơn xin nghỉ học có thời hạn tại trường Đại học Công nghệ ở đâu?",
+    "difficulty": "easy",
+    "query_type": "procedure",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Biểu mẫu và thủ tục xin nghỉ học tạm thời",
+    "num_highly_relevant": 1,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [
+      "05893fe37a493344"
+    ],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_015",
+    "query_text": "Quy định về xét cấp học bổng khuyến khích học tập tại trường Đại học Công nghệ như thế nào?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Quy chế học bổng KKHT toàn trường",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "d2d967f664254dc7",
+      "ad2af6cc9501163e",
+      "282b32fd3695fe2e",
+      "6aa99c8cd9b697f3",
+      "d47dbc5d5a4afb9b",
+      "530e63eec9379de4"
+    ],
+    "relevant_doc_ids": [
+      "d566fff88515dc79",
+      "a336e8210253dc75",
+      "dd12d35d96fa1d40",
+      "a7614208710a7cb4",
+      "8350b19d9c81c498"
+    ]
+  },
+  {
+    "query_id": "ret_016",
+    "query_text": "Sinh viên cần làm gì để xin hoãn thi và thủ tục nộp đơn như thế nào?",
+    "difficulty": "easy",
+    "query_type": "procedure",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Thủ tục xin hoãn thi kết thúc học phần",
+    "num_highly_relevant": 1,
+    "num_relevant": 1,
+    "highly_relevant_doc_ids": [
+      "1bcd8e48fb3c1d71"
+    ],
+    "relevant_doc_ids": [
+      "30485a8596398acf"
+    ]
+  },
+  {
+    "query_id": "ret_017",
+    "query_text": "Quy trình xin vay vốn ngân hàng chính sách xã hội cho sinh viên UET cần giấy tờ gì?",
+    "difficulty": "medium",
+    "query_type": "procedure",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Thủ tục xác nhận vay vốn sinh viên",
+    "num_highly_relevant": 2,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [
+      "fc18a85ba6e63630",
+      "3c181696b7bdc7c3"
+    ],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_018",
+    "query_text": "Trường Đại học Công nghệ có những chương trình trao đổi sinh viên quốc tế nào?",
+    "difficulty": "medium",
+    "query_type": "list",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "UET",
+    "notes": "Chương trình trao đổi quốc tế toàn trường",
+    "num_highly_relevant": 12,
+    "num_relevant": 9,
+    "highly_relevant_doc_ids": [
+      "2d49e1c54fcc6956",
+      "85d841b22511ee4b",
+      "478e3f13e13a3529",
+      "49fa0dc383a76850",
+      "897eb8ed3916b98f",
+      "6dbf8c9c2a8423ce",
+      "11afd73e2d4e8b61",
+      "44d5c6f8d1a90b53",
+      "8e8d0d549084591f",
+      "6fd700a2a9688ba5",
+      "9f4642751773663f",
+      "feb2ef2ec4d73a9d"
+    ],
+    "relevant_doc_ids": [
+      "8138932f97d65f55",
+      "9c9d0e4c038834dc",
+      "7cf04b3f9bbb29d3",
+      "4840310ea96eb69b",
+      "a28e72955d5eb8f9",
+      "dd12d35d96fa1d40",
+      "6116a181e6ea4331",
+      "c12bac77a1847ec9",
+      "14297a1d08048092"
+    ]
+  },
+  {
+    "query_id": "ret_019",
+    "query_text": "Các nhóm nghiên cứu mạnh về trí tuệ nhân tạo và học máy tại khoa CNTT UET gồm những nhóm nào?",
+    "difficulty": "medium",
+    "query_type": "list",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "FIT",
+    "notes": "Nhóm nghiên cứu khoa FIT",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "5ee719f6ef96f7cf",
+      "c29ab611fca18de7",
+      "fc061b466aa986db",
+      "eb6c782cd1c68e9f",
+      "59a3934866c673ad",
+      "b32d1985fa995597",
+      "d23568e8768d9465",
+      "bf92a95a046bc00f"
+    ],
+    "relevant_doc_ids": [
+      "eb9bc8ee546ce0ef",
+      "4b0432bb57120970",
+      "35227bac5554651a",
+      "dfd1fb55da68f5a5",
+      "1c6a47473fc1e312",
+      "d2b7e420396e7b48"
+    ]
+  },
+  {
+    "query_id": "ret_020",
+    "query_text": "Sinh viên NCKH cấp khoa cần chuẩn bị báo cáo theo mẫu nào và quy trình nộp ra sao?",
+    "difficulty": "medium",
+    "query_type": "procedure",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "UET",
+    "notes": "Quy chế nghiên cứu khoa học sinh viên",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "e63f2607157ba240",
+      "07f4bc45798a4106",
+      "03107ecbca508eb0",
+      "738eda17d952cd98",
+      "fb8daaf4297960ff",
+      "6e26bb9e805ca5e6"
+    ],
+    "relevant_doc_ids": [
+      "fb8dcc2e35ea32cf",
+      "8c62016d98079fe4",
+      "f888dd4534343e98",
+      "537e2324ada82acd",
+      "753358ac5b065ab6"
+    ]
+  },
+  {
+    "query_id": "ret_021",
+    "query_text": "Thông tin về các giảng viên bộ môn Công nghệ phần mềm tại khoa CNTT UET?",
+    "difficulty": "easy",
+    "query_type": "list",
+    "expected_category": "CAN_BO_GIANG_VIEN",
+    "expected_unit": "FIT",
+    "notes": "Cán bộ bộ môn CNPM khoa FIT",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "677fea5ab28b9aa0",
+      "4a07ee1b732c1b6e",
+      "df0aee7d8e156a49",
+      "eb6c782cd1c68e9f",
+      "b32d1985fa995597",
+      "d23568e8768d9465",
+      "0b71571368ac418c",
+      "ebb8de9cc998209b"
+    ],
+    "relevant_doc_ids": [
+      "59a3934866c673ad",
+      "8b232d383b8bfd63",
+      "0acf785b69a327e0",
+      "42f0672912b408f5",
+      "53d9f41ee3bde2bf",
+      "381e075cc4f47601"
+    ]
+  },
+  {
+    "query_id": "ret_022",
+    "query_text": "Ban giám hiệu trường Đại học Công nghệ gồm những ai và phụ trách lĩnh vực gì?",
+    "difficulty": "easy",
+    "query_type": "list",
+    "expected_category": "CAN_BO_GIANG_VIEN",
+    "expected_unit": "UET",
+    "notes": "Lãnh đạo Ban giám hiệu UET",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "035caa0b298008fc",
+      "2b89231d21f4590a",
+      "da92fd2329d12446",
+      "a54b019f1a09383b",
+      "c0c1026c5b6a70c4",
+      "eec30b4e384ad808",
+      "b4671d396c50acc7",
+      "237da51517ecbe02"
+    ],
+    "relevant_doc_ids": [
+      "c66cac7351e89218",
+      "d83bd74769fb3a2c",
+      "eeca765d055311e2",
+      "b9fecedeea4f2a42",
+      "56b77bdfb36203bd",
+      "4a8680d1545ab7e2"
+    ]
+  },
+  {
+    "query_id": "ret_023",
+    "query_text": "Khoa Công nghệ thông tin UET có những bộ môn nào và chức năng của từng bộ môn?",
+    "difficulty": "easy",
+    "query_type": "list",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FIT",
+    "notes": "Cơ cấu các bộ môn Khoa FIT",
+    "num_highly_relevant": 8,
+    "num_relevant": 6,
+    "highly_relevant_doc_ids": [
+      "8f59d71a99c01352",
+      "eb6c782cd1c68e9f",
+      "f6643e2a9bf800c9",
+      "4b0432bb57120970",
+      "35227bac5554651a",
+      "dfd1fb55da68f5a5",
+      "1c6a47473fc1e312",
+      "d2b7e420396e7b48"
+    ],
+    "relevant_doc_ids": [
+      "9feab5be07a73de1",
+      "254ffe57d86059a0",
+      "5a66ba6e677ec294",
+      "df0aee7d8e156a49",
+      "db198e354740c6a9",
+      "2d599b57e38318f9"
+    ]
+  },
+  {
+    "query_id": "ret_024",
+    "query_text": "Ngành Kỹ thuật điện tử viễn thông tại UET đào tạo những kiến thức và kỹ năng gì?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FET",
+    "notes": "Giới thiệu ngành Kỹ thuật ĐTVT (Khoa FET)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "ed79cc773bdb19b1",
+      "0e0598662f57387a",
+      "44d267f5a305c4ec",
+      "5c241fcca8f305b3",
+      "477b3fb77abc792d",
+      "dbb4b24830994af9"
+    ],
+    "relevant_doc_ids": [
+      "188e6bd69440bb42",
+      "8a83dce3ad8043c0",
+      "8cd104cf718d68f1",
+      "aba140cd2c4db424",
+      "2c07cb9638bfad0d"
+    ]
+  },
+  {
+    "query_id": "ret_025",
+    "query_text": "Ngành Công nghệ nông nghiệp tại trường Đại học Công nghệ có gì đặc biệt so với các trường khác?",
+    "difficulty": "medium",
+    "query_type": "multi_hop",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FAT",
+    "notes": "Khoa Công nghệ Nông nghiệp (FAT)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "f91ea7bccba488d4",
+      "6367c746eee45aae",
+      "4c70cc57b141d2dd",
+      "f8865aa525ac5508",
+      "1061257482e1e392",
+      "b23d6c3d82a3bbe1"
+    ],
+    "relevant_doc_ids": [
+      "e95d699e0b3c5172",
+      "0437a882a75285f1",
+      "a13d87f88e95ddf6",
+      "008766c50cb0d701",
+      "7f1364df570f102f"
+    ]
+  },
+  {
+    "query_id": "ret_026",
+    "query_text": "Chương trình đào tạo ngành Công nghệ xây dựng - Giao thông tại UET gồm những khối kiến thức nào?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FCE",
+    "notes": "Khoa Kỹ thuật xây dựng (FCE)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "7880ae478ccbefce",
+      "8058d220ed63e228",
+      "b50a544917c0b3e1",
+      "cc8a629be8d8f26a",
+      "bcae16c48ba7163a",
+      "83603d85a2011815"
+    ],
+    "relevant_doc_ids": [
+      "4b66211c99c6d618",
+      "636118f01e8b2fed",
+      "0958c689600857f9",
+      "9bc33ed48e2aa640",
+      "7c1d95fc11e0db1f"
+    ]
+  },
+  {
+    "query_id": "ret_027",
+    "query_text": "Sinh viên ngành Cơ kỹ thuật UET cần hoàn thành những yêu cầu gì để được nhận bằng kỹ sư?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FEMA",
+    "notes": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "505edfe5ab524cc5",
+      "7389be729fb6e4f0",
+      "17e67ad198500b15",
+      "a10ac4452b370f41",
+      "c59339ec3daae3ea",
+      "bbf484fc72d88a14"
+    ],
+    "relevant_doc_ids": [
+      "99b1a3f26bb8980a",
+      "10d4b880664fb817",
+      "f3c0c93d47fa8c62",
+      "a76cb14f7f096c03",
+      "e74d6e49e5939d75"
+    ]
+  },
+  {
+    "query_id": "ret_028",
+    "query_text": "Phòng thử nghiệm pin EV tại trường Đại học Công nghệ được xây dựng hợp tác với đơn vị nào?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "FEPN",
+    "notes": "Khoa Vật lý kỹ thuật & Công nghệ Nano (FEPN)",
+    "num_highly_relevant": 2,
+    "num_relevant": 3,
+    "highly_relevant_doc_ids": [
+      "37a2cfe9cc44715d",
+      "739faa0b17c5f235"
+    ],
+    "relevant_doc_ids": [
+      "15cdf1932af55d9d",
+      "1dfd69b96d2d17ab",
+      "a1fb6584aedb9be7"
+    ]
+  },
+  {
+    "query_id": "ret_029",
+    "query_text": "Sinh viên ngành Công nghệ hàng không vũ trụ đã tự chế tạo sản phẩm gì nổi bật?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "SAE",
+    "notes": "Sản phẩm thực tế Viện SAE",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "01eab3b8ad8ef8c9",
+      "601201ec889308e6",
+      "fcffe349b047dbef",
+      "91dbc64ac5951dd6",
+      "61fe4deb138e964f",
+      "2bfa87e85648bcb7"
+    ],
+    "relevant_doc_ids": [
+      "a7ba0ead14afbf3d",
+      "6200b9fc809bb6ae",
+      "a4bd0a410352061a",
+      "2e5292251cb73acd",
+      "4c428e7d64c12719"
+    ]
+  },
+  {
+    "query_id": "ret_030",
+    "query_text": "Viện Trí tuệ nhân tạo (IAI) tại UET có những hoạt động nghiên cứu nào trọng tâm?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "IAI",
+    "notes": "Hoạt động Viện IAI",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "6909c1c0435a0f1a",
+      "45441f5dd9ad0991",
+      "6530c83f1ae3d584",
+      "f5379c666ac6ce37",
+      "eb57aede82fce35c",
+      "74b67e58a0a43aff"
+    ],
+    "relevant_doc_ids": [
+      "a403e4fe77626e75",
+      "39810b0d8ee0e669",
+      "46b08c2531cafa41",
+      "09dccb6629a4672d",
+      "658bbb547deb32bf"
+    ]
+  },
+  {
+    "query_id": "ret_031",
+    "query_text": "So sánh điểm tuyển sinh và chương trình đào tạo giữa ngành Khoa học máy tính và Trí tuệ nhân tạo tại UET?",
+    "difficulty": "hard",
+    "query_type": "comparison",
+    "expected_category": "DAO_TAO",
+    "expected_unit": null,
+    "notes": "So sánh liên đơn vị giữa FIT (KHMT) và IAI (AI)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "7c65ac957128d199",
+      "0ac594761c911b53",
+      "df10391c13158b98",
+      "0100f7ee26251cbe",
+      "9f3840683676c189",
+      "e821c9247ddac731"
+    ],
+    "relevant_doc_ids": [
+      "89fbb8eefa86792b",
+      "487c9728a3c682d9",
+      "c5e416d4e0b5a444",
+      "95eb9ba5af195666",
+      "332d7861f5f899e7"
+    ]
+  },
+  {
+    "query_id": "ret_032",
+    "query_text": "Sinh viên UET muốn đi trao đổi tại Nhật Bản cần chuẩn bị gì và có những chương trình nào?",
+    "difficulty": "hard",
+    "query_type": "multi_hop",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "UET",
+    "notes": "Hợp tác trao đổi với các trường đại học Nhật Bản",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "631c0911d1045262",
+      "897eb8ed3916b98f",
+      "2d49e1c54fcc6956",
+      "6dbf8c9c2a8423ce",
+      "11afd73e2d4e8b61",
+      "8e8d0d549084591f"
+    ],
+    "relevant_doc_ids": [
+      "9c524d8c6c456d1e",
+      "8138932f97d65f55",
+      "f702c25b76ef62ad",
+      "41fb9dbcebbe31ac",
+      "74400a43cf7ea488"
+    ]
+  },
+  {
+    "query_id": "ret_033",
+    "query_text": "Tổng hợp tất cả học bổng mà sinh viên trường Đại học Công nghệ có thể nộp trong năm học?",
+    "difficulty": "hard",
+    "query_type": "aggregation",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Tổng hợp học bổng khuyến khích và học bổng doanh nghiệp",
+    "num_highly_relevant": 12,
+    "num_relevant": 10,
+    "highly_relevant_doc_ids": [
+      "9c524d8c6c456d1e",
+      "9192865361fe9243",
+      "41fb9dbcebbe31ac",
+      "45f0d22516f5cab9",
+      "29887052c74a844b",
+      "0020a2f0c43bb917",
+      "2577236e2654aa56",
+      "ee87a71f1ab7a579",
+      "451f9270d4d07b33",
+      "b3e40e9b0767c232",
+      "2983abd47999f6d5",
+      "c3bf74316cf00912"
+    ],
+    "relevant_doc_ids": [
+      "56b77bdfb36203bd",
+      "0c4cf580782aae09",
+      "5794ac28f1d701c6",
+      "90a898817b952c7d",
+      "bb8a47ca843a5800",
+      "85d9c91e66ab5365",
+      "a28e72955d5eb8f9",
+      "433ab789b567e586",
+      "0ed29699a27298a6",
+      "9dfdcb2221d171f2"
+    ]
+  },
+  {
+    "query_id": "ret_034",
+    "query_text": "Quy trình đăng ký khóa luận tốt nghiệp từ A đến Z cho sinh viên năm cuối UET?",
+    "difficulty": "hard",
+    "query_type": "procedure",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy trình tổng thể làm KLTN",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "1c66fc8c28bcb496",
+      "ada8bff026aece31",
+      "61141e25bbba2154",
+      "ee3acc760081be36",
+      "e4ec0fbd144ae3fc",
+      "289dd38874f9b25e"
+    ],
+    "relevant_doc_ids": [
+      "15bdfb6a72b9e9ce",
+      "d56e8ecb446e9880",
+      "b2e2530d59f713ae",
+      "1ef7b7f701e43597",
+      "8ea8a433ef558689"
+    ]
+  },
+  {
+    "query_id": "ret_035",
+    "query_text": "What are the admission requirements for the Computer Science program at UET?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "TUYEN_SINH",
+    "expected_unit": "FIT",
+    "notes": "Câu hỏi tiếng Anh về tuyển sinh KHMT",
+    "num_highly_relevant": 5,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "14297a1d08048092",
+      "0ac594761c911b53",
+      "9f3840683676c189",
+      "84647699cca21bdf",
+      "35ffaad0247a046c"
+    ],
+    "relevant_doc_ids": [
+      "3747e01e7db22055",
+      "f42a591ad3e1c9f2",
+      "32e95e5a0bdb8ac7",
+      "1971f7ffe81d1eca",
+      "51a6a1f3493da473"
+    ]
+  },
+  {
+    "query_id": "ret_036",
+    "query_text": "Chương trình international exchange và scholarship cho sinh viên UET?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "NGHIEN_CUU_HOP_TAC",
+    "expected_unit": "UET",
+    "notes": "Câu hỏi pha trộn tiếng Anh về trao đổi quốc tế",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "8138932f97d65f55",
+      "f702c25b76ef62ad",
+      "897eb8ed3916b98f",
+      "6dbf8c9c2a8423ce",
+      "11afd73e2d4e8b61",
+      "85d841b22511ee4b"
+    ],
+    "relevant_doc_ids": [
+      "ee87a71f1ab7a579",
+      "2d49e1c54fcc6956",
+      "6fd700a2a9688ba5",
+      "b3e40e9b0767c232",
+      "9d1c91afc46b7aaa"
+    ]
+  },
+  {
+    "query_id": "ret_037",
+    "query_text": "Em muốn hỏi là mình bị nợ học phí thì có bị đuổi học không ạ?",
+    "difficulty": "medium",
+    "query_type": "informal",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Câu hỏi văn phong sinh viên về nợ học phí",
+    "num_highly_relevant": 2,
+    "num_relevant": 3,
+    "highly_relevant_doc_ids": [
+      "fa5a8de0b3bce38e",
+      "0484f8843a53eef6"
+    ],
+    "relevant_doc_ids": [
+      "b348c95923f5a66f",
+      "ceb7eaaf5e0ac290",
+      "d5cf40d14aed04a2"
+    ]
+  },
+  {
+    "query_id": "ret_038",
+    "query_text": "Cho em hỏi muốn xin giấy xác nhận sinh viên thì làm thế nào ạ?",
+    "difficulty": "easy",
+    "query_type": "informal",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Văn phong sinh viên xin giấy xác nhận",
+    "num_highly_relevant": 2,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [
+      "c66cac7351e89218",
+      "05893fe37a493344"
+    ],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_039",
+    "query_text": "Điểm GPA bao nhiêu thì được nhận học bổng ạ?",
+    "difficulty": "easy",
+    "query_type": "informal",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Điều kiện GPA nhận học bổng",
+    "num_highly_relevant": 1,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "451f9270d4d07b33"
+    ],
+    "relevant_doc_ids": [
+      "5d8a21b7cf7687d2",
+      "897eb8ed3916b98f",
+      "5d7fe2ddb633732f",
+      "8350b19d9c81c498",
+      "14297a1d08048092"
+    ]
+  },
+  {
+    "query_id": "ret_040",
+    "query_text": "Thầy cô khoa ĐTVT ai hướng dẫn về IoT và embedded system vậy ạ?",
+    "difficulty": "medium",
+    "query_type": "informal",
+    "expected_category": "CAN_BO_GIANG_VIEN",
+    "expected_unit": "FET",
+    "notes": "Tìm giảng viên hướng dẫn IoT khoa ĐTVT",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "86575a0e36b00884",
+      "0e0598662f57387a",
+      "e6ec7bac93f1a9a2",
+      "30d22c738f8d7014",
+      "7af1c0e74b35280a",
+      "f8cf0600a45a9ef9"
+    ],
+    "relevant_doc_ids": [
+      "fd5abdd0e435b2d3",
+      "51915e3c5861e145",
+      "732e22495e974316",
+      "0b6351a82ceaa61c",
+      "c1410b06dee37edd"
+    ]
+  },
+  {
+    "query_id": "ret_041",
+    "query_text": "Điểm chuẩn ngành Y khoa Đại học Y Hà Nội năm 2026 là bao nhiêu?",
+    "difficulty": "easy",
+    "query_type": "out_of_domain",
+    "expected_category": null,
+    "expected_unit": null,
+    "notes": "Câu hỏi ngoài miền (Đại học Y Hà Nội)",
+    "num_highly_relevant": 0,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_042",
+    "query_text": "Cách nấu phở bò truyền thống Hà Nội ngon nhất?",
+    "difficulty": "easy",
+    "query_type": "out_of_domain",
+    "expected_category": null,
+    "expected_unit": null,
+    "notes": "Câu hỏi ngoài miền (Ẩm thực)",
+    "num_highly_relevant": 0,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_043",
+    "query_text": "Ký túc xá Đại học Bách khoa Hà Nội giá bao nhiêu một tháng?",
+    "difficulty": "easy",
+    "query_type": "out_of_domain",
+    "expected_category": null,
+    "expected_unit": null,
+    "notes": "Câu hỏi ngoài miền (Đại học Bách Khoa)",
+    "num_highly_relevant": 0,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_044",
+    "query_text": "Học phí ngành Công nghệ thông tin chương trình chất lượng cao là bao nhiêu một tín chỉ?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FIT",
+    "notes": "Học phí CLC ngành CNTT",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "1971f7ffe81d1eca",
+      "5ec68099dd51672e",
+      "41b7b6d844b916d0",
+      "14297a1d08048092",
+      "537e2324ada82acd",
+      "753358ac5b065ab6"
+    ],
+    "relevant_doc_ids": [
+      "4857ad8abb33d836",
+      "20ea55d815b627dd",
+      "d9cf1ce5b914af42",
+      "66d3a29a1565bbda",
+      "ffe801f145179292"
+    ]
+  },
+  {
+    "query_id": "ret_045",
+    "query_text": "Lịch thi và lịch học kỳ 2 năm học 2025-2026 tại trường Đại học Công nghệ xem ở đâu?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Kế hoạch đào tạo và lịch thi toàn trường",
+    "num_highly_relevant": 2,
+    "num_relevant": 0,
+    "highly_relevant_doc_ids": [
+      "3351a38cefb42ad3",
+      "1f80cadf6e60fa3c"
+    ],
+    "relevant_doc_ids": []
+  },
+  {
+    "query_id": "ret_046",
+    "query_text": "Trường Đại học Công nghệ có phòng lab nào cho sinh viên thực hành robotics và tự động hóa?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "FEMA",
+    "notes": "Phòng thực hành robotics và tự động hóa",
+    "num_highly_relevant": 1,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "463c2ffefda31d32"
+    ],
+    "relevant_doc_ids": [
+      "877ff1c63ec6698f",
+      "39836b842e22eef0",
+      "d31fb8d366cd73df",
+      "9e47c5f9ca98f9bb",
+      "5bfcdfa10d7e3b4f"
+    ]
+  },
+  {
+    "query_id": "ret_047",
+    "query_text": "Câu lạc bộ và các hoạt động ngoại khóa dành cho sinh viên UET gồm những gì?",
+    "difficulty": "easy",
+    "query_type": "list",
+    "expected_category": "TIN_TUC_SU_KIEN",
+    "expected_unit": "UET",
+    "notes": "CLB Đoàn hội sinh viên toàn trường",
+    "num_highly_relevant": 2,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "f45efd63aa6c41d9",
+      "aad7acd0e8bac285"
+    ],
+    "relevant_doc_ids": [
+      "433ab789b567e586",
+      "dd5414363d94ff75",
+      "a54b019f1a09383b",
+      "9dfdcb2221d171f2",
+      "8fbb3de72a1c47ef"
+    ]
+  },
+  {
+    "query_id": "ret_048",
+    "query_text": "Kết quả thi Olympic Tin học sinh viên toàn quốc của UET năm gần nhất?",
+    "difficulty": "medium",
+    "query_type": "factoid",
+    "expected_category": "TIN_TUC_SU_KIEN",
+    "expected_unit": "FIT",
+    "notes": "Thành tích Olympic Tin học (Khoa FIT / UET)",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "224856b0e3d26683",
+      "4cfba9952c315840",
+      "8ec899a74b45eaee",
+      "d83bd74769fb3a2c",
+      "560622a157213458",
+      "803763ceba64f214"
+    ],
+    "relevant_doc_ids": [
+      "db0eb38afe8f4852",
+      "1839fb2a1957a13a",
+      "29a4b942a4038244",
+      "f9484ce176f68610",
+      "f4f13fdcf13b1b3d"
+    ]
+  },
+  {
+    "query_id": "ret_049",
+    "query_text": "Chuẩn đầu ra tiếng Anh cho sinh viên tốt nghiệp trường Đại học Công nghệ yêu cầu chứng chỉ gì?",
+    "difficulty": "easy",
+    "query_type": "factoid",
+    "expected_category": "DAO_TAO",
+    "expected_unit": "UET",
+    "notes": "Quy định chuẩn đầu ra ngoại ngữ toàn trường",
+    "num_highly_relevant": 2,
+    "num_relevant": 3,
+    "highly_relevant_doc_ids": [
+      "41b7b6d844b916d0",
+      "5794ac28f1d701c6"
+    ],
+    "relevant_doc_ids": [
+      "da2cf4f2a87b6c4d",
+      "15bdfb6a72b9e9ce",
+      "4840310ea96eb69b"
+    ]
+  },
+  {
+    "query_id": "ret_050",
+    "query_text": "Miễn giảm học phí cho sinh viên diện chính sách tại trường Đại học Công nghệ cần thủ tục gì?",
+    "difficulty": "easy",
+    "query_type": "procedure",
+    "expected_category": "QUY_CHE_BIEU_MAU",
+    "expected_unit": "UET",
+    "notes": "Thủ tục miễn giảm học phí toàn trường",
+    "num_highly_relevant": 6,
+    "num_relevant": 5,
+    "highly_relevant_doc_ids": [
+      "e7a075672ff0f13b",
+      "83a8ce86f4a89f31",
+      "5f85c08147009876",
+      "1be3a6a44fb68c41",
+      "91561d5bc6eac814",
+      "b7290d8b31b69b63"
+    ],
+    "relevant_doc_ids": [
+      "3c181696b7bdc7c3",
+      "45f0d22516f5cab9",
+      "7f5e3775e3d7bf30",
+      "c744c4da2410f17c",
+      "c66cac7351e89218"
+    ]
+  }
+]
