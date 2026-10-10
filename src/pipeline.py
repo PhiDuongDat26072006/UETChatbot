@@ -47,6 +47,7 @@ from src.vectordb import UETVectorStore
 from src.retrieval import UETRetriever
 from src.prompts import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
 from src.llm import UETLLMClient
+from src.indexing import UETIndexer, load_chunks_from_dir
 
 logger = get_logger("pipeline")
 
@@ -242,7 +243,6 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self, batch_size: int = 500
     ) -> Dict[str, int]:
         """Index both stores; mark the manifest only after successful synchronization."""
-        from src.indexing import UETIndexer, load_chunks_from_dir
 
         chunks = load_chunks_from_dir(BASE_DIR / "data" / "chunked_data")
         result = UETIndexer(vector_store=self.vector_store,
