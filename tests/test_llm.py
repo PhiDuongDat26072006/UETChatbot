@@ -126,26 +126,27 @@ class TestUETLLMClient(unittest.TestCase):
         # Hệ thống phải cập nhật key đang hoạt động sang mock_key_2
         self.assertEqual(client.api_key, "mock_key_2")
 
-    def test_default_api_keys_attribute(self):
-        """Kiểm tra danh sách tĩnh DEFAULT_API_KEYS trong class UETLLMClient."""
-        self.assertTrue(hasattr(UETLLMClient, "DEFAULT_API_KEYS"))
-        self.assertIsInstance(UETLLMClient.DEFAULT_API_KEYS, list)
-
     def test_custom_keys_list_initialization(self):
         """Kiểm tra khởi tạo client với tham số api_keys dạng danh sách."""
         client = UETLLMClient(api_keys=["key_custom_A", "key_custom_B"])
         self.assertIn("key_custom_A", client.api_keys)
         self.assertIn("key_custom_B", client.api_keys)
 
-    def test_load_api_keys_from_file_mock(self):
-        """Kiểm tra đọc danh sách key từ file api_keys.txt."""
-        from unittest.mock import patch, mock_open
-        fake_content = "# Comment\nkey_file_1\n\nkey_file_2\n# Another comment\n"
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=fake_content)):
-                keys = UETLLMClient._load_api_keys()
-                self.assertIn("key_file_1", keys)
-                self.assertIn("key_file_2", keys)
+    def test_load_api_keys_multiline_env(self):
+        """Kiểm tra nạp danh sách key trong .env theo dạng nhiều dòng hoặc chấm phẩy."""
+        import os
+        from unittest.mock import patch
+
+        env_mock = {
+            "GEMINI_API_KEYS": "key_line_1\nkey_line_2;key_line_3",
+            "GEMINI_API_KEY_3": "key_line_4",
+        }
+        with patch.dict(os.environ, env_mock, clear=True):
+            keys = UETLLMClient._load_api_keys()
+            self.assertIn("key_line_1", keys)
+            self.assertIn("key_line_2", keys)
+            self.assertIn("key_line_3", keys)
+            self.assertIn("key_line_4", keys)
 
 
 if __name__ == "__main__":
