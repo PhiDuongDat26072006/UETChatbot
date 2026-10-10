@@ -82,3 +82,42 @@ class UETEvaluator(BaseEvaluator):
         with open(dataset_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         return [EvaluationSample(**item) for item in data]
+
+
+def run_eval_e2e_cli(dataset_path: Optional[Path] = None):
+    """Chạy đánh giá toàn trình End-to-End RAG trên tập Benchmark QA và hiển thị trên CLI."""
+    print("\n" + "=" * 65)
+    print("📊 ĐANG CHẠY ĐÁNH GIÁ TOÀN TRÌNH RAG (END-TO-END EVALUATION)")
+    print("=" * 65)
+    from src.pipeline import get_rag_pipeline
+
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    if dataset_path is None:
+        dataset_path = base_dir / "data" / "eval_data" / "test_qa_dataset.json"
+
+    dataset = UETEvaluator.load_dataset(dataset_path)
+
+    if not dataset:
+        print(f"❌ Không tìm thấy tập dữ liệu đánh giá tại: {dataset_path}")
+        return
+
+    # Lấy RAG Pipeline chính thức từ src/pipeline.py
+    rag_pipeline = get_rag_pipeline()
+    evaluator = UETEvaluator()
+    report = evaluator.evaluate_pipeline(rag_pipeline, dataset)
+
+    print("\n" + "=" * 65)
+    print("📈 BÁO CÁO KẾT QUẢ ĐÁNH GIÁ TOÀN TRÌNH (RAG E2E REPORT)")
+    print("=" * 65)
+    print(f"Tổng số mẫu kiểm thử: {report.total_samples}")
+    print("\nĐiểm số trung bình (Thang điểm 0.0 - 1.0):")
+    for metric, score in report.average_metrics.items():
+        print(f"  • {metric.replace('_', ' ').capitalize():<22}: {score:.3f}")
+
+    print("\nChi tiết từng mẫu câu hỏi:")
+    for idx, res in enumerate(report.results, 1):
+        print(f"  [{idx}] Câu hỏi: {res.query}")
+        print(f"      Trả lời: {res.generated_answer}")
+        print(f"      Điểm số: {res.metrics}")
+    print("=" * 65 + "\n")
+

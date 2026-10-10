@@ -252,6 +252,47 @@ class RetrievalEvaluator:
         return self.evaluate_batch(retrieval_results, k_values=k_values)
 
 
+def run_eval_retrieval_cli(top_k: int = 5, eval_dir: Optional[str | Path] = None):
+    """Chạy đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG) và hiển thị trên CLI."""
+    print("\n" + "=" * 65)
+    print("🔬 ĐANG CHẠY ĐÁNH GIÁ PHÂN HỆ TRUY XUẤT (RETRIEVAL EVALUATION)")
+    print("=" * 65)
+    from src.pipeline import get_retriever
+
+    if eval_dir is None:
+        eval_dir = PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"
+    else:
+        eval_dir = Path(eval_dir)
+
+    if not (eval_dir / "retrieval_eval_queries.json").exists():
+        print(f"❌ Không tìm thấy dữ liệu đánh giá tại: {eval_dir}")
+        return
+
+    evaluator = RetrievalEvaluator(eval_data_dir=eval_dir)
+    retriever = get_retriever()
+    eval_result = evaluator.evaluate_retriever(retriever, top_k=top_k)
+
+    print("\n" + "=" * 65)
+    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL (TOP-K = {top_k})")
+    print("=" * 65)
+    agg = eval_result.get("aggregated_metrics", {})
+    summary = eval_result.get("summary", {})
+    print(f"Tổng số queries đánh giá: {summary.get('in_domain_queries', 0)} in-domain queries\n")
+    print(f"{'Metric':<20} {'K=1':<10} {'K=3':<10} {'K=5':<10} {'K=10':<10}")
+    print("-" * 65)
+    for m in ["precision", "recall", "ndcg", "hit_rate"]:
+        row = f"{m.replace('_', ' ').capitalize():<20}"
+        for k in [1, 3, 5, 10]:
+            val = agg.get(f"mean_{m}@{k}", 0.0)
+            row += f"{val:<10.4f}"
+        print(row)
+
+    print("-" * 65)
+    print(f"  • MRR (Mean Reciprocal Rank) : {agg.get('mean_mrr', 0.0):.4f}")
+    print(f"  • MAP (Mean Average Precision): {agg.get('mean_map', 0.0):.4f}")
+    print("=" * 65 + "\n")
+
+
 # ============================================================================
 # CLI RUNNER
 # ============================================================================
