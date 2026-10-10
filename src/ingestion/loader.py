@@ -13,8 +13,8 @@ from typing import Any, Dict, Iterator, List, Optional
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.base import BaseDataCrawler, DataSource, RawData
-from src.ingestion.config.paths import BASE_DIR, PROCESSED_DATA_DIR
+from src.base import BaseDataCrawler, DataSource, ProcessedData, RawData
+from src.ingestion.config.paths import BASE_DIR, DATA_SOURCE_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,8 @@ METADATA_FIELDS: tuple[str, ...] = (
     "cloud_links",
     "source_type",
     "content_length",
+    "source_id",
+    "raw_data_id",
 )
 
 
@@ -53,11 +55,13 @@ def to_raw_data(
 ) -> RawData:
     """Chuyển bản ghi JSONL thành đối tượng RawData theo giao ước base.py."""
     url = record.get("source_url_or_path") or ""
-    metadata: Dict[str, Any] = {k: record.get(k) for k in METADATA_FIELDS}
+    metadata: Dict[str, Any] = {k: record.get(k) for k in METADATA_FIELDS if record.get(k) is not None}
     metadata["url"] = url
     metadata["cloud_links"] = metadata.get("cloud_links") or []
     metadata["processed_file"] = jsonl_file.name
-    metadata["source_id"] = source.source_id
+    metadata["source_id"] = record.get("source_id") or source.source_id
+    if record.get("raw_data_id"):
+        metadata["raw_data_id"] = record["raw_data_id"]
 
     kwargs: Dict[str, Any] = dict(
         content=content,
@@ -126,8 +130,107 @@ class UETDataLoader(BaseDataCrawler):
         """Nạp toàn bộ dữ liệu trong thư mục processed_data mặc định."""
         return self.crawl(DataSource(source_type="directory", uri=str(self.data_dir)))
 
+    def load_sources(
+        self,
+        data_source_dir: Optional[Path | str] = None,
+        domain: Optional[str] = None,
+    ) -> List[DataSource]:
+        """Nạp danh sách DataSource từ data/data_source/<domain>.jsonl."""
+        base_path = Path(data_source_dir or DATA_SOURCE_DIR)
+        if not base_path.is_absolute():
+            base_path = BASE_DIR / base_path
+
+        files = sorted(base_path.glob("*.jsonl"))
+        if not files:
+            files = sorted(base_path.glob("*/sources.jsonl"))
+
+        results: List[DataSource] = []
+        for file_path in files:
+            source_domain = file_path.stem if file_path.name != "sources.jsonl" else file_path.parent.name
+            if domain and domain.lower() not in source_domain.lower():
+                continue
+            for record in iter_jsonl(file_path):
+                if not record:
+                    continue
+                results.append(
+                    DataSource(
+                        source_id=record.get("source_id", ""),
+                        source_type=record.get("source_type", "web"),
+                        uri=record.get("uri", ""),
+                        metadata=record.get("metadata", {}),
+                    )
+                )
+        return results
+
+    def load_raw_manifests(
+        self,
+        raw_dir: Optional[Path | str] = None,
+        domain: Optional[str] = None,
+    ) -> List[RawData]:
+        """Nạp danh sách RawData manifests từ data/raw_data/<domain>/raw_records.jsonl."""
+        base_path = Path(raw_dir or RAW_DATA_DIR)
+        if not base_path.is_absolute():
+            base_path = BASE_DIR / base_path
+
+        files = sorted(base_path.glob("*/raw_records.jsonl"))
+        results: List[RawData] = []
+        for file_path in files:
+            folder_domain = file_path.parent.name
+            if domain and domain.lower() not in folder_domain.lower():
+                continue
+            for record in iter_jsonl(file_path):
+                if not record:
+                    continue
+                raw_meta = dict(record.get("raw_metadata") or {})
+                if record.get("source_id"):
+                    raw_meta["source_id"] = record["source_id"]
+                if record.get("raw_file_path"):
+                    raw_meta["raw_file_path"] = record["raw_file_path"]
+
+                results.append(
+                    RawData(
+                        id=record.get("id", ""),
+                        source_uri=record.get("source_uri", ""),
+                        content=record.get("content") or "",
+                        title=record.get("title"),
+                        raw_metadata=raw_meta,
+                    )
+                )
+        return results
+
+    def load_processed(
+        self,
+        processed_dir: Optional[Path | str] = None,
+        domain: Optional[str] = None,
+    ) -> List[ProcessedData]:
+        """Nạp danh sách ProcessedData từ data/processed_data/*.jsonl."""
+        base_path = Path(processed_dir or self.data_dir)
+        if not base_path.is_absolute():
+            base_path = BASE_DIR / base_path
+
+        files = sorted(base_path.glob("*.jsonl"))
+        results: List[ProcessedData] = []
+        for file_path in files:
+            if domain and domain.lower() not in file_path.name.lower():
+                continue
+            for record in iter_jsonl(file_path):
+                if not record:
+                    continue
+                meta = {k: v for k, v in record.items() if k not in ("id", "title", "content", "raw_data_id")}
+                results.append(
+                    ProcessedData(
+                        id=record.get("id", ""),
+                        raw_data_id=record.get("raw_data_id"),
+                        title=record.get("title", ""),
+                        content=record.get("content", ""),
+                        metadata=meta,
+                    )
+                )
+        return results
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     loader = UETDataLoader()
     loader.load_all()
+

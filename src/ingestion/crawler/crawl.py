@@ -1,6 +1,7 @@
 """Crawl faculty sources, persist discovered URLs, and download attachments."""
 from __future__ import annotations
 
+import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,9 +9,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..config.faculties import FACULTY_TARGETS, FacultyTarget, faculty_storage_name, find_faculty
-from ..config.paths import DATA_DIR
+from ..config.paths import DATA_DIR, DATA_SOURCE_DIR
 from ..config.session import create_http_session
 from ..filters import is_valid_html_endpoint, normalize_endpoint_url
+from ..models import generate_source_id
 from .downloader import download_files_parallel
 from .scraper import scrape_single_page
 from .wp_api import fetch_wp_media_documents, fetch_wp_posts_and_pages
@@ -83,6 +85,41 @@ def crawl_target(
         logger.info("[SAVING] %s", source_dir)
         (endpoints_dir / "endpoints.txt").write_text("".join(url + "\n" for url in sorted(endpoints)), encoding="utf-8")
         (files_dir / "files_list.txt").write_text("".join(url + "\n" for url in sorted(files)), encoding="utf-8")
+        try:
+            source_dest_dir = Path(DATA_SOURCE_DIR)
+            source_dest_dir.mkdir(parents=True, exist_ok=True)
+            source_file = source_dest_dir / f"{folder}.jsonl"
+            existing_sources: dict[str, dict] = {}
+            if source_file.exists():
+                for line in source_file.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        try:
+                            s_data = json.loads(line)
+                            existing_sources[s_data["uri"]] = s_data
+                        except Exception:
+                            pass
+            for u in sorted(endpoints):
+                if u not in existing_sources:
+                    existing_sources[u] = {
+                        "source_id": generate_source_id("web", u),
+                        "source_type": "web",
+                        "uri": u,
+                        "metadata": {"domain": domain, "unit": target_info.get("faculty_id", folder)},
+                    }
+            for f_url in sorted(files):
+                if f_url not in existing_sources:
+                    existing_sources[f_url] = {
+                        "source_id": generate_source_id("file", f_url),
+                        "source_type": "file",
+                        "uri": f_url,
+                        "metadata": {"domain": domain, "unit": target_info.get("faculty_id", folder)},
+                    }
+            temp_sf = source_file.with_suffix(".tmp")
+            temp_sf.write_text("".join(json.dumps(s, ensure_ascii=False) + "\n" for s in existing_sources.values()), encoding="utf-8")
+            temp_sf.replace(source_file)
+        except Exception as error:
+            logger.warning("Không thể lưu sources.jsonl cho %s: %s", folder, error)
+
         if download_files and files:
             downloaded = download_files_parallel(session, sorted(files), str(files_dir))
             failures += len(files) - downloaded

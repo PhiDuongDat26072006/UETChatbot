@@ -12,13 +12,14 @@ from urllib.parse import unquote, urlparse
 
 from ..classifier import Category, classify_endpoint
 from ..config.faculties import FACULTY_TARGETS, faculty_storage_name, find_faculty, resolve_unit
-from ..config.paths import DATA_DIR, PROCESSED_DATA_DIR
-from ..config.session import create_http_session
-from ..filters import is_valid_html_endpoint
+from ..config.paths import DATA_DIR, PROCESSED_DATA_DIR, resolve_project_path, to_project_relative_path
+from ..config.session import create_http_session, get_source_response
+from ..filters import is_document_file, is_valid_html_endpoint
 from .doc_extractor import extract_document_text
 from .html_cleaner import COURSE_CODE_PATTERN, EMAIL_PATTERN
 from .html_extractor import extract_html_content, fetch_html_text
 from .summary import generate_document_summary
+from ..models import generate_raw_id, generate_source_id, safe_payload_filename
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ def extract_files_for_domain(
     seen_hashes: dict[str, str],
     force: bool,
     faculty_id: str | None = None,
+    raw_recs_by_path: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[Path], int]:
     """Add attachment records; return discovered files and unextractable-file count."""
     doc_files: list[Path] = []
@@ -114,9 +116,11 @@ def extract_files_for_domain(
         exts = (".pdf", ".docx", ".xlsx", ".doc", ".txt", ".csv")
         doc_files = [p for p in files_dir.rglob("*") if p.is_file() and p.name != "files_list.txt" and p.suffix.lower() in exts]
 
+    raw_map = raw_recs_by_path or {}
     failed_files = 0
     for file_path in doc_files:
-        if not force and str(file_path) in records:
+        rel_path = to_project_relative_path(file_path)
+        if not force and (rel_path in records or str(file_path) in records):
             continue
         extracted = extract_document_text(file_path)
         if not extracted:
@@ -126,12 +130,20 @@ def extract_files_for_domain(
         content_hash = hashlib.md5(extracted["text"].strip().encode("utf-8")).hexdigest()
         if content_hash in seen_hashes and is_duplicate_stub(extracted["text"]):
             continue
-        seen_hashes[content_hash] = str(file_path)
+        seen_hashes[content_hash] = rel_path
         category = classify_endpoint(str(file_path), unquote(file_path.stem))
-        records[str(file_path)] = {
-            "id": generate_doc_id(str(file_path)),
+        
+        # Đồng bộ source_id và raw_data_id từ RawData manifest nếu đã tồn tại
+        raw_rec = raw_map.get(rel_path) or raw_map.get(str(file_path)) or raw_map.get(file_path.name)
+        source_id = raw_rec.get("source_id") if raw_rec else generate_source_id("file", rel_path)
+        raw_id = raw_rec.get("id") if raw_rec else generate_raw_id(source_id, content_hash)
+
+        records[rel_path] = {
+            "id": generate_doc_id(rel_path),
+            "source_id": source_id,
+            "raw_data_id": raw_id,
             "source_type": "file",
-            "source_url_or_path": str(file_path),
+            "source_url_or_path": rel_path,
             "title": extracted["filename"],
             "domain": domain,
             "unit": faculty_id or resolve_unit(domain),
@@ -174,8 +186,52 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
         with open(ep_file, "r", encoding="utf-8") as f:
             ep_info = [{"url": line.strip(), "domain": domain, "category": Category.KHAC.value, "title": ""} for line in f if line.strip()]
 
+    # Lọc bỏ attachment files (pdf, docx, doc, xlsx...) khỏi danh sách HTML endpoints
+    ep_info = [item for item in ep_info if not is_document_file(item["url"])]
+
+    raw_manifest_file = domain_dir / "raw_records.jsonl"
+    raw_recs_by_uri: dict[str, dict[str, Any]] = {}
+    raw_recs_by_canon: dict[str, dict[str, Any]] = {}
+    raw_recs_by_path: dict[str, dict[str, Any]] = {}
+    if raw_manifest_file.exists():
+        with open(raw_manifest_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    r = json.loads(line)
+                    uri = r.get("source_uri")
+                    rpath = r.get("raw_file_path")
+                    if uri:
+                        raw_recs_by_uri[uri] = r
+                        canon_u = canonicalize_url(uri)
+                        if canon_u not in raw_recs_by_canon:
+                            raw_recs_by_canon[canon_u] = r
+                    if rpath:
+                        raw_recs_by_path[rpath] = r
+                except Exception:
+                    pass
+
     if target and target["allowed_path_prefixes"]:
-        ep_info = [item for item in ep_info if is_valid_html_endpoint(item["url"], domain, allowed_path_prefixes=target["allowed_path_prefixes"])]
+        ep_info = [
+            item for item in ep_info
+            if item["url"] in raw_recs_by_uri
+            or canonicalize_url(item["url"]) in raw_recs_by_canon
+            or is_valid_html_endpoint(item["url"], domain, allowed_path_prefixes=target["allowed_path_prefixes"])
+        ]
+
+    # Đảm bảo các URL web HTML đã bảo tồn trong raw_records đều có trong ep_info
+    seen_ep_urls = {canonicalize_url(item["url"]) for item in ep_info}
+    for uri, r in raw_recs_by_uri.items():
+        if (
+            uri.startswith("http")
+            and r.get("raw_metadata", {}).get("status") == "preserved"
+            and r.get("raw_metadata", {}).get("content_type") == "text/html"
+            and not is_document_file(uri)
+            and canonicalize_url(uri) not in seen_ep_urls
+        ):
+            seen_ep_urls.add(canonicalize_url(uri))
+            ep_info.append({"url": uri, "domain": domain, "category": Category.KHAC.value, "title": r.get("title") or ""})
 
     raw_existing = {} if force else load_existing_processed_docs(output_file)
     seen_hashes: dict[str, str] = {}
@@ -183,8 +239,10 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
 
     if not force:
         for src, rec in raw_existing.items():
-            if target and target["allowed_path_prefixes"] and rec.get("source_type") == "html" and not is_valid_html_endpoint(src, domain, allowed_path_prefixes=target["allowed_path_prefixes"]):
-                continue
+            if target and target["allowed_path_prefixes"] and rec.get("source_type") == "html":
+                if src not in raw_recs_by_uri and canonicalize_url(src) not in raw_recs_by_canon:
+                    if not is_valid_html_endpoint(src, domain, allowed_path_prefixes=target["allowed_path_prefixes"]):
+                        continue
             content = rec.get("content", "")
             content_hash = hashlib.md5(content.strip().encode("utf-8")).hexdigest()
             if content_hash in seen_hashes and is_duplicate_stub(content):
@@ -207,17 +265,69 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
         urls_to_process.append(item)
 
     def extract_endpoint(item: dict[str, Any]) -> dict[str, Any] | None:
-        """Fetch and extract one endpoint, attaching this source's stable identity."""
+        """Fetch and extract one endpoint, preferring preserved local raw HTML bytes before network fetch."""
         source_url = item["url"]
-        html_text = fetch_html_text(source_url, session=session, target=target)
+        canon_source_url = canonicalize_url(source_url)
+        raw_rec = raw_recs_by_uri.get(source_url) or raw_recs_by_canon.get(canon_source_url)
+        source_id = raw_rec.get("source_id") if raw_rec else generate_source_id("web", source_url)
+        raw_id = raw_rec.get("id") if raw_rec else generate_raw_id(source_id, None)
+
+        prefixes = target["allowed_path_prefixes"] if target else ()
+        domain_name = target["domain"] if target else domain
+
+        html_dir = domain_dir / "html"
+        raw_html_path = html_dir / f"{raw_id}.html"
+        if raw_rec and raw_rec.get("raw_file_path"):
+            try:
+                candidate = resolve_project_path(raw_rec["raw_file_path"])
+                if candidate.exists():
+                    raw_html_path = candidate
+            except Exception:
+                pass
+
+        html_text = None
+
+        # 1. Ưu tiên đọc trực tiếp từ RawData HTML payload đã bảo tồn trên đĩa
+        if raw_html_path.exists():
+            html_bytes = raw_html_path.read_bytes()
+            try:
+                html_text = html_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                html_text = html_bytes.decode("utf-8", errors="replace")
+        elif raw_rec and raw_rec.get("raw_metadata", {}).get("status") == "failed":
+            # Bản ghi crawl đã ghi nhận thất bại trước đó trong raw_records, không fetch lại
+            return None
+        else:
+            # 2. Fetch raw HTTP response khi chưa có trên đĩa
+            with get_source_response(session, source_url, domain_name, prefixes) as response:
+                response.raise_for_status()
+                html_bytes = response.content
+                if response.encoding is None or response.encoding.lower() == "iso-8859-1":
+                    response.encoding = response.apparent_encoding or "utf-8"
+                html_text = response.text
+
+            # 3. Bảo tồn raw HTML bytes nguyên bản vào domain_dir/html/<raw_id>.html
+            try:
+                html_dir.mkdir(parents=True, exist_ok=True)
+                if html_bytes and not raw_html_path.exists():
+                    tmp = raw_html_path.with_suffix(".tmp")
+                    tmp.write_bytes(html_bytes)
+                    tmp.replace(raw_html_path)
+            except Exception as err:
+                logger.warning("Không thể lưu raw HTML cho %s: %s", source_url, err)
+
+        # 3. Trích xuất nội dung văn bản cho ProcessedData
         if not html_text:
             return None
         extracted = extract_html_content(url=source_url, html_text=html_text, category=item.get("category", Category.KHAC.value))
         if not extracted:
             return None
         title = extracted.get("title") or item.get("title", "") or source_url
+
         return {
             "id": generate_doc_id(source_url),
+            "source_id": source_id,
+            "raw_data_id": raw_id,
             "source_type": "html",
             "source_url_or_path": source_url,
             "title": title,
@@ -251,7 +361,7 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
                         seen_hashes[content_hash] = extracted_record["source_url_or_path"]
                         records[extracted_record["source_url_or_path"]] = extracted_record
 
-    doc_files, failed_files = extract_files_for_domain(files_dir, domain, records, seen_hashes, force, faculty_id)
+    doc_files, failed_files = extract_files_for_domain(files_dir, domain, records, seen_hashes, force, faculty_id, raw_recs_by_path)
 
     logger.info("[SAVING] %s | %s records", output_file, len(records))
     temp_out = output_file.with_suffix(".tmp")

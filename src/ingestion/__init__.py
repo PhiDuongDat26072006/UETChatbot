@@ -27,6 +27,22 @@ from .extractor import (
 )
 from .utils import clean_whitespace
 from .manifest import DataManifestTracker
+from .models import (
+    compute_bytes_sha256,
+    create_data_source,
+    create_raw_record,
+    generate_raw_id,
+    generate_source_id,
+    safe_payload_filename,
+)
+from .migration import migrate_all
+from .config.paths import (
+    CHUNK_DATA_DIR,
+    DATA_DIR,
+    DATA_SOURCE_DIR,
+    PROCESSED_DATA_DIR,
+    RAW_DATA_DIR,
+)
 
 __version__ = "0.8.0"
 __all__ = [
@@ -60,5 +76,17 @@ __all__ = [
     "extract_domain_documents",
     "extract_all_domains",
     "clean_whitespace",
+    "generate_source_id",
+    "generate_raw_id",
+    "create_data_source",
+    "create_raw_record",
+    "safe_payload_filename",
+    "compute_bytes_sha256",
+    "migrate_all",
+    "DATA_SOURCE_DIR",
+    "RAW_DATA_DIR",
+    "CHUNK_DATA_DIR",
+    "DATA_DIR",
+    "PROCESSED_DATA_DIR",
     "__version__",
 ]

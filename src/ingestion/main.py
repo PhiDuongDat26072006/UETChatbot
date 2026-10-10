@@ -68,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Bỏ qua cache và thực hiện xử lý lại toàn bộ."
     )
     parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Thực thi di trú dữ liệu an toàn sang cấu trúc DataSource -> RawData -> ProcessedData.",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=10,
@@ -87,7 +92,10 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("[START] %s started", "Extraction" if args.extract else "Classification")
         logger.info("[%s] %s", "EXTRACTING" if args.extract else "CLASSIFYING", args.domain)
     try:
-        if args.extract:
+        if args.migrate:
+            from src.ingestion.migration import migrate_all
+            migrate_all()
+        elif args.extract:
             if args.domain:
                 result = extract_domain_documents(args.domain, max_workers=args.workers, force=args.force)
                 if result.get("failed"):

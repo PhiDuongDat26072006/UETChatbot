@@ -92,7 +92,8 @@ def extract_html_fallback(html_text: str) -> tuple[str, str]:
             table_tag.decompose()
 
     for el in main_el.find_all(["div", "section", "aside"]):
-        classes = el.get("class", [])
+        attrs = getattr(el, "attrs", None) or {}
+        classes = attrs.get("class", [])
         c_str = " ".join(classes).lower() if isinstance(classes, list) else str(classes).lower()
         if any(p in c_str for p in PROTECTED_CLASSES):
             continue
