@@ -30,31 +30,6 @@ Dự án được thiết kế theo kiến trúc **Modular RAG** chuẩn kỹ ng
 
 Hệ thống RAG của chúng ta gồm 2 cỗ máy hoạt động độc lập nhưng bổ trợ cho nhau:
 
-```mermaid
-flowchart TD
-    subgraph OFFLINE ["⚙️ 1. CỖ MÁY OFFLINE: Multi-stage Ingestion & Indexing Pipeline"]
-        direction LR
-        A["1. Raw Data<br/>(PDF, Web, Docs)"] --> B["2. Cleaner<br/>(Lọc rác, Unicode)"]
-        B --> C["3. Processed Data<br/>(Văn bản sạch)"]
-        C --> D["4. Chunker<br/>(Cắt đoạn 500-600 ký tự)"]
-        D --> E["5. Chunked Data<br/>(JSONL chunks)"]
-        E --> F["6. Embedding Model<br/>(all-MiniLM-L6-v2)"]
-        F --> G[("7. ChromaDB<br/>(Batching 500/lần)")]
-    end
-
-    subgraph ONLINE ["💬 2. CỖ MÁY ONLINE: Hybrid RAG Serving Pipeline"]
-        direction LR
-        Q["Sinh viên gửi câu hỏi<br/>(Text Query)"] --> BM25["BM25 Lexical Search"]
-        Q --> VSearch["Dense Vector Search<br/>(Cosine / ChromaDB)"]
-        BM25 --> RRF["Hợp nhất Hybrid (RRF)"]
-        VSearch --> RRF
-        RRF --> Rerank["Cross-Encoder Reranker<br/>(Top K tối ưu)"]
-        Rerank --> Prompt["Ghép Context + Query<br/>vào System Prompt"]
-        Prompt --> LLM["Google Gemini LLM<br/>(gemini-3.8-flash)"]
-        LLM --> Ans["Câu trả lời thông minh<br/>+ Trích dẫn nguồn (Web / CLI)"]
-    end
-```
-
 ---
 
 ## 2. Quy Trình Xử Lý Dữ Liệu Đa Chặng & Cơ Chế Chống Trùng Lặp
@@ -90,10 +65,7 @@ flowchart TD
 
 Khi bạn được phân công một phần việc, hãy làm theo đúng 5 bước sau:
 
-### 🔹 Bước 1: Xác định nhiệm vụ của mình
-Xem [Bảng Phân Công Nhiệm Vụ](#5-bảng-phân-công-nhiệm-vụ-chi-tiết) bên dưới để biết mình phụ trách thư mục nào trong `src/` và cần kế thừa class nào từ [`base.py`](base.py).
-
-### 🔹 Bước 2: Viết code trong thư mục được giao
+### 🔹 Bước 1: Viết code trong thư mục được giao
 Ví dụ bạn phụ trách **Chunking**:
 1. Mở file [`src/chunking/chunker.py`](src/chunking/chunker.py).
 2. Viết class kế thừa từ `BaseChunker`:
@@ -107,19 +79,19 @@ Ví dụ bạn phụ trách **Chunking**:
            pass
    ```
 
-### 🔹 Bước 3: Chạy kiểm thử riêng module của mình (Unit Test)
+### 🔹 Bước 2: Chạy kiểm thử riêng module của mình (Unit Test)
 Ở cuối file bạn đang viết, viết khối `if __name__ == "__main__":` để chạy thử xem dữ liệu ra có đúng chuẩn không:
 ```bash
 python src/chunking/chunker.py
 ```
 
-### 🔹 Bước 4: Ghép vào cỗ máy tổng thể tại `src/pipeline.py`
+### 🔹 Bước 3: Ghép vào cỗ máy tổng thể tại `src/pipeline.py`
 Mở file [`src/pipeline.py`](src/pipeline.py) (trái tim điều phối của dự án), thay thế class tạm bằng class thật mà bạn vừa viết:
 ```python
 from src.chunking.chunker import UETChunker
 ```
 
-### 🔹 Bước 5: Chạy kiểm tra End-to-End toàn hệ thống
+### 🔹 Bước 4: Chạy kiểm tra End-to-End toàn hệ thống
 - **Kiểm thử dòng lệnh**:
   ```bash
   python src/pipeline.py
@@ -129,25 +101,7 @@ from src.chunking.chunker import UETChunker
   python -m unittest discover tests
   ```
 
----
-
-## 5. Bảng Phân Công Nhiệm Vụ Chi Tiết
-
-| Tasks | Thư mục & File cần code | Lớp kế thừa từ [`base.py`](base.py) | Đầu vào $\rightarrow$ Đầu ra | Nhiệm vụ cụ thể |
-| :--- | :--- | :--- | :--- | :--- |
-| **Task 1** | `src/ingestion/loader.py`, `cleaner.py`, `manifest.py` | `BaseDataCrawler`, `BaseTransformation` | `DataSource` $\rightarrow$ `RawData` $\rightarrow$ `ProcessedData` | Đọc tệp, làm sạch dữ liệu, quản lý sổ cái chống trùng lặp SHA-256. |
-| **Task 2** | `src/chunking/chunker.py` | `BaseChunker` | `ProcessedData` $\rightarrow$ `List[DataChunk]` | Cắt văn bản thành từng đoạn 500-600 ký tự kèm overlap 100 ký tự. |
-| **Task 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
-| **Task 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Quản lý ChromaDB, tìm kiếm tương đồng và nạp dữ liệu an toàn theo lô (`batch_size=500`). |
-| **Task 5** | `src/retrieval/retriever.py` | `BaseRetriever` | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Truy xuất lai (BM25 + Dense Vector), RRF Ranking và Reranker chọn top k. |
-| **Task 6** | `src/prompts/prompt_templates.py` | `BasePromptAugmenter` | `UserQuery` + `Contexts` $\rightarrow$ `AugmentedPrompt` | Thiết kế lời nhắc chuyên viên đào tạo UET, ghép ngữ cảnh và câu hỏi vào mẫu chuẩn. |
-| **Task 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Tích hợp Google Gemini (`gemini-3.8-flash`) để đọc ngữ cảnh và sinh câu trả lời. |
-| **Task 8** | `src/evaluation/evaluator.py` | `BaseEvaluator` | Pipeline + Dataset $\rightarrow$ `EvaluationReport` | Đánh giá độ tin cậy (*Faithfulness, Relevance*) trên tập test chuẩn `test_qa_dataset.json`. |
-| **Task 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, điều phối Multi-stage Ingestion, duy trì Web UI và CLI. |
-
----
-
-## 6. Cấu Trúc Thư Mục Dự Án
+## 5. Cấu Trúc Thư Mục Dự Án
 
 ```text
 UET_chatbot/
@@ -199,7 +153,7 @@ UET_chatbot/
 
 ---
 
-## 7. Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)
+## 6. Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)
 
 ### 1. Cài đặt môi trường ban đầu
 ```bash
