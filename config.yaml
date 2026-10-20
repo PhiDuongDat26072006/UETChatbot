@@ -45,13 +45,12 @@ retrieval:
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
 
 llm:
-  provider: "gemini"
-  # Mô hình Google Gemini thế hệ mới nhất
-  model_name: "gemini-3.8-flash"
+  provider: "groq"             # Nhà cung cấp mô hình ngôn ngữ lớn (Groq API)
+  # Mô hình Groq LPU tốc độ cao (~250-800 tokens/s)
+  model_name: "qwen/qwen3.8-27b"
   candidate_models:
-    - "gemini-3.5-flash"
-    - "gemini-3.5-flash-lite"
-    - "gemini-flash-latest"
+    - "llama-3.1-8b-instant"
+    - "meta-llama/llama-4-scout-17b-16e-instruct"
   temperature: 0.3
   top_k_retrieval: 5
 
