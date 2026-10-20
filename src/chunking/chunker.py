@@ -10,7 +10,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from src.base import BaseChunker, ProcessedData, DataChunk
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_logger, load_yaml_config
 from src.ingestion.config.faculties import faculty_storage_name, find_faculty
 
 logger = get_logger("chunking")
