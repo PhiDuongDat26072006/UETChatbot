@@ -1,5 +1,8 @@
 # 🎓 UET Chatbot - Hệ Thống RAG Tra Cứu Quy Chế Đào Tạo (VNU-UET)
 
+Dense ChromaDB and persistent Vietnamese BM25 indexing: see
+[indexing usage and lifecycle](src/indexing/README.md).
+
 > **UET Chatbot** là trợ lý ảo AI thông minh ứng dụng công nghệ **RAG (Retrieval-Augmented Generation)** nhằm giải đáp tự động các thắc mắc về học vụ, quy chế đào tạo, điều kiện xét tốt nghiệp, thang điểm rèn luyện và học bổng cho sinh viên **Trường Đại học Công nghệ – ĐHQGHN**.
 
 Dự án được thiết kế theo kiến trúc **Modular RAG** chuẩn kỹ nghệ phần mềm: Toàn bộ hệ thống được module hóa độc lập thông qua "bản giao ước" [`base.py`](base.py), giúp **các thành viên trong nhóm có thể code song song cùng lúc mà không lo xung đột (Git conflict)**.
@@ -27,31 +30,6 @@ Dự án được thiết kế theo kiến trúc **Modular RAG** chuẩn kỹ ng
 
 Hệ thống RAG của chúng ta gồm 2 cỗ máy hoạt động độc lập nhưng bổ trợ cho nhau:
 
-```mermaid
-flowchart TD
-    subgraph OFFLINE ["⚙️ 1. CỖ MÁY OFFLINE: Multi-stage Ingestion & Indexing Pipeline"]
-        direction LR
-        A["1. Raw Data<br/>(PDF, Web, Docs)"] --> B["2. Cleaner<br/>(Lọc rác, Unicode)"]
-        B --> C["3. Processed Data<br/>(Văn bản sạch)"]
-        C --> D["4. Chunker<br/>(Cắt đoạn 500-600 ký tự)"]
-        D --> E["5. Chunked Data<br/>(JSONL chunks)"]
-        E --> F["6. Embedding Model<br/>(all-MiniLM-L6-v2)"]
-        F --> G[("7. ChromaDB<br/>(Batching 500/lần)")]
-    end
-
-    subgraph ONLINE ["💬 2. CỖ MÁY ONLINE: Hybrid RAG Serving Pipeline"]
-        direction LR
-        Q["Sinh viên gửi câu hỏi<br/>(Text Query)"] --> BM25["BM25 Lexical Search"]
-        Q --> VSearch["Dense Vector Search<br/>(Cosine / ChromaDB)"]
-        BM25 --> RRF["Hợp nhất Hybrid (RRF)"]
-        VSearch --> RRF
-        RRF --> Rerank["Cross-Encoder Reranker<br/>(Top K tối ưu)"]
-        Rerank --> Prompt["Ghép Context + Query<br/>vào System Prompt"]
-        Prompt --> LLM["Google Gemini LLM<br/>(gemini-3.8-flash)"]
-        LLM --> Ans["Câu trả lời thông minh<br/>+ Trích dẫn nguồn (Web / CLI)"]
-    end
-```
-
 ---
 
 ## 2. Quy Trình Xử Lý Dữ Liệu Đa Chặng & Cơ Chế Chống Trùng Lặp
@@ -62,7 +40,7 @@ flowchart TD
 1. **`raw`** (`data/raw_data/`): Dữ liệu thô ban đầu (PDF, Word, HTML, văn bản quy chế thu thập được từ cổng thông tin UET).
 2. **`processed`** (`data/processed_data/`): Dữ liệu sau khi làm sạch qua [`CleanTextTransformation`](src/ingestion/cleaner.py) (loại bỏ thẻ HTML, ký tự dị biệt, chuẩn hóa khoảng trắng và định dạng UTF-8).
 3. **`chunked`** (`data/chunked_data/`): Dữ liệu sau khi được phân tách thành từng đoạn ngắn bởi [`DocumentChunker`](src/chunking/chunker.py) (mỗi đoạn 500-600 ký tự, overlap 100 ký tự để bảo toàn ngữ cảnh).
-4. **`vectordb`** (`vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
+4. **`vectordb`** (`database/vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
 
 ### Cơ Chế Chống Trùng Lặp (Deduplication Manifest Tracker):
 - Được quản lý bởi lớp [`DataManifestTracker`](src/ingestion/manifest.py) và tệp lưu trữ `data/.ingest_manifest.json`.
@@ -87,10 +65,7 @@ flowchart TD
 
 Khi bạn được phân công một phần việc, hãy làm theo đúng 5 bước sau:
 
-### 🔹 Bước 1: Xác định nhiệm vụ của mình
-Xem [Bảng Phân Công Nhiệm Vụ](#5-bảng-phân-công-nhiệm-vụ-chi-tiết) bên dưới để biết mình phụ trách thư mục nào trong `src/` và cần kế thừa class nào từ [`base.py`](base.py).
-
-### 🔹 Bước 2: Viết code trong thư mục được giao
+### 🔹 Bước 1: Viết code trong thư mục được giao
 Ví dụ bạn phụ trách **Chunking**:
 1. Mở file [`src/chunking/chunker.py`](src/chunking/chunker.py).
 2. Viết class kế thừa từ `BaseChunker`:
@@ -104,19 +79,19 @@ Ví dụ bạn phụ trách **Chunking**:
            pass
    ```
 
-### 🔹 Bước 3: Chạy kiểm thử riêng module của mình (Unit Test)
+### 🔹 Bước 2: Chạy kiểm thử riêng module của mình (Unit Test)
 Ở cuối file bạn đang viết, viết khối `if __name__ == "__main__":` để chạy thử xem dữ liệu ra có đúng chuẩn không:
 ```bash
 python src/chunking/chunker.py
 ```
 
-### 🔹 Bước 4: Ghép vào cỗ máy tổng thể tại `src/pipeline.py`
+### 🔹 Bước 3: Ghép vào cỗ máy tổng thể tại `src/pipeline.py`
 Mở file [`src/pipeline.py`](src/pipeline.py) (trái tim điều phối của dự án), thay thế class tạm bằng class thật mà bạn vừa viết:
 ```python
 from src.chunking.chunker import UETChunker
 ```
 
-### 🔹 Bước 5: Chạy kiểm tra End-to-End toàn hệ thống
+### 🔹 Bước 4: Chạy kiểm tra End-to-End toàn hệ thống
 - **Kiểm thử dòng lệnh**:
   ```bash
   python src/pipeline.py
@@ -126,25 +101,7 @@ from src.chunking.chunker import UETChunker
   python -m unittest discover tests
   ```
 
----
-
-## 5. Bảng Phân Công Nhiệm Vụ Chi Tiết
-
-| Tasks | Thư mục & File cần code | Lớp kế thừa từ [`base.py`](base.py) | Đầu vào $\rightarrow$ Đầu ra | Nhiệm vụ cụ thể |
-| :--- | :--- | :--- | :--- | :--- |
-| **Task 1** | `src/ingestion/loader.py`, `cleaner.py`, `manifest.py` | `BaseDataCrawler`, `BaseTransformation` | `DataSource` $\rightarrow$ `RawData` $\rightarrow$ `ProcessedData` | Đọc tệp, làm sạch dữ liệu, quản lý sổ cái chống trùng lặp SHA-256. |
-| **Task 2** | `src/chunking/chunker.py` | `BaseChunker` | `ProcessedData` $\rightarrow$ `List[DataChunk]` | Cắt văn bản thành từng đoạn 500-600 ký tự kèm overlap 100 ký tự. |
-| **Task 3** | `src/embeddings/embedder.py` | `BaseEmbeddingModel` | `List[str]` $\rightarrow$ `List[List[float]]` | Chuyển văn bản thành vector số (mô hình 384 chiều `all-MiniLM-L6-v2` hoặc Gemini). |
-| **Task 4** | `src/vectordb/vector_store.py` | `BaseVectorStore` | `DataChunk` + `Vector` $\rightarrow$ Lưu DB | Quản lý ChromaDB, tìm kiếm tương đồng và nạp dữ liệu an toàn theo lô (`batch_size=500`). |
-| **Task 5** | `src/retrieval/retriever.py` | `BaseRetriever` | `UserQuery` $\rightarrow$ `List[RetrievedContext]` | Truy xuất lai (BM25 + Dense Vector), RRF Ranking và Reranker chọn top k. |
-| **Task 6** | `src/prompts/prompt_templates.py` | `BasePromptAugmenter` | `UserQuery` + `Contexts` $\rightarrow$ `AugmentedPrompt` | Thiết kế lời nhắc chuyên viên đào tạo UET, ghép ngữ cảnh và câu hỏi vào mẫu chuẩn. |
-| **Task 7** | `src/llm/llm_client.py` | `BaseLLM` | `AugmentedPrompt` $\rightarrow$ `Response` | Tích hợp Google Gemini (`gemini-3.8-flash`) để đọc ngữ cảnh và sinh câu trả lời. |
-| **Task 8** | `src/evaluation/evaluator.py` | `BaseEvaluator` | Pipeline + Dataset $\rightarrow$ `EvaluationReport` | Đánh giá độ tin cậy (*Faithfulness, Relevance*) trên tập test chuẩn `test_qa_dataset.json`. |
-| **Task 9 / Lead** | `src/interfaces/routes.py` & `src/pipeline.py` | FastAPI & Pipeline | Web / REST API | Ghép nối các module, điều phối Multi-stage Ingestion, duy trì Web UI và CLI. |
-
----
-
-## 6. Cấu Trúc Thư Mục Dự Án
+## 5. Cấu Trúc Thư Mục Dự Án
 
 ```text
 UET_chatbot/
@@ -157,8 +114,9 @@ UET_chatbot/
 ├── .env.example              # 📝 File mẫu hướng dẫn tạo .env
 ├── .gitignore                # 🛡️ Danh sách file bỏ qua trên Git
 │
-├── vector_db/                # 🗄️ Thư mục ChromaDB cục bộ (Chứa vector kho dữ liệu UET)
-│   └── chroma.sqlite3
+├── database/                 # 🗄️ Thư mục cơ sở dữ liệu cục bộ
+│   ├── vector_db/            # Kho lưu trữ ChromaDB (Chứa 62,703 vectors UET)
+│   └── bm25_index.pkl        # File chỉ mục từ khóa BM25 Index
 │
 ├── src/                      # 💻 MÃ NGUỒN CÁC MODULE CHÍNH
 │   ├── pipeline.py           # ⚙️ Trái tim điều phối Ingestion đa chặng & RAG Serving
@@ -195,7 +153,7 @@ UET_chatbot/
 
 ---
 
-## 7. Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)
+## 6. Cài Đặt & Các Lệnh Khởi Chạy Hệ Thống (`main.py`)
 
 ### 1. Cài đặt môi trường ban đầu
 ```bash
@@ -217,11 +175,11 @@ cp .env.example .env
 
 ### 2. Các Lệnh Điều Phối Dữ Liệu (Multi-stage Data Ingestion)
 
-#### 📊 Xem báo cáo thống kê dữ liệu 4 chặng & Sổ cái manifest
+#### 📊 Xem báo cáo thống kê dữ liệu 5 chặng & Sổ cái manifest
 ```bash
-python main.py --ingest-status
+python main.py --ingest --status
 ```
-Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `vector_db` cùng tiến độ của sổ cái chống trùng lặp.
+Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `database/vector_db` cùng tiến độ của sổ cái chống trùng lặp.
 
 #### ⚙️ Chạy nạp dữ liệu từ chặng xuất phát đến chặng đích
 Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `chunked` $\rightarrow$ `vectordb`.
@@ -241,6 +199,11 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
   python main.py --ingest --from processed --to vectordb
   ```
 
+- **Từ các đoạn `chunked` lập chỉ mục từ khóa BM25 sang `indexed_data`** (tạo file `database/bm25_index.pkl` siêu tốc ~25s):
+  ```bash
+  python main.py --ingest --from chunked --to indexed_data
+  ```
+
 - **Chạy toàn bộ quy trình từ đầu đến cuối (`raw` $\rightarrow$ `vectordb`)**:
   ```bash
   python main.py --ingest --from raw --to vectordb
@@ -252,7 +215,7 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
 
 #### 🌟 1. Khởi chạy Giao diện Web (Khuyên Dùng)
 ```bash
-python main.py --web
+python main.py --run --web
 ```
 - Mở trình duyệt tại `http://127.0.0.1:8000`.
 - Giao diện chat hiện đại, hỗ trợ gợi ý câu hỏi, popup xem trích dẫn tài liệu quy chế UET.
@@ -260,17 +223,20 @@ python main.py --web
 
 #### 💻 2. Khởi chạy Chatbot trên Terminal (CLI Mode)
 ```bash
-python main.py --cli
+python main.py --run --cli
 ```
 - Tương tác hỏi đáp tức thì ngay trên cửa sổ dòng lệnh.
 - Các lệnh hữu ích khi chat: `stats` (thống kê vector), `clear` (xóa màn hình), `exit` (thoát).
 
-#### 📊 3. Chấm điểm chất lượng RAG (Benchmark QA Evaluation)
-```bash
-python main.py --eval
-```
-- Tính toán điểm **RAG Triad** (*Faithfulness, Answer Relevance, Context Relevance*) trên tập benchmark `test_qa_dataset.json`.
-- Xuất báo cáo kết quả chi tiết phục vụ báo cáo và slide thuyết trình.
+#### 📊 3. Chấm điểm chất lượng hệ thống (Evaluation)
+- **Đánh giá toàn trình RAG End-to-End** (tính toán bộ metrics RAG Triad: Faithfulness, Answer Relevance, Context Relevance):
+  ```bash
+  python main.py --eval --e2e
+  ```
+- **Đánh giá riêng hiệu quả phân hệ truy xuất Retrieval** (tính toán Precision@K, Recall@K, NDCG@K, MRR, MAP trên 50 queries benchmark):
+  ```bash
+  python main.py --eval --retrieval
+  ```
 
 ---
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from collections import defaultdict
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from src.base import BaseChunker, ProcessedData, DataChunk
 from src.utils.helpers import get_logger
 from src.ingestion.config.faculties import faculty_storage_name, find_faculty
@@ -21,25 +21,50 @@ class UETChunker(BaseChunker):
     Bộ phân đoạn văn bản thông minh (Structure-Aware Recursive Chunker) cho UET Chatbot.
     Tự động chia nhỏ tài liệu ProcessedData thành các đối tượng DataChunk có kích thước
     xấp xỉ `chunk_size` với độ gối đầu `chunk_overlap`, bảo tồn ngữ cảnh văn bản và gắn metadata.
+    Đồng bộ tham số trực tiếp từ config.yaml.
     """
 
     def __init__(
         self,
-        chunk_size: int = 600,
-        chunk_overlap: int = 100,
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None,
         separators: Optional[List[str]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        # Danh sách phân cấp ký tự phân tách: từ cấu trúc lớn (Chương, Điều, Đoạn) đến nhỏ (Dòng, Câu, Từ)
-        self.separators = separators or [
-            "\n\n",
-            "\n",
-            ". ",
-            "; ",
-            " ",
-            "",
-        ]
+        # Tự động nạp cấu hình từ config.yaml nếu không truyền trực tiếp
+        cfg = config.get("chunking", {}) if config else load_yaml_config().get("chunking", {})
+
+        self.chunk_size = (
+            chunk_size
+            if chunk_size is not None
+            else cfg.get("chunk_size", 800)
+        )
+        self.chunk_overlap = (
+            chunk_overlap
+            if chunk_overlap is not None
+            else cfg.get("chunk_overlap", 150)
+        )
+
+        # Đồng bộ separators từ config.yaml hoặc tham số truyền vào
+        if separators is not None:
+            self.separators = separators
+        elif "separators" in cfg and cfg["separators"]:
+            self.separators = list(cfg["separators"])
+            if "" not in self.separators:
+                self.separators.append("")
+        else:
+            # Danh sách phân cấp ký tự phân tách mặc định
+            self.separators = [
+                "\n\n",
+                "\n",
+                "### ",
+                "## ",
+                "# ",
+                ". ",
+                "; ",
+                " ",
+                "",
+            ]
 
     def _split_text(self, text: str, separators: List[str]) -> List[str]:
         """
@@ -126,6 +151,15 @@ class UETChunker(BaseChunker):
                     else:
                         break
 
+                # Fallback xử lý lỗi mất Overlap:
+                # Nếu mảnh cuối cùng dài hơn chunk_overlap khiến overlap_splits bị rỗng,
+                # thay vì để mất 100% độ gối đầu, ta cắt lấy phần đuôi của mảnh cuối cùng
+                if not overlap_splits and self.chunk_overlap > 0 and current_chunk:
+                    last_item = current_chunk[-1]
+                    tail_overlap = last_item[-self.chunk_overlap:]
+                    if tail_overlap:
+                        overlap_splits.append(tail_overlap)
+
                 current_chunk = overlap_splits
                 current_length = sum(len(x) for x in current_chunk)
 
@@ -163,10 +197,15 @@ class UETChunker(BaseChunker):
                 "total_chunks": 1,
                 "char_count": len(raw_text),
             })
+            enriched_text = (
+                f"[{doc.title}]\n{raw_text}"
+                if doc.title and not raw_text.startswith(f"[{doc.title}]")
+                else raw_text
+            )
             return [
                 DataChunk(
                     document_id=doc.id,
-                    text=raw_text,
+                    text=enriched_text,
                     chunk_index=0,
                     metadata=chunk_metadata,
                 )
@@ -192,9 +231,16 @@ class UETChunker(BaseChunker):
                 "char_count": len(segment),
             })
 
+            # Context Injection: Gắn tiêu đề tài liệu vào đầu mỗi chunk để bảo toàn ngữ cảnh
+            enriched_text = (
+                f"[{doc.title}]\n{segment}"
+                if doc.title and not segment.startswith(f"[{doc.title}]")
+                else segment
+            )
+
             chunk_obj = DataChunk(
                 document_id=doc.id,
-                text=segment,
+                text=enriched_text,
                 chunk_index=idx,
                 metadata=chunk_meta,
             )
@@ -203,16 +249,68 @@ class UETChunker(BaseChunker):
         logger.info(f"Hoàn tất phân đoạn tài liệu '{doc.title}': Đã tạo {total_chunks} chunks.")
         return data_chunks
 
+    @staticmethod
+    def _extract_faculty_code(meta: Dict[str, Any]) -> str:
+        """Trích xuất mã khoa chuẩn hóa (fit, fat, fce, fema, fepn, fet, iai, sae, uet...) từ metadata."""
+        # 1. unit hoặc faculty
+        raw_unit = str(meta.get("unit") or meta.get("faculty") or "").strip().lower()
+        if raw_unit:
+            clean_unit = "".join(c for c in raw_unit if c.isalnum() or c in "_-")
+            if clean_unit:
+                return clean_unit
+
+        # 2. domain (e.g. fit.uet.vnu.edu.vn, uet.edu.vn...)
+        raw_domain = str(meta.get("domain") or "").strip().lower()
+        if raw_domain:
+            parts = raw_domain.split(".")
+            if "uet" in parts:
+                idx = parts.index("uet")
+                if idx > 0:
+                    candidate = parts[idx - 1]
+                    return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                return "uet"
+            elif parts and parts[0]:
+                return parts[0]
+
+        # 3. URL nguồn (source)
+        source = str(meta.get("source") or meta.get("source_url_or_path") or "").strip()
+        if source:
+            if "://" in source:
+                try:
+                    from urllib.parse import urlparse
+                    parts = urlparse(source).netloc.lower().split(".")
+                    if "uet" in parts:
+                        idx = parts.index("uet")
+                        if idx > 0:
+                            candidate = parts[idx - 1]
+                            return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+                    elif parts and parts[0]:
+                        return parts[0]
+                except Exception:
+                    pass
+            for part in source.replace("\\", "/").split("/"):
+                if "uet." in part.lower():
+                    p_split = part.lower().split(".")
+                    if "uet" in p_split:
+                        idx = p_split.index("uet")
+                        if idx > 0:
+                            candidate = p_split[idx - 1]
+                            return p_split[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+
+        return "general"
+
     def chunk_batch(self, docs: List[ProcessedData]) -> List[DataChunk]:
         """
-        Chia chunk hàng loạt tài liệu và lưu kết quả vào thư mục chunk_data.
-        Mỗi khoa (domain) sẽ được lưu vào một file jsonl riêng.
+        Chia chunk hàng loạt tài liệu và lưu kết quả vào thư mục data/chunked_data.
+        Mỗi khoa (faculty/domain) sẽ được lưu vào một file jsonl riêng ({faculty}_chunks.jsonl).
         """
         all_chunks: List[DataChunk] = []
         for doc in docs:
             all_chunks.extend(self.chunk(doc))
 
-        # Phân loại chunk theo từng khoa dựa vào domain (hoặc category/source)
+        # Phân loại chunk theo từng khoa dựa vào metadata
         chunks_by_faculty = defaultdict(list)
         for chunk in all_chunks:
             # A shared request host must not merge distinct faculty output files.
@@ -220,19 +318,18 @@ class UETChunker(BaseChunker):
             faculty = faculty_storage_name(target["faculty_id"]) if target else chunk.metadata.get("domain", "other")
             chunks_by_faculty[faculty].append(chunk)
 
-        # Đảm bảo thư mục lưu trữ chunk_data tồn tại
+        # Đảm bảo thư mục lưu trữ data/chunked_data tồn tại
         base_dir = Path(__file__).resolve().parent.parent.parent
-        chunk_data_dir = base_dir / "chunk_data"
+        chunk_data_dir = base_dir / "data" / "chunked_data"
         chunk_data_dir.mkdir(parents=True, exist_ok=True)
 
         # Lưu mỗi khoa vào một file jsonl riêng
         for faculty, faculty_chunks in chunks_by_faculty.items():
-            # Xử lý tên file an toàn
-            safe_faculty_name = "".join(c for c in faculty if c.isalnum() or c in "._-")
+            safe_faculty_name = "".join(c for c in faculty if c.isalnum() or c in "_-") or "general"
             file_path = chunk_data_dir / f"{safe_faculty_name}_chunks.jsonl"
-            
+
             try:
-                with open(file_path, "w", encoding="utf-8") as f:
+                with open(file_path, "a", encoding="utf-8") as f:
                     for chunk in faculty_chunks:
                         try:
                             json_str = chunk.model_dump_json()
