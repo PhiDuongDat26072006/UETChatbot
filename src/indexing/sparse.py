@@ -65,6 +65,8 @@ except ImportError:
 from src.base import RetrievedContext
 from src.indexing.chunks import normalize_chunks
 
+from concurrent.futures import ProcessPoolExecutor
+
 # Mixed ASCII letters/digits are identifiers, never Vietnamese word segments.
 IDENTIFIER = re.compile(r"\b(?=[A-Za-z0-9_]*[A-Za-z])(?=[A-Za-z0-9_]*\d)[A-Za-z0-9_]+\b")
 
@@ -82,18 +84,42 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
-def _segment(text):
-    return [word.casefold().replace(" ", "_") for word in word_tokenize(text)
-            if any(char.isalnum() for char in word)] if text.strip() else []
+def _segment(text: str) -> list[str]:
+    """Tokenize using underthesea"""
+    return [
+        word.casefold().replace(" ", "_")
+        for word in word_tokenize(text)
+        if any(char.isalnum() for char in word)
+    ] if text.strip() else []
 
 
 class BM25Index:
     """Keep chunk order aligned with BM25 statistics and persist without re-tokenizing."""
 
-    def __init__(self, chunks=()):
+    def __init__(self, chunks=(), workers=6):
         self.chunks = normalize_chunks(chunks)
-        self.tokens = [tokenize(chunk.text) for chunk in self.chunks]
-        self.model = BM25Plus(self.tokens) if any(self.tokens) else None
+
+        texts = [chunk.text for chunk in self.chunks]
+
+        # 1. Tokenize corpus
+        if workers == 1:
+            self.tokens = [tokenize(text) for text in texts]
+        else:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                self.tokens = list(
+                    executor.map(
+                        tokenize,
+                        texts,
+                        chunksize=200
+                    )
+                )
+
+        # 2. Build BM25
+        self.model = (
+            BM25Plus(self.tokens)
+            if any(self.tokens)
+            else None
+        )
 
     def count(self) -> int:
         """Trả về tổng số chunk trong chỉ mục."""

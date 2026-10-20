@@ -2,11 +2,12 @@
 import json
 import unicodedata
 from pathlib import Path
+from typing import List
 
 from src.base import DataChunk
 
 
-def normalize_chunks(chunks):
+def normalize_chunks(chunks: List[DataChunk]) -> List[DataChunk]:
     """Normalize NFC/outer whitespace; last duplicate wins, empty text is omitted."""
     unique = {}
     for chunk in chunks:
@@ -16,10 +17,8 @@ def normalize_chunks(chunks):
         unique[chunk.chunk_id] = chunk.model_copy(update={"text": text})
     return [chunk for chunk in unique.values() if chunk.text]
 
-
 def find_chunk_files(base_dir):
     return sorted(Path(base_dir).glob("*.jsonl"))
-
 
 def load_chunks_from_dir(data_dir, domain=None, max_chunks=None):
     """Read JSONL strictly: invalid input fails before either index is changed."""
