@@ -47,7 +47,8 @@ class UETLLMClient(BaseLLM):
         self.candidate_models = list(llm_cfg.get("candidate_models", self.DEFAULT_CANDIDATE_MODELS))
         # Thuộc tính tương thích ngược
         self.CANDIDATE_MODELS = self.candidate_models
-        self.temperature = float(llm_cfg.get("temperature", 0.3))
+        # Nhiệt độ mặc định 0.2 (thấp để hạn chế tối đa ảo giác, tăng tính trung thực Faithfulness)
+        self.temperature = float(llm_cfg.get("temperature", 0.2))
 
         # Tải danh sách tất cả các API Keys khả dụng từ .env (hỗ trợ tự động chuyển đổi khi hết hạn mức)
         self.api_keys = self._load_api_keys(custom_key=api_key, custom_keys=api_keys)
