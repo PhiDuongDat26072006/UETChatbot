@@ -7,7 +7,7 @@ Nhiệm vụ: Thiết kế chỉ dẫn hệ thống (System Prompt) và kết h�
 from __future__ import annotations
 from typing import List, Optional
 from src.base import BasePromptAugmenter, UserQuery, RetrievedContext, AugmentedPrompt
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("prompts")
 
@@ -41,9 +41,7 @@ Câu hỏi: "Ký túc xá Mễ Trì có bao nhiêu phòng?"
 Ngữ cảnh mẫu: "[Tài liệu: Hướng dẫn đăng ký tín chỉ UET]..."
 Câu trả lời mẫu:
 "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé."
-==========================================================
-""".strip()
-
+""""
 
 class UETPromptAugmenter(BasePromptAugmenter):
     """
@@ -87,7 +85,7 @@ class UETPromptAugmenter(BasePromptAugmenter):
         contexts: List[RetrievedContext],
     ) -> AugmentedPrompt:
         """
-        Ghép câu hỏi và danh sách ngữ cảnh vào mẫu prompt hoàn chỉnh.
+        Ghép câu hỏi và danh sách ngữ cảnh vào mẫu prompt hoàn chỉnh cho LLM.
         :param query: Đối tượng câu hỏi của sinh viên
         :param contexts: Danh sách các đoạn văn bản trích xuất từ Vector DB
         :return: Đối tượng AugmentedPrompt
@@ -125,3 +123,43 @@ class UETPromptAugmenter(BasePromptAugmenter):
             system_instruction=self.system_prompt,
             formatted_prompt=formatted_prompt,
         )
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    if str(_BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(_BASE_DIR))
+
+    # Kiểm thử độc lập module Prompt Augmenter
+    print("=" * 60)
+    print("KIỂM THỬ ĐỘC LẬP: UETPromptAugmenter (src/prompts)")
+    print("=" * 60)
+
+    augmenter = UETPromptAugmenter()
+    test_query = UserQuery(query_text="Sinh viên UET cần bao nhiêu tín chỉ để được xét tốt nghiệp?")
+    test_contexts = [
+        RetrievedContext(
+            chunk_id="chunk_01",
+            text="Sinh viên phải tích lũy tối thiểu 130 tín chỉ đối với hệ cử nhân, đạt GPA từ 2.00 trở lên.",
+            similarity_score=0.92,
+            rank=1,
+            metadata={"title": "Quy chế Đào tạo Đại học Chính quy UET", "page": 42},
+        ),
+        RetrievedContext(
+            chunk_id="chunk_02",
+            text="Chuẩn đầu ra ngoại ngữ yêu cầu chứng chỉ tương đương VSTEP bậc 4 (B2) hoặc IELTS 5.5.",
+            similarity_score=0.85,
+            rank=2,
+            metadata={"title": "Quy định Chuẩn đầu ra Ngoại ngữ ĐHQGHN", "page": 5},
+        ),
+    ]
+
+    augmented = augmenter.augment(query=test_query, contexts=test_contexts)
+    print(f"\n[+] Query ID: {augmented.user_query.query_id}")
+    print(f"[+] Số đoạn ngữ cảnh: {len(augmented.contexts)}")
+    print("\n--- NỘI DUNG PROMPT HOÀN CHỈNH ---")
+    print(augmented.formatted_prompt)
+    print("=" * 60)
+    print(" KIỂM THỬ PROMPTS THÀNH CÔNG!")

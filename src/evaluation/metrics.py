@@ -104,7 +104,11 @@ def ndcg_at_k(retrieved_ids: List[str], qrels: Dict[str, int], k: int) -> float:
     
     # DCG (Discounted Cumulative Gain)
     dcg = 0.0
+    seen_docs = set()
     for i, doc_id in enumerate(retrieved_ids[:k]):
+        if doc_id in seen_docs:
+            continue
+        seen_docs.add(doc_id)
         rel = qrels.get(doc_id, 0)
         dcg += (2 ** rel - 1) / math.log2(i + 2)
     
@@ -116,7 +120,7 @@ def ndcg_at_k(retrieved_ids: List[str], qrels: Dict[str, int], k: int) -> float:
     
     if idcg == 0:
         return 0.0
-    return dcg / idcg
+    return min(1.0, dcg / idcg)
 
 
 def mrr(retrieved_ids: List[str], relevant_ids: Set[str]) -> float:

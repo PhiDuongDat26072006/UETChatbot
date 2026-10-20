@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 from src.base import UserQuery
 from src.pipeline import get_rag_pipeline
-from src.utils.helpers import get_logger, Timer
+from src.utils.helpers import get_logger, Timer, load_yaml_config
 
 logger = get_logger("api")
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -37,6 +37,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[SourceItem] = []
     latency_seconds: float = 0.0
+    model_name: str = ""
 
 
 def create_app():
@@ -75,13 +76,22 @@ def create_app():
         """Phục vụ trang chủ Web UI."""
         index_file = STATIC_DIR / "index.html"
         if index_file.exists():
-            return FileResponse(index_file)
+            return FileResponse(
+                index_file,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
         return {"message": "UET Chatbot API is running. index.html not found."}
 
     @app.get("/api/health")
-    def health_check() -> Dict[str, str]:
-        """Kiểm tra trạng thái máy chủ."""
-        return {"status": "ok", "message": "UET Chatbot RAG Server đang chạy bình thường."}
+    def health_check() -> Dict[str, Any]:
+        """Kiểm tra trạng thái máy chủ và mô hình LLM hiện tại."""
+        config = load_yaml_config()
+        model_name = config.get("llm", {}).get("model_name", "gemini-3.8-flash")
+        return {
+            "status": "ok",
+            "message": "UET Chatbot RAG Server đang chạy bình thường.",
+            "model_name": model_name,
+        }
 
     @app.post("/api/chat", response_model=ChatResponse)
     def chat_endpoint(request: ChatRequest):
@@ -115,6 +125,33 @@ def create_app():
             answer=response.answer,
             sources=sources_data,
             latency_seconds=round(timer.elapsed, 3),
+            model_name=response.model_name,
         )
 
     return app
+
+
+def run_web(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True):
+    """Khởi chạy API Server và Giao diện Web với FastAPI và Uvicorn."""
+    try:
+        import uvicorn
+        import webbrowser
+        import threading
+
+        app = create_app()
+        if app is None:
+            print("Vui lòng cài đặt: pip install fastapi uvicorn")
+            return
+
+        url = f"http://{host}:{port}"
+        print(f"\n🌐 GIAO DIỆN WEB LOCAL ĐANG CHẠY TẠI: {url}")
+        print(f"📚 Tài liệu REST API Swagger:        {url}/docs")
+        print("💡 Nhấn Ctrl+C để dừng server.\n")
+
+        if open_browser:
+            threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+
+        uvicorn.run(app, host=host, port=port)
+    except ImportError:
+        print("Lỗi: Cần cài đặt uvicorn để chạy server (pip install uvicorn)")
+
