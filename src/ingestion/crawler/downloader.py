@@ -1,12 +1,17 @@
 """Module tải file tài liệu song song đa luồng."""
 from __future__ import annotations
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
+
 import requests
 
-from ..config import DOWNLOAD_TIMEOUT, WORKERS_DOWNLOAD
+from ..config.session import DOWNLOAD_TIMEOUT
+
+logger = logging.getLogger(__name__)
+WORKERS_DOWNLOAD = 8
 
 
 def download_file(session: requests.Session, file_url: str, output_folder: str) -> bool:
@@ -28,8 +33,10 @@ def download_file(session: requests.Session, file_url: str, output_folder: str) 
                         if chunk:
                             f.write(chunk)
                 return True
-    except Exception:
-        pass
+            logger.warning("Download failed: %s (HTTP %s)", file_url, r.status_code)
+    except Exception as error:
+        logger.warning("Download failed: %s (%s)", file_url, error)
+        logger.debug("Download failure", exc_info=True)
     return False
 
 
@@ -44,15 +51,13 @@ def download_files_parallel(
     if total_files == 0:
         return 0
 
-    print(f"[*] Đang tải {total_files} file tài liệu song song ({max_workers} threads)...")
+    logger.info("[DOWNLOADING] %s attachments", total_files)
     success_count = 0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(download_file, session, u, output_folder): u for u in file_list}
-        for idx, future in enumerate(as_completed(futures), start=1):
+        for future in as_completed(futures):
             if future.result():
                 success_count += 1
-            if idx % 10 == 0 or idx == total_files:
-                print(f"    -> Đã xử lý {idx}/{total_files} files (thành công: {success_count})...")
 
     return success_count

@@ -1,12 +1,10 @@
 """Package xác thực trailing slash và phát hiện Soft-404 cho endpoints."""
 from __future__ import annotations
 
-from .detector import (
+from .validation import (
     check_and_fix_endpoint,
     get_alternative_slash_url,
     is_page_not_found,
-)
-from .fixer import (
     verify_all_endpoints,
     verify_endpoint_file,
 )

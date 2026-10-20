@@ -249,10 +249,10 @@ class TestResolveUnit:
     """Kiểm tra hàm resolve_unit chuẩn hóa domain sang mã đơn vị (Unit Code)."""
 
     def test_all_standard_domains(self):
-        from src.ingestion.config import DOMAIN_TO_UNIT_MAP, resolve_unit
+        from src.ingestion.config import FACULTY_TARGETS, faculty_storage_name, resolve_unit
 
-        for domain, expected_unit in DOMAIN_TO_UNIT_MAP.items():
-            assert resolve_unit(domain) == expected_unit
+        for target in FACULTY_TARGETS:
+            assert resolve_unit(faculty_storage_name(target["faculty_id"])) == target["faculty_id"]
 
     def test_case_insensitivity_and_whitespace(self):
         from src.ingestion.config import resolve_unit

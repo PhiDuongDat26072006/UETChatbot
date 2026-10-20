@@ -4,7 +4,7 @@ from .loader import UETDataLoader
 from .crawler import crawl_domain, crawl_target, crawl_all_faculties
 from .validator import verify_all_endpoints
 from .classifier import Category, classify_endpoint, classify_domain, classify_all_domains
-from .config import DOMAIN_TO_UNIT_MAP, resolve_unit
+from .config import resolve_unit
 from .filters import is_cloud_storage_url
 from .extractor import (
     COURSE_CODE_PATTERN,
@@ -27,6 +27,22 @@ from .extractor import (
 )
 from .utils import clean_whitespace
 from .manifest import DataManifestTracker
+from .models import (
+    compute_bytes_sha256,
+    create_data_source,
+    create_raw_record,
+    generate_raw_id,
+    generate_source_id,
+    safe_payload_filename,
+)
+from .migration import migrate_all
+from .config.paths import (
+    CHUNK_DATA_DIR,
+    DATA_DIR,
+    DATA_SOURCE_DIR,
+    PROCESSED_DATA_DIR,
+    RAW_DATA_DIR,
+)
 
 __version__ = "0.8.0"
 __all__ = [
@@ -40,7 +56,6 @@ __all__ = [
     "classify_endpoint",
     "classify_domain",
     "classify_all_domains",
-    "DOMAIN_TO_UNIT_MAP",
     "resolve_unit",
     "is_cloud_storage_url",
     "extract_html_content",
@@ -61,5 +76,17 @@ __all__ = [
     "extract_domain_documents",
     "extract_all_domains",
     "clean_whitespace",
+    "generate_source_id",
+    "generate_raw_id",
+    "create_data_source",
+    "create_raw_record",
+    "safe_payload_filename",
+    "compute_bytes_sha256",
+    "migrate_all",
+    "DATA_SOURCE_DIR",
+    "RAW_DATA_DIR",
+    "CHUNK_DATA_DIR",
+    "DATA_DIR",
+    "PROCESSED_DATA_DIR",
     "__version__",
 ]

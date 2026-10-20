@@ -1,16 +1,18 @@
-"""Module xử lý làm sạch và kiểm tra lọc URL (filters)."""
+"""Module xử lý làm sạch, chuẩn hóa và kiểm tra lọc URL (filters)."""
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
+import re
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from .config import (
+from .config.faculties import faculty_storage_name, find_faculty, url_in_scope
+from .config.ignore_rules import (
     CLOUD_STORAGE_DOMAINS,
     DOCUMENT_EXTENSIONS,
     IGNORED_EXTENSIONS,
     IGNORED_PATH_REGEX,
+    IGNORED_QUERY_PARAMETERS,
 )
-from .filter_helpers import clean_url, get_domain_folder_name, normalize_endpoint_url
 
 __all__ = [
     "clean_url",
@@ -22,6 +24,45 @@ __all__ = [
     "is_allowed_file_domain",
     "is_cloud_storage_url",
 ]
+
+
+def clean_url(url: str) -> str:
+    """Xóa anchor (#), loại bỏ query cache/tracking rác (utm_*, fbclid, ...) và chuẩn hóa slash."""
+    url = url.split("#")[0].strip()
+    parsed = urlparse(url)
+
+    if parsed.query:
+        params = parse_qsl(parsed.query, keep_blank_values=False)
+        kept_params = []
+        for k, v in params:
+            k_lower = k.lower()
+            if k_lower.startswith("utm_") or k_lower in IGNORED_QUERY_PARAMETERS:
+                continue
+            kept_params.append((k, v))
+        new_query = urlencode(kept_params)
+        url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, ""))
+
+    parsed = urlparse(url)
+    norm_path = re.sub(r'/{2,}', '/', parsed.path)
+    return urlunparse((parsed.scheme, parsed.netloc, norm_path, parsed.params, parsed.query, ""))
+
+
+def normalize_endpoint_url(url: str) -> str:
+    """Chuẩn hóa endpoint: chuẩn hóa path, giữ nguyên trạng thái slash nguyên bản từ HTML hoặc link."""
+    cleaned = clean_url(url)
+    parsed = urlparse(cleaned)
+    path = parsed.path or "/"
+    return urlunparse((parsed.scheme, parsed.netloc, path, parsed.params, parsed.query, ""))
+
+
+def get_domain_folder_name(url: str) -> str:
+    """Lấy tên thư mục phân loại theo domain."""
+    parsed = urlparse(url)
+    target = find_faculty(url)
+    if target:
+        return faculty_storage_name(target["faculty_id"])
+    netloc = parsed.netloc or parsed.path
+    return netloc.removeprefix("www.")
 
 
 def is_document_file(url: str) -> bool:
@@ -36,19 +77,14 @@ def is_media_or_asset_file(url: str) -> bool:
     return any(path.endswith(ext) for ext in IGNORED_EXTENSIONS)
 
 
-def is_valid_html_endpoint(url: str, target_domain: str, subpath: str = None) -> bool:
+def is_valid_html_endpoint(
+    url: str, target_domain: str, subpath: str | None = None,
+    *, allowed_path_prefixes: list[str] | tuple[str, ...] = (),
+) -> bool:
     """Kiểm tra xem URL có phải là trang HTML bài viết / thông tin hợp lệ hay không."""
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
+    if not url_in_scope(url, target_domain, allowed_path_prefixes):
         return False
-
-    clean_netloc = parsed.netloc.lower().split(':')[0].removeprefix("www.")
-    clean_target = target_domain.lower().split(':')[0].removeprefix("www.")
-
-    if clean_netloc != clean_target:
-        uet_aliases = ("uet.vnu.edu.vn", "uet.edu.vn")
-        if not (clean_netloc in uet_aliases and clean_target in uet_aliases):
-            return False
 
     if subpath:
         path_lower = parsed.path.lower()

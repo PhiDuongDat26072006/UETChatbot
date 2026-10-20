@@ -10,7 +10,8 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from src.base import BaseChunker, ProcessedData, DataChunk
-from src.utils.helpers import get_logger, load_yaml_config
+from src.utils.helpers import get_logger
+from src.ingestion.config.faculties import faculty_storage_name, find_faculty
 
 logger = get_logger("chunking")
 
@@ -312,8 +313,9 @@ class UETChunker(BaseChunker):
         # Phân loại chunk theo từng khoa dựa vào metadata
         chunks_by_faculty = defaultdict(list)
         for chunk in all_chunks:
-            faculty = chunk.metadata.get("faculty") or self._extract_faculty_code(chunk.metadata)
-            chunk.metadata["faculty"] = faculty
+            # A shared request host must not merge distinct faculty output files.
+            target = find_faculty(chunk.metadata.get("unit", ""))
+            faculty = faculty_storage_name(target["faculty_id"]) if target else chunk.metadata.get("domain", "other")
             chunks_by_faculty[faculty].append(chunk)
 
         # Đảm bảo thư mục lưu trữ data/chunked_data tồn tại

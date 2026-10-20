@@ -1,109 +1,121 @@
-# UET Chatbot — Data Pipeline
+# UET ingestion
 
-Hệ thống thu thập, phân loại và bóc tách dữ liệu tự động cho Trợ lý ảo (Chatbot RAG) từ các cổng thông tin của Trường Đại học Công nghệ (UET - ĐHQGHN) và 8 Khoa/Viện trực thuộc.
+The ingestion stages discover URLs and attachments, validate endpoints, classify
+URLs into seven categories, extract clean text, and load processed records for RAG.
+Each CLI invocation runs one stage; crawling remains the default.
 
-## Tổng quan Pipeline
-
-```
-Websites / WordPress APIs
-        ↓
-[crawler/] → Cào BFS + WP REST API → 3,184 endpoints sạch + files gốc
-        ↓
-[validator/] → Xác thực Trailing Slash & Soft-404 → endpoints.txt
-        ↓
-[classifier/] → Phân loại 7 danh mục (Taxonomy) → endpoints_metadata.jsonl
-        ↓
-[extractor/] → Bóc tách HTML + PDF/DOCX/XLSX/TXT → data/processed_data/<domain>.jsonl
-        ↓
-[loader.py] → UETDataLoader (BaseDataCrawler) → List[RawData] cho các module RAG phía sau
+```text
+Faculty configuration → HTTP session → crawl → raw endpoint/file lists
+                                             ↓
+                          validate → classify → extract → processed JSONL
+                                                              ↓
+                                              UETDataLoader → chunking/indexing
 ```
 
-## Cấu trúc thư mục
+## Responsibilities
 
-```
-data/                                      # (bị ignore khỏi git, trừ data/doc.md)
-├── raw_data/<domain>/
-│   ├── endpoints/
-│   │   ├── endpoints.txt                  # URLs sạch đã thẩm định
-│   │   ├── endpoints_metadata.jsonl       # Metadata phân loại
-│   │   └── by_category/                   # URLs chia theo danh mục
-│   └── files/                             # Tài liệu tải về (.pdf, .docx...)
-└── processed_data/<domain>.jsonl          # Tài liệu sạch sau bóc tách (3,244 docs)
+- `config/faculties.py`: one faculty definition list, source identity, host/path scope,
+  and derived storage names.
+- `config/paths.py`: YAML paths, defaults, and environment overrides.
+- `config/ignore_rules.py`: URL exclusions, document/asset extensions, cloud hosts,
+  and tracking-query exclusions.
+- `config/session.py`: headers, timeouts, connection pooling, retry counts, and
+  scoped redirect handling.
+- `filters.py`: URL cleanup, endpoint validation, attachment/cloud filtering.
+- `crawler/crawl.py`: API discovery, bounded BFS, persistence, and target orchestration.
+  `scraper.py`, `wp_api.py`, and `downloader.py` own HTML link discovery, WordPress
+  pagination, and attachment downloads respectively.
+- `validator/validation.py`: soft-404 detection, slash recovery, endpoint-file
+  validation, and faculty iteration.
+- `classifier/taxonomy.py`: category definitions, patterns, priorities, and weights.
+  `scoring.py` owns title cleanup/fetching and classification; `classification.py`
+  persists metadata and category lists.
+- `extractor/`: cohesive HTML cleaning/extraction, document readers, date extraction,
+  cloud links, summary generation, and `pipeline.py` for incremental JSONL output.
+- `loader.py`: the `BaseDataCrawler` adapter for processed JSONL.
+  `manifest.py` retains the downstream deduplication/stage-tracking contract.
+- `main.py` and `__main__.py`: CLI dispatch and exit status.
 
-src/ingestion/
-├── __init__.py                            # Module 1 public API exports
-├── __main__.py                            # CLI entry point (python -m src.ingestion)
-├── main.py                                # CLI entry point (crawl/verify/classify/extract)
-├── loader.py                              # UETDataLoader: processed_data/*.jsonl -> RawData
-├── utils.py                               # Tiện ích dùng chung (clean_whitespace)
-├── filters.py                             # Bộ lọc URL, chuẩn hóa, kiểm tra cloud storage
-├── config/                                # Cấu hình module hóa (< 100 dòng/file)
-│   ├── paths.py                           # Thư mục, đường dẫn đọc từ config.yaml
-│   ├── constants.py                       # User-Agent, timeouts, đuôi file tài liệu/media
-│   ├── faculties.py                       # Danh sách 8 khoa/viện + UET portal, mapping unit
-│   ├── session.py                         # HTTP Session pooling với retry adapter
-│   └── __init__.py                        # Re-exports thống nhất
-├── crawler/                               # Bộ cào dữ liệu song song
-│   ├── downloader.py                      # Tải file streaming an toàn
-│   ├── wp_api.py                          # Quét WordPress REST API (posts/pages/media)
-│   ├── engine.py                          # Crawler engine BFS đa luồng
-│   └── __init__.py
-├── validator/                             # Thẩm định và sửa lỗi URLs
-│   ├── detector.py                        # Phát hiện soft-404, redirect, trailing slash
-│   ├── fixer.py                           # Tự động chuẩn hóa và cập nhật endpoints.txt
-│   └── __init__.py
-├── classifier/                            # Phân loại URL theo Taxonomy 7 danh mục
-│   ├── taxonomy.py                        # Định nghĩa Category enum, từ khóa, regex chuẩn
-│   ├── scoring.py                         # Thuật toán tính điểm weighted scoring
-│   ├── runner.py                          # Thực thi phân loại toàn bộ endpoints
-│   └── __init__.py
-├── extractor/                             # Bóc tách văn bản sạch và tóm tắt RAG
-│   ├── date_patterns.py                   # Regex ngày tháng, evergreen rules
-│   ├── date_extractor.py                  # Trích xuất thời gian công bố từ URL/HTML/file
-│   ├── html_cleaner.py                    # Trafilatura, cloud links preservation, markdown table
-│   ├── html_extractor.py                  # Trích xuất bài viết HTML hoàn chỉnh
-│   ├── doc_extractor.py                   # Trích xuất PDF, DOCX, XLSX, DOC, TXT
-│   ├── summary.py                         # Sinh tóm tắt ngữ cảnh [Domain | Title]
-│   ├── pipeline_helpers.py                # Canonical URL, băm ID, chống trùng lặp stub
-│   ├── pipeline.py                        # Điều phối trích xuất đa luồng ra JSONL
-│   └── __init__.py
-└── tests/                                 # 170 unit tests (pytest)
+## Faculty configuration and storage
+
+Add or change a source in `FACULTY_TARGETS`; every target has the same JSON-compatible
+fields: `faculty_id`, `name`, `domain`, `start_urls`, and `allowed_path_prefixes`.
+An empty path-prefix list permits the whole configured domain.
+
+IAI and UET both request `uet.vnu.edu.vn`. IAI is restricted to
+`/vien-tri-tue-nhan-tao/` and descendants, with path-segment boundaries checked after
+decoding and dot-path normalization. Scoped redirects are checked before following
+another URL. IAI does not scan global WordPress media; attachments come from its
+accepted pages. Institute news elsewhere on UET is intentionally outside this scope.
+
+Request hosts are independent of storage names. Existing layouts remain:
+
+```text
+data/raw_data/<storage-name>/endpoints/endpoints.txt
+data/raw_data/<storage-name>/endpoints/endpoints_metadata.jsonl
+data/raw_data/<storage-name>/endpoints/by_category/<category>.txt
+data/raw_data/<storage-name>/files/{files_list.txt,downloaded attachments}
+data/processed_data/<storage-name>.jsonl
 ```
 
-## Cài đặt và sử dụng (chạy từ thư mục gốc repo)
+Storage names derive from faculty IDs as `<lowercase-id>.uet.vnu.edu.vn`, with the
+historical UET name `uet.edu.vn`. IAI retains `iai.uet.vnu.edu.vn` as a storage name,
+which is not its request host. Custom single-domain crawls retain their host folder.
 
-### 1. Môi trường
+Processed records retain `id`, `source_type`, `source_url_or_path`, `title`, `domain`,
+`unit`, `category`, `published_date`, `summary`, `content`, `content_length`, and
+`cloud_links`. `domain` represents the real configured host; `unit` retains the
+faculty ID. Classification metadata additionally carries `faculty_id`.
+Chunk persistence groups known faculties by `unit` to preserve their existing
+filenames even when they share a domain. Unknown units keep the domain fallback.
+
+Cached records refresh attribution when extraction is run, without changing IDs.
+Out-of-scope cached HTML is excluded from scoped-source output. Existing datasets
+are not rewritten automatically; rerun extraction deliberately to refresh them.
+
+## Usage
+
+Use the existing Python 3.12 `.venv` and `uv`, from the repository root:
+
 ```bash
-uv venv .venv --python 3.12
-uv pip install -r requirements.txt
-source .venv/bin/activate
+uv run python -m src.ingestion --crawl
+uv run python -m src.ingestion --crawl --no-download
+uv run python -m src.ingestion --verify
+uv run python -m src.ingestion --classify
+uv run python -m src.ingestion --extract
+uv run python -m src.ingestion --extract --domain IAI
+uv run python -m src.ingestion --extract --domain fit.uet.vnu.edu.vn --force --workers 15
+uv run python -m src.ingestion --classify --domain uet.edu.vn --debug
+uv run python src/ingestion/loader.py
 ```
 
-### 2. Nạp dữ liệu cho RAG
+For classification/extraction, `--domain` accepts a faculty ID, storage name, or
+request host. Use `IAI` or its storage name to select the institute; the shared
+parent host alone selects UET. Existing stage precedence and default crawling are
+preserved. `--workers` must be positive; `--debug` enables per-request diagnostics.
+
+`paths.data_dir` and `paths.processed_dir` come from root `config.yaml`, with defaults
+`data/raw_data` and `data/processed_data`. `CHATBOT_DATA_DIR` and
+`CHATBOT_PROCESSED_DIR` override them, including for the loader. Missing configuration
+uses defaults; malformed YAML, mappings, or values warn and retain valid defaults.
+
+Normal logs show major stages, output locations, record counts, and elapsed time.
+Request/download failures retain successful results and produce an incomplete final
+status. The CLI exits with status 1 for failed or incomplete work, including missing
+stage inputs. Optional unavailable WordPress APIs fall back to HTML discovery;
+diagnostic details remain at DEBUG. HTTP retry counts, timeouts, and existing TLS
+verification behavior are preserved.
+
+## Verification
+
 ```bash
-python src/ingestion/loader.py
+uv run --offline python -m pytest src/ingestion/tests -v
+uv run --offline python -m pytest -q
+uv run --offline python -m compileall -q src/ingestion
 ```
 
-### 3. Chạy CLI thu thập / bóc tách
-```bash
-# Thu thập dữ liệu (Crawler)
-python -m src.ingestion --crawl
-python -m src.ingestion --crawl --no-download
-
-# Xác thực trailing slash (Validator)
-python -m src.ingestion --verify
-
-# Phân loại URL theo Taxonomy (Classifier)
-python -m src.ingestion --classify
-python -m src.ingestion --classify --domain fit.uet.vnu.edu.vn
-
-# Bóc tách văn bản sạch (Extractor)
-python -m src.ingestion --extract
-python -m src.ingestion --extract --domain fema.uet.vnu.edu.vn
-python -m src.ingestion --extract --force --workers 15
-```
-
-### 4. Chạy Tests
-```bash
-pytest src/ingestion/tests -v
-```
+The regression suite uses temporary data directories and mocked HTTP responses for
+scope, redirects, retries/session setup, attribution, persistence, partial failures,
+CLI status, and a crawl → validate → classify → extract → load → chunk integration.
+It does not prove live site availability. Existing collection/extraction format
+support remains unchanged; collection accepts more formats than the readers support.

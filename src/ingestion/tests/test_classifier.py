@@ -106,15 +106,15 @@ class TestConfig:
     """Kiểm tra cấu hình hệ thống."""
 
     def test_domain_folders_has_uet(self):
-        from src.ingestion.config import DOMAIN_FOLDERS
-        folders = [d["folder"] for d in DOMAIN_FOLDERS]
+        from src.ingestion.config import FACULTY_TARGETS, faculty_storage_name
+        folders = [faculty_storage_name(target["faculty_id"]) for target in FACULTY_TARGETS]
         assert "uet.edu.vn" in folders
 
     def test_domain_folders_has_all_faculties(self):
-        from src.ingestion.config import DOMAIN_FOLDERS, FACULTY_TARGETS
-        folders = [d["folder"] for d in DOMAIN_FOLDERS]
+        from src.ingestion.config import FACULTY_TARGETS, faculty_storage_name
+        folders = [faculty_storage_name(target["faculty_id"]) for target in FACULTY_TARGETS]
         for t in FACULTY_TARGETS:
-            assert t["domain"] in folders
+            assert faculty_storage_name(t["faculty_id"]) in folders
 
     def test_create_http_session_returns_session(self):
         import requests

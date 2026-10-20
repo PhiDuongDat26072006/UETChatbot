@@ -4,14 +4,15 @@ Sử dụng mã băm nội dung (SHA-256 Content Hashing) và lưu trữ trạng
 """
 
 from __future__ import annotations
-import json
+
 import hashlib
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from src.utils.helpers import get_logger
+from typing import Any, Dict, Optional
 
-logger = get_logger("manifest")
+logger = logging.getLogger(__name__)
 
 
 class DataManifestTracker:

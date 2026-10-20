@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import re
+
 from bs4 import BeautifulSoup
 
-from ..config import CLOUD_STORAGE_DOMAINS
+from ..config.ignore_rules import CLOUD_STORAGE_DOMAINS
 from ..filters import clean_url, is_cloud_storage_url
 from ..utils import clean_whitespace
-from .html_constants import GENERIC_LINK_TEXTS
+from .html_cleaner import GENERIC_LINK_TEXTS
 
 
 def extract_cloud_links(
