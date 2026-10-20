@@ -250,11 +250,11 @@ document.addEventListener("DOMContentLoaded", () => {
     function openSourceModal(source) {
         modalTitle.textContent = source.metadata?.title || source.metadata?.source || "Tài Liệu Quy Chế Đào Tạo";
         modalContent.textContent = source.text || "Không có nội dung trích xuất.";
-        
+
         const page = source.metadata?.page ? `Trang: ${source.metadata.page} | ` : "";
         const score = source.similarity_score ? `Độ tương đồng: ${(source.similarity_score * 100).toFixed(1)}%` : "";
         modalMeta.textContent = `${page}${score} | Nguồn: ${source.metadata?.file_path || "UET Portal"}`;
-        
+
         sourceModal.classList.add("active");
     }
 
