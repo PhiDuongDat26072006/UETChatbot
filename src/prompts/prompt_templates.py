@@ -41,7 +41,7 @@ Câu hỏi: "Ký túc xá Mễ Trì có bao nhiêu phòng?"
 Ngữ cảnh mẫu: "[Tài liệu: Hướng dẫn đăng ký tín chỉ UET]..."
 Câu trả lời mẫu:
 "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé."
-""""
+"""
 
 class UETPromptAugmenter(BasePromptAugmenter):
     """
