@@ -5,39 +5,53 @@ Nhiệm vụ: Thiết kế chỉ dẫn hệ thống (System Prompt) và kết h�
 """
 
 from __future__ import annotations
-import sys
-from pathlib import Path
 from typing import List, Optional
-
-_BASE_DIR = Path(__file__).resolve().parent.parent.parent
-if str(_BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(_BASE_DIR))
-
 from src.base import BasePromptAugmenter, UserQuery, RetrievedContext, AugmentedPrompt
 from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("prompts")
 
-# Mẫu System Prompt chuẩn mực cho UET Chatbot (Đồng bộ với config.yaml)
+# Mẫu System Prompt chuẩn mực cho UET Chatbot (Tối ưu hóa theo chuẩn Ragas / RAG Triad)
 DEFAULT_UET_SYSTEM_PROMPT = """
-Bạn là trợ lý ảo tư vấn quy chế đào tạo và học vụ của Trường Đại học Công nghệ - ĐHQGHN (UET Chatbot).
-Nhiệm vụ của bạn là giải đáp thắc mắc của sinh viên một cách chính xác, thân thiện, rõ ràng dựa trên các tài liệu quy chế được cung cấp.
+Bạn là trợ lý ảo AI tư vấn quy chế đào tạo và học vụ của Trường Đại học Công nghệ - ĐHQGHN (UET Chatbot).
+Nhiệm vụ của bạn là giải đáp thắc mắc của sinh viên một cách chính xác, trung thực, rõ ràng dựa trên các tài liệu quy chế được cung cấp.
 
-Quy tắc bắt buộc:
-1. Chỉ sử dụng thông tin có trong phần [NGỮ CẢNH ĐƯỢC CUNG CẤP] được trích xuất để trả lời.
-2. Nếu ngữ cảnh không có thông tin hoặc không đủ để trả lời câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự bịa đặt thông tin.
-3. Trả lời bằng tiếng Việt chuẩn mực, mạch lạc, có thể dùng gạch đầu dòng để làm rõ các điều kiện, tiêu chí.
-4. Cuối câu trả lời, hãy nêu rõ nguồn tài liệu tham khảo (Tên file, văn bản hoặc số quyết định) được trích xuất từ ngữ cảnh.
-"""
+=== QUY TẮC BẮT BUỘC (RAG GUARDRAILS ĐỂ ĐẠT CHỈ SỐ FAITHFULNESS & RELEVANCE TỐI ĐA) ===
+1. CHỈ SỬ DỤNG THÔNG TIN TRONG [NGỮ CẢNH ĐƯỢC CUNG CẤP]: Mọi khẳng định, điều kiện, số liệu (điểm GPA, số tín chỉ, mốc thời gian...) phải có căn cứ rõ ràng từ các tài liệu được trích xuất. Tuyệt đối không suy diễn, suy đoán hoặc bổ sung kiến thức ngoài tài liệu.
+2. NGUYÊN TẮC TRUNG THỰC (FAITHFULNESS): Nếu ngữ cảnh không có thông tin hoặc không đủ để khẳng định câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự bịa đặt thông tin.
+3. ĐÚNG TRỌNG TÂM & MẠCH LẠC (ANSWER RELEVANCE): Đi thẳng vào vấn đề sinh viên hỏi, không mở đầu rườm rà. Trình bày bằng tiếng Việt chuẩn mực, sử dụng gạch đầu dòng rõ ràng nếu có nhiều điều kiện hoặc bước thực hiện.
+4. NÊU RÕ VĂN BẢN CĂN CỨ (CITATION): Ở cuối câu trả lời, luôn ghi rõ: "Nguồn tham khảo: [Tên file / văn bản / số quyết định / trang được trích xuất từ ngữ cảnh]".
+""".strip()
 
+FEW_SHOT_EXAMPLES = """
+=== VÍ DỤ MINH HỌA VĂN PHONG VÀ CẤU TRÚC PHẢN HỒI CHUẨN ===
+Ví dụ 1 (Đầy đủ ngữ cảnh):
+Câu hỏi: "Sinh viên UET đạt những điều kiện gì thì được xét học bổng loại Giỏi?"
+Ngữ cảnh mẫu: "[Tài liệu: Quy chế xét học bổng UET] Học bổng loại Giỏi: Điểm GPA từ 3.20 đến 3.59 và điểm rèn luyện từ 80 đến 89 điểm. Không bị kỷ luật từ khiển trách trở lên."
+Câu trả lời mẫu:
+"Để được xét học bổng khuyến khích học tập loại Giỏi tại UET, em cần đáp ứng các điều kiện sau:
+• Điểm trung bình chung học tập (GPA): Đạt từ 3.20 đến 3.59.
+• Điểm rèn luyện: Đạt loại Tốt trở lên (từ 80 đến 89 điểm).
+• Kỷ luật: Không bị kỷ luật từ mức khiển trách trở lên và không có học phần bị điểm F trong học kỳ xét.
+
+Nguồn tham khảo: Quy chế xét học bổng UET."
+
+Ví dụ 2 (Không có thông tin trong ngữ cảnh / Ngoài phạm vi):
+Câu hỏi: "Ký túc xá Mễ Trì có bao nhiêu phòng?"
+Ngữ cảnh mẫu: "[Tài liệu: Hướng dẫn đăng ký tín chỉ UET]..."
+Câu trả lời mẫu:
+"Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé."
+""""
 
 class UETPromptAugmenter(BasePromptAugmenter):
     """
     Bộ ghép nối Prompt tăng cường cho UET Chatbot.
     Tự động đọc mẫu prompt từ config.yaml nếu không truyền trực tiếp.
+    Tích hợp Few-Shot Examples và RAG Guardrails để tối ưu hóa chỉ số Ragas.
     """
 
-    def __init__(self, system_prompt: Optional[str] = None):
+    def __init__(self, system_prompt: Optional[str] = None, include_few_shot: bool = True):
+        self.include_few_shot = include_few_shot
         if system_prompt:
             self.system_prompt = system_prompt.strip()
         else:
@@ -78,11 +92,25 @@ class UETPromptAugmenter(BasePromptAugmenter):
         """
         logger.info(f"Đang ghép prompt với {len(contexts)} đoạn ngữ cảnh cho query_id: {query.query_id}")
 
+        # =========================================================================
+        # TODO: THÀNH VIÊN PHỤ TRÁCH TỰ CÀI ĐẶT PHẦN NÀY:
+        # Gợi ý:
+        # 1. Định dạng các đoạn trích từ contexts:
+        #    `context_str = "\n\n".join([f"[Nguồn: {c.metadata.get('title', 'Tài liệu')}] {c.text}" for c in contexts])`
+        # 2. Xây dựng formatted_prompt kết hợp:
+        #    - System instruction
+        #    - Ngữ cảnh trích xuất
+        #    - Câu hỏi của người dùng
+        # 3. Trả về đối tượng `AugmentedPrompt(...)` theo định nghĩa trong base.py
+        # =========================================================================
+
         context_block = self.format_contexts(contexts)
+        few_shot_section = f"{FEW_SHOT_EXAMPLES}\n\n" if self.include_few_shot else ""
 
         formatted_prompt = (
             f"{self.system_prompt}\n\n"
-            f"=== NGỮ CẢNH ĐƯỢC CUNG CẤP===\n"
+            f"{few_shot_section}"
+            f"=== NGỮ CẢNH ĐƯỢC CUNG CẤP (TÀI LIỆU QUY CHẾ UET) ===\n"
             f"{context_block}\n"
             f"====================================================\n\n"
             f"CÂU HỎI CỦA NGƯỜI DÙNG: {query.query_text}\n\n"
