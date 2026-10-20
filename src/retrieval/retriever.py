@@ -85,72 +85,34 @@ class UETRetriever:
 
     def _sync_bm25_from_vector_store(self) -> int:
         """
-        Tự động nạp các chunks từ VectorStore vào BM25Index để sẵn sàng cho tìm kiếm từ khóa.
-        Hoạt động an toàn ngay cả khi kho dữ liệu rỗng hoặc chưa đầy đủ.
+        Nạp BM25Index từ file chỉ mục database/bm25_index.pkl.
+        Nếu không tìm thấy file, thông báo lỗi và yêu cầu chạy pipeline tạo chỉ mục, không fallback.
         """
-        chunks_to_index: List[DataChunk] = []
+        # Hỗ trợ mock / in-memory VectorStore trong Unit Test
+        if hasattr(self.vector_store, "_chunks") and not hasattr(self.vector_store, "collection"):
+            if self.vector_store._chunks:
+                return self.bm25_index.index_chunks(list(self.vector_store._chunks))
+            self.bm25_index.clear()
+            return 0
+
+        # Xác định đường dẫn file bm25_index.pkl
+        bm25_path = BASE_DIR / "database" / "bm25_index.pkl"
+
+        if not bm25_path or not bm25_path.exists():
+            logger.error(
+                f"Không tìm thấy file chỉ mục BM25 tại '{bm25_path}'. "
+                "Vui lòng chạy lệnh tạo chỉ mục: 'python main.py --ingest --from chunked --to indexed_data'."
+            )
+            return 0
 
         try:
-            # 1. Nếu VectorStore có thuộc tính collection của ChromaDB (như SmartVectorStore)
-            if hasattr(self.vector_store, "_chroma_col") and self.vector_store._chroma_col is not None:
-                chroma_col = self.vector_store._chroma_col
-                count = chroma_col.count()
-                if count > 0:
-                    records = chroma_col.get()
-                    docs = records.get("documents", [])
-                    ids = records.get("ids", [])
-                    metas = records.get("metadatas", [])
-                    for i in range(len(docs)):
-                        cid = ids[i] if i < len(ids) else f"chunk_{i}"
-                        doc_text = docs[i]
-                        meta = metas[i] if metas and i < len(metas) else {}
-                        chunks_to_index.append(
-                            DataChunk(
-                                chunk_id=cid,
-                                text=doc_text,
-                                metadata=meta or {},
-                            )
-                        )
-
-            # 2. Nếu VectorStore có danh sách _chunks nội bộ (in-memory hoặc mock)
-            elif hasattr(self.vector_store, "_chunks"):
-                if self.vector_store._chunks:
-                    chunks_to_index = list(self.vector_store._chunks)
-
-            # 3. Nếu VectorStore có persist_dir cụ thể và có chroma.sqlite3
-            elif hasattr(self.vector_store, "persist_dir") and getattr(self.vector_store, "persist_dir", None):
-                db_path = Path(self.vector_store.persist_dir)
-                if (db_path / "chroma.sqlite3").exists():
-                    import chromadb
-                    client = chromadb.PersistentClient(path=str(db_path))
-                    col_name = getattr(self.vector_store, "collection_name", "uet_knowledge_base")
-                    collections = [c.name for c in client.list_collections()]
-                    target_name = col_name if col_name in collections else (collections[0] if collections else None)
-                    if target_name:
-                        col = client.get_collection(target_name)
-                        rec = col.get()
-                        docs = rec.get("documents", [])
-                        ids = rec.get("ids", [])
-                        metas = rec.get("metadatas", [])
-                        for i in range(len(docs)):
-                            cid = ids[i] if i < len(ids) else f"chunk_{i}"
-                            chunks_to_index.append(
-                                DataChunk(
-                                    chunk_id=cid,
-                                    text=docs[i],
-                                    metadata=metas[i] if metas and i < len(metas) else {},
-                                )
-                            )
-
+            from src.indexing.sparse import BM25Index as SparseBM25Index
+            self.bm25_index = SparseBM25Index.load(bm25_path)
+            count = getattr(self.bm25_index, "count", lambda: len(getattr(self.bm25_index, "chunks", [])))()
+            logger.info(f"Đã nạp thành công {count} chunks vào BM25Index từ file '{bm25_path}'.")
+            return count
         except Exception as e:
-            logger.warning(f"Lưu ý khi đọc dữ liệu vector_store cho BM25 ({e}). Sẽ lập chỉ mục khi có dữ liệu mới.")
-
-        if chunks_to_index:
-            indexed_count = self.bm25_index.index_chunks(chunks_to_index)
-            logger.info(f"Đã tự động đồng bộ {indexed_count} chunks từ VectorStore sang BM25Index.")
-            return indexed_count
-        else:
-            logger.info("Kho dữ liệu hiện tại chưa có chunks sẵn. BM25Index đang ở trạng thái chờ.")
+            logger.error(f"Không tìm thấy/Lỗi khi đọc file chỉ mục BM25 '{bm25_path}': {e}")
             return 0
 
     def index_chunks(self, chunks: List[DataChunk]) -> int:

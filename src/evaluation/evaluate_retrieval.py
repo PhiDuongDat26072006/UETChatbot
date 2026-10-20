@@ -202,6 +202,7 @@ class RetrievalEvaluator:
         retriever: Any,
         top_k: int = 5,
         k_values: List[int] = [1, 3, 5, 10, 20],
+        dedup_documents: bool = True,
     ) -> Dict[str, Any]:
         """
         Đánh giá trực tiếp một instance Retriever (kế thừa BaseRetriever).
@@ -209,26 +210,54 @@ class RetrievalEvaluator:
         :param retriever: Đối tượng UETRetriever hoặc BaseRetriever
         :param top_k: Số lượng documents tối đa cần retrieve
         :param k_values: Các ngưỡng K
+        :param dedup_documents: Khử trùng lặp ở cấp độ Document ID (tránh các chunk cùng 1 tài liệu chiếm chỗ Top-K)
         """
         from src.base import UserQuery
 
         retrieval_results: Dict[str, List[str]] = {}
+        # Nếu khử trùng lặp cấp Document, lấy nhiều chunk hơn từ retriever để lọc ra đủ top_k documents duy nhất
+        query_top_k = max(top_k * 4, 25) if dedup_documents else top_k
+
         for i, query in enumerate(self.queries):
             qid = query["query_id"]
             user_query = UserQuery(query_text=query["query_text"])
             try:
-                contexts = retriever.retrieve(user_query, top_k=top_k)
-                # contexts có thể là List[RetrievedContext] hoặc danh sách dict
+                contexts = retriever.retrieve(user_query, top_k=query_top_k)
                 retrieved_ids = []
+                seen_doc_ids = set()
+
                 for c in contexts:
-                    if hasattr(c, "chunk_id"):
-                        retrieved_ids.append(c.chunk_id)
-                    elif hasattr(c, "id"):
-                        retrieved_ids.append(c.id)
+                    doc_id = None
+                    if hasattr(c, "metadata") and isinstance(c.metadata, dict):
+                        doc_id = c.metadata.get("document_id")
+                    elif isinstance(c, dict) and isinstance(c.get("metadata"), dict):
+                        doc_id = c["metadata"].get("document_id")
                     elif isinstance(c, dict):
-                        retrieved_ids.append(c.get("chunk_id", c.get("id", "")))
-                    elif isinstance(c, str):
-                        retrieved_ids.append(c)
+                        doc_id = c.get("document_id")
+
+                    if not doc_id:
+                        if hasattr(c, "chunk_id"):
+                            doc_id = c.chunk_id
+                        elif hasattr(c, "id"):
+                            doc_id = c.id
+                        elif isinstance(c, dict):
+                            doc_id = c.get("chunk_id", c.get("id", ""))
+                        elif isinstance(c, str):
+                            doc_id = c
+
+                    if doc_id:
+                        doc_id_str = str(doc_id)
+                        if dedup_documents:
+                            if doc_id_str not in seen_doc_ids:
+                                seen_doc_ids.add(doc_id_str)
+                                retrieved_ids.append(doc_id_str)
+                                if len(retrieved_ids) >= top_k:
+                                    break
+                        else:
+                            retrieved_ids.append(doc_id_str)
+                            if len(retrieved_ids) >= top_k:
+                                break
+
                 retrieval_results[qid] = retrieved_ids
             except Exception as e:
                 logger.error(f"Lỗi khi retrieve cho query {qid}: {e}")
@@ -238,6 +267,47 @@ class RetrievalEvaluator:
                 logger.info(f"Đã retrieve {i + 1}/{len(self.queries)} queries...")
 
         return self.evaluate_batch(retrieval_results, k_values=k_values)
+
+
+def run_eval_retrieval_cli(top_k: int = 5, eval_dir: Optional[str | Path] = None, dedup: bool = True):
+    """Chạy đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG) và hiển thị trên CLI."""
+    print("\n" + "=" * 65)
+    print("🔬 ĐANG CHẠY ĐÁNH GIÁ PHÂN HỆ TRUY XUẤT (RETRIEVAL EVALUATION)")
+    print("=" * 65)
+    from src.pipeline import get_retriever
+
+    if eval_dir is None:
+        eval_dir = PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"
+    else:
+        eval_dir = Path(eval_dir)
+
+    if not (eval_dir / "retrieval_eval_queries.json").exists():
+        print(f"❌ Không tìm thấy dữ liệu đánh giá tại: {eval_dir}")
+        return
+
+    evaluator = RetrievalEvaluator(eval_data_dir=eval_dir)
+    retriever = get_retriever()
+    eval_result = evaluator.evaluate_retriever(retriever, top_k=top_k, dedup_documents=dedup)
+
+    print("\n" + "=" * 65)
+    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL (TOP-K = {top_k})")
+    print("=" * 65)
+    agg = eval_result.get("aggregated_metrics", {})
+    summary = eval_result.get("summary", {})
+    print(f"Tổng số queries đánh giá: {summary.get('in_domain_queries', 0)} in-domain queries\n")
+    print(f"{'Metric':<20} {'K=1':<10} {'K=3':<10} {'K=5':<10} {'K=10':<10}")
+    print("-" * 65)
+    for m in ["precision", "recall", "ndcg", "hit_rate"]:
+        row = f"{m.replace('_', ' ').capitalize():<20}"
+        for k in [1, 3, 5, 10]:
+            val = agg.get(f"mean_{m}@{k}", 0.0)
+            row += f"{val:<10.4f}"
+        print(row)
+
+    print("-" * 65)
+    print(f"  • MRR (Mean Reciprocal Rank) : {agg.get('mean_mrr', 0.0):.4f}")
+    print(f"  • MAP (Mean Average Precision): {agg.get('mean_map', 0.0):.4f}")
+    print("=" * 65 + "\n")
 
 
 # ============================================================================
@@ -267,6 +337,11 @@ def main():
         default="mock",
         help="'mock' = test với ground truth, 'live' = gọi UETRetriever thật",
     )
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help="Tắt tính năng khử trùng lặp cấp Document (mặc định luôn khử trùng lặp)",
+    )
     args = parser.parse_args()
 
     print(f"\n{'='*70}")
@@ -275,6 +350,7 @@ def main():
     print(f"  Vị trí script: src/evaluation/evaluate_retrieval.py")
     print(f"  Mode:          {args.mode}")
     print(f"  Top-K:         {args.top_k}")
+    print(f"  Doc Dedup:     {not args.no_dedup}")
     print(f"  Eval dir:      {args.eval_dir}")
     print()
 
@@ -285,46 +361,32 @@ def main():
         retrieval_results: Dict[str, List[str]] = {}
         for query in evaluator.queries:
             qid = query["query_id"]
-            relevant = query.get("highly_relevant_doc_ids", []) + query.get("relevant_doc_ids", [])
+            # Lấy danh sách doc IDs liên quan (đảm bảo khử trùng lặp)
+            seen_ids = set()
+            relevant = []
+            for did in query.get("highly_relevant_doc_ids", []) + query.get("relevant_doc_ids", []):
+                if did not in seen_ids:
+                    seen_ids.add(did)
+                    relevant.append(did)
             retrieval_results[qid] = relevant[:args.top_k]
 
         eval_result = evaluator.evaluate_batch(retrieval_results, k_values=[1, 3, 5, 10, 20])
 
     elif args.mode == "live":
-        print("🚀 Đang khởi tạo UETRetriever từ src/retrieval/retriever.py...")
+        print("🚀 Đang khởi tạo UETRetriever từ src/pipeline.py...")
         try:
-            from src.retrieval.retriever import UETRetriever
-            from src.utils.helpers import load_yaml_config
+            from src.pipeline import get_retriever
 
-            config = load_yaml_config()
-            embedding_cfg = config.get("embedding", {})
-            provider = embedding_cfg.get("provider", "chroma_default")
-
-            if provider == "chroma_default":
-                from src.embedding.embedder import ChromaDefaultEmbedder
-                embedding_model = ChromaDefaultEmbedder()
-            else:
-                from src.embedding.embedder import GeminiEmbedder
-                embedding_model = GeminiEmbedder()
-
-            from src.vector_store.store import SmartVectorStore
-            vector_store = SmartVectorStore(
-                embedding_model=embedding_model,
-                persist_dir=config.get("paths", {}).get("vector_db_dir", "vector_db"),
-                collection_name=config.get("paths", {}).get("collection_name", "uet_knowledge_base"),
-            )
-
-            retriever = UETRetriever(
-                embedding_model=embedding_model,
-                vector_store=vector_store,
-                config=config,
-            )
+            retriever = get_retriever()
             print("  ✅ Khởi tạo UETRetriever thành công!")
-            eval_result = evaluator.evaluate_retriever(retriever, top_k=args.top_k)
+            eval_result = evaluator.evaluate_retriever(
+                retriever, top_k=args.top_k, dedup_documents=not args.no_dedup
+            )
 
         except Exception as e:
             print(f"❌ Không thể chạy live mode: {e}")
-            print("   Vui lòng kiểm tra vector_db và dependencies trước khi chạy live.")
+            import traceback
+            traceback.print_exc()
             return
 
     # In kết quả tổng hợp

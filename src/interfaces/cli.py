@@ -74,7 +74,7 @@ def run_cli():
                 table = Table(title="📊 Thống kê Hệ thống RAG UET")
                 table.add_column("Thông số", style="cyan")
                 table.add_column("Giá trị", style="green")
-                table.add_row("Cơ sở dữ liệu Vector", "ChromaDB (vector_db/)")
+                table.add_row("Cơ sở dữ liệu Vector", "ChromaDB (database/vector_db/)")
                 table.add_row("Số lượng văn bản đã lập chỉ mục", str(db_count))
                 table.add_row("Mô hình LLM", rag_pipeline.llm.model_name)
                 table.add_row("Số chiều Embedding", str(rag_pipeline.embedding_model.dimension))

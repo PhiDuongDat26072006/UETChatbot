@@ -1,274 +1,600 @@
 """
 src/pipeline.py - Bộ điều phối tổng thể (Pipeline Orchestrator) của UET Chatbot.
-Đây là nơi LẮP RÁP TOÀN BỘ CÁC MODULE trong src/ thành 2 cỗ máy hoàn chỉnh:
+Đây là nơi LẮP RÁP TOÀN BỘ CÁC PHÂN HỆ trong src/ thành 2 cỗ máy RAG hoàn chỉnh:
 1. UETIngestionPipeline (Offline): Cào dữ liệu -> Tiền xử lý -> Cắt chunk -> Embed -> Lưu vào Vector DB.
-2. UETRAGPipeline (Online): Nhận câu hỏi -> Tìm kiếm ngữ cảnh -> Ghép prompt -> Gọi LLM -> Trả lời.
+2. UETRAGPipeline (Online): Nhận câu hỏi -> Truy xuất ngữ cảnh (Hybrid RRF + Rerank) -> Ghép prompt -> Gọi LLM -> Trả lời.
 """
 
 from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from collections import defaultdict
+from urllib.parse import urlparse
+from typing import Any, Dict, Generator, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+# Base contracts
 from src.base import (
     BaseIngestionPipeline,
     BaseRAGPipeline,
-    DataSource,
-    UserQuery,
-    Response,
-    DataChunk,
-    RetrievedContext,
-    AugmentedPrompt,
+    BaseDataCrawler,
+    BasePreprocessor,
+    BaseChunker,
     BaseEmbeddingModel,
     BaseVectorStore,
     BasePromptAugmenter,
     BaseLLM,
+    DataSource,
+    RawData,
+    ProcessedData,
+    DataChunk,
+    RetrievedContext,
+    AugmentedPrompt,
+    UserQuery,
+    Response,
 )
-from src.utils.helpers import get_logger
+
+import json
+from src.utils.helpers import get_logger, Timer, load_yaml_config
+
+# Concrete modules from team branches
+from src.ingestion import UETDataLoader, clean_whitespace, DataManifestTracker
+from src.chunking import UETChunker
+from src.embeddings import UETEmbedder
+from src.vectordb import UETVectorStore
 from src.retrieval import UETRetriever
+from src.prompts import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
+from src.llm import UETLLMClient
+from src.indexing.chunks import load_chunks_from_dir
 
 logger = get_logger("pipeline")
 
 
 # =========================================================================
-# 1. CÁC THÀNH PHẦN HOẠT ĐỘNG THỰC TẾ (ACTIVE COMPONENTS)
+# 1. TIỀN XỬ LÝ DỮ LIỆU (PREPROCESSOR)
 # =========================================================================
 
-class SmartVectorStore(BaseVectorStore):
+class UETPreprocessor(BasePreprocessor):
     """
-    Vector Store thông minh quản lý cơ sở tri thức UET.
-    - Ưu tiên 1: Tự động kết nối tới ChromaDB thật tại vector_db/ (452+ vectors).
-    - Ưu tiên 2: Fallback về bộ nhớ đệm (in-memory) nếu chưa có dữ liệu vector_db/.
+    Quy trình tiền xử lý và làm sạch dữ liệu văn bản UET.
+    Chuyển đổi RawData thành ProcessedData: loại bỏ khoảng trắng thừa, chuẩn hóa tiêu đề và metadata.
     """
 
-    def __init__(self, persist_dir: Optional[Path] = None, collection_name: str = "uet_knowledge_base"):
-        self._chunks: List[DataChunk] = []
-        self.persist_dir = persist_dir or (BASE_DIR / "vector_db")
-        self.collection_name = collection_name
-        self._chroma_col = None
+    def process(self, raw: RawData) -> ProcessedData:
+        clean_text = clean_whitespace(raw.content)
+        title = (raw.title or "").strip()
+        if not title:
+            first_line = clean_text.split("\n")[0].strip() if clean_text else ""
+            title = first_line[:120] if first_line else "Tài liệu đào tạo UET"
 
-        if (self.persist_dir / "chroma.sqlite3").exists():
-            try:
-                import chromadb
-                import chromadb.utils.embedding_functions as ef
-                client = chromadb.PersistentClient(path=str(self.persist_dir))
-                fn = ef.DefaultEmbeddingFunction()
-                self._chroma_col = client.get_collection(self.collection_name, embedding_function=fn)
-                logger.info(f"Đã kết nối thành công ChromaDB tại '{self.persist_dir.name}' ({self._chroma_col.count()} vectors)")
-            except Exception as e:
-                logger.warning(f"Không thể khởi tạo ChromaDB ({e}), chuyển sang in-memory.")
+        metadata = dict(raw.raw_metadata or {})
+        metadata.setdefault("source_uri", raw.source_uri)
+        metadata.setdefault("title", title)
 
-    def store(self, chunks: List[DataChunk], vectors=None) -> int:
-        self._chunks.extend(chunks)
-        return len(chunks)
+        return ProcessedData(
+            raw_data_id=raw.id,
+            title=title,
+            content=clean_text,
+            metadata=metadata,
+        )
 
-    def search(self, query_vector, top_k: int = 4, filters=None) -> List[RetrievedContext]:
-        query_text = query_vector.query_text
 
-        # 1. Nếu có ChromaDB với dữ liệu thật, tra cứu ngữ nghĩa trực tiếp từ vector_db
-        if self._chroma_col is not None and self._chroma_col.count() > 0:
-            try:
-                res = self._chroma_col.query(query_texts=[query_text], n_results=top_k)
-                contexts = []
-                if res and res.get("documents") and len(res["documents"][0]) > 0:
-                    for i in range(len(res["documents"][0])):
-                        doc_text = res["documents"][0][i]
-                        meta = res["metadatas"][0][i] if res.get("metadatas") else {}
-                        cid = res["ids"][0][i] if res.get("ids") else f"chunk_{i}"
-                        dist = res["distances"][0][i] if res.get("distances") else 0.5
-                        score = round(max(0.1, 1.0 - (dist / 2.0)), 2)
+# =========================================================================
+# 2. CỖ MÁY OFFLINE: INGESTION PIPELINE
+# =========================================================================
 
-                        # Đảm bảo title hiển thị đẹp trên Web UI
-                        if "title" not in meta:
-                            meta["title"] = meta.get("source") or f"Tài liệu UET ({cid})"
+class UETIngestionPipeline(BaseIngestionPipeline):
+    """
+    [CỖ MÁY OFFLINE]: Nạp và lập chỉ mục dữ liệu đào tạo UET.
+    Điều phối luồng: Cào web/Đọc file -> Làm sạch -> Cắt chunk -> Embed -> Lưu vào Vector DB.
+    Hỗ trợ điều phối chặng linh hoạt (Multi-Stage Ingestion) và chống xử lý trùng lặp (Deduplication).
+    """
 
-                        contexts.append(
-                            RetrievedContext(
-                                chunk_id=cid,
-                                text=doc_text,
-                                similarity_score=score,
-                                rank=i + 1,
+    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data"]
+
+    def __init__(
+        self,
+        crawler: Optional[BaseDataCrawler] = None,
+        preprocessor: Optional[BasePreprocessor] = None,
+        chunker: Optional[BaseChunker] = None,
+        embedding_model: Optional[BaseEmbeddingModel] = None,
+        vector_store: Optional[BaseVectorStore] = None,
+        manifest: Optional[DataManifestTracker] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ):
+        cfg = config or load_yaml_config()
+        chunk_cfg = cfg.get("chunking", {})
+
+        # Nạp trực tiếp tham số từ config.yaml cho UETChunker
+        active_chunker = chunker or UETChunker(
+            chunk_size=chunk_cfg.get("chunk_size"),
+            chunk_overlap=chunk_cfg.get("chunk_overlap"),
+            separators=chunk_cfg.get("separators"),
+            config=cfg,
+        )
+
+        emb = embedding_model or UETEmbedder()
+        vs = vector_store or UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=emb)
+        super().__init__(
+            crawler=crawler or UETDataLoader(),
+            preprocessor=preprocessor or UETPreprocessor(),
+            chunker=active_chunker,
+            embedding_model=emb,
+            vector_store=vs,
+        )
+        self.config = cfg
+        self.manifest = manifest or DataManifestTracker(manifest_path=BASE_DIR / "data" / ".ingest_manifest.json")
+
+    def run(self, sources: List[DataSource], clear_existing: bool = False) -> Dict[str, Any]:
+        """
+        Thực thi quy trình lập chỉ mục toàn bộ dữ liệu nguồn.
+        """
+        logger.info(f"Bắt đầu quy trình Ingestion với {len(sources)} nguồn dữ liệu...")
+        with Timer() as timer:
+            from src.indexing import UETIndexer
+
+            raw_docs = self.crawler.crawl_all(sources)
+            processed_docs = self.preprocessor.process_batch(raw_docs)
+            chunks = self.chunker.chunk_batch(processed_docs)
+            indexed = UETIndexer(vector_store=self.vector_store,
+                                 embedding_model=self.embedding_model).index_chunks(
+                                     chunks, clear_existing=clear_existing)
+            result = {"status": indexed["status"], "sources_count": len(sources),
+                      "raw_docs_count": len(raw_docs), "processed_docs_count": len(processed_docs),
+                      "chunks_count": len(chunks), "saved_in_db": indexed["indexed_chunks"],
+                      "total_in_db": indexed["total_in_db"]}
+        result["latency_seconds"] = round(timer.elapsed, 2)
+        logger.info(
+            f"Hoàn thành Ingestion trong {result['latency_seconds']}s: "
+            f"{result['raw_docs_count']} văn bản thô -> {result['chunks_count']} chunks -> "
+            f"Tổng hiện có trong DB: {result['total_in_db']}"
+        )
+        return result
+
+    def _run_raw_to_processed(self) -> Dict[str, int]:
+        """Chuyển đổi dữ liệu từ raw -> processed."""
+        raw_dir = BASE_DIR / "data" / "raw_data"
+        processed_dir = BASE_DIR / "data" / "processed_data"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        out_file = processed_dir / "ingested_processed.jsonl"
+
+        raw_source = DataSource(source_type="directory", uri=str(raw_dir))
+        raw_docs = self.crawler.crawl(raw_source)
+
+        processed_count = 0
+        skipped_count = 0
+
+        with open(out_file, "a", encoding="utf-8") as f_out:
+            for raw in raw_docs:
+                doc_hash = DataManifestTracker.compute_hash(raw.content, raw.title)
+                if self.manifest.is_processed(raw.id, "processed", doc_hash):
+                    skipped_count += 1
+                    continue
+
+                proc = self.preprocessor.process(raw)
+                record = {
+                    "id": proc.id,
+                    "title": proc.title,
+                    "content": proc.content,
+                    "metadata": proc.metadata,
+                }
+                f_out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                self.manifest.mark_processed(raw.id, "processed", doc_hash, title=proc.title)
+                processed_count += 1
+
+        self.manifest.save()
+        return {"processed": processed_count, "skipped": skipped_count}
+
+    @staticmethod
+    def _extract_faculty_code(data: Dict[str, Any], meta: Dict[str, Any], file_path: Optional[Path] = None) -> str:
+        """
+        Trích xuất mã khoa chuẩn hóa (fit, fat, fce, fema, fepn, fet, iai, sae, uet...)
+        từ unit, domain, URL nguồn hoặc tên file.
+        """
+        # 1. Thử lấy từ unit (e.g. FIT, FAT, FEPN, FEMA, FET, SAE, IAI, FCE, UET...)
+        raw_unit = str(data.get("unit") or meta.get("unit") or meta.get("faculty") or "").strip().lower()
+        if raw_unit:
+            clean_unit = "".join(c for c in raw_unit if c.isalnum() or c in "_-")
+            if clean_unit:
+                return clean_unit
+
+        # 2. Thử lấy từ domain (e.g. fit.uet.vnu.edu.vn, uet.edu.vn...)
+        raw_domain = str(data.get("domain") or meta.get("domain") or "").strip().lower()
+        if raw_domain:
+            parts = raw_domain.split(".")
+            if "uet" in parts:
+                idx = parts.index("uet")
+                if idx > 0:
+                    candidate = parts[idx - 1]
+                    return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                return "uet"
+            elif parts and parts[0]:
+                return parts[0]
+
+        # 3. Thử trích xuất từ URL hoặc đường dẫn file cục bộ trong source
+        source = str(data.get("source_url_or_path") or meta.get("source") or "").strip()
+        if source:
+            if "://" in source:
+                try:
+                    parts = urlparse(source).netloc.lower().split(".")
+                    if "uet" in parts:
+                        idx = parts.index("uet")
+                        if idx > 0:
+                            candidate = parts[idx - 1]
+                            return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+                    elif parts and parts[0]:
+                        return parts[0]
+                except Exception:
+                    pass
+            for part in source.replace("\\", "/").split("/"):
+                if "uet." in part.lower():
+                    p_split = part.lower().split(".")
+                    if "uet" in p_split:
+                        idx = p_split.index("uet")
+                        if idx > 0:
+                            candidate = p_split[idx - 1]
+                            return p_split[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+
+        # 4. Thử lấy từ tên file đang đọc (ví dụ: fit.uet.vnu.edu.vn.jsonl -> fit)
+        if file_path is not None:
+            stem = file_path.stem.lower()
+            if "uet." in stem:
+                parts = stem.split(".")
+                if "uet" in parts:
+                    idx = parts.index("uet")
+                    if idx > 0:
+                        candidate = parts[idx - 1]
+                        return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                    return "uet"
+            elif stem and stem != "ingested_processed":
+                return stem
+
+        return "general"
+
+    def _run_processed_to_chunked(self) -> Dict[str, Any]:
+        """
+        Chuyển đổi dữ liệu từ processed -> chunked.
+        Phân loại và lưu chunks theo từng khoa vào các file riêng biệt:
+        data/chunked_data/{faculty}_chunks.jsonl (ví dụ: fit_chunks.jsonl, fat_chunks.jsonl...).
+        """
+        processed_dir = BASE_DIR / "data" / "processed_data"
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        chunked_dir.mkdir(parents=True, exist_ok=True)
+
+        jsonl_files = sorted(processed_dir.rglob("*.jsonl"))
+        processed_docs = 0
+        skipped_docs = 0
+        total_chunks = 0
+        chunks_by_faculty_count: Dict[str, int] = defaultdict(int)
+
+        file_handles: Dict[str, Any] = {}
+        try:
+            for jf in jsonl_files:
+                try:
+                    with open(jf, "r", encoding="utf-8") as f_in:
+                        for line in f_in:
+                            line = line.strip()
+                            if not line:
+                                continue
+
+                            data = json.loads(line)
+                            doc_id = str(data.get("id") or data.get("source_url_or_path") or "")
+                            content = data.get("content") or ""
+                            title = data.get("title") or ""
+                            doc_hash = DataManifestTracker.compute_hash(content, title)
+
+                            if self.manifest.is_processed(doc_id, "chunked", doc_hash):
+                                skipped_docs += 1
+                                continue
+
+                            meta = data.get("metadata") or {}
+                            if "source_url_or_path" in data and "source" not in meta:
+                                meta["source"] = data["source_url_or_path"]
+                            if title and "title" not in meta:
+                                meta["title"] = title
+                            if "domain" in data and "domain" not in meta:
+                                meta["domain"] = data["domain"]
+                            if "unit" in data and "unit" not in meta:
+                                meta["unit"] = data["unit"]
+                            if "category" in data and "category" not in meta:
+                                meta["category"] = data["category"]
+
+                            faculty_code = self._extract_faculty_code(data, meta, jf)
+                            meta["faculty"] = faculty_code
+
+                            proc_doc = ProcessedData(
+                                id=doc_id,
+                                title=title,
+                                content=content,
                                 metadata=meta,
                             )
+                            chunks = self.chunker.chunk(proc_doc)
+
+                            if faculty_code not in file_handles:
+                                out_file = chunked_dir / f"{faculty_code}_chunks.jsonl"
+                                file_handles[faculty_code] = open(out_file, "a", encoding="utf-8")
+
+                            f_out = file_handles[faculty_code]
+                            for c in chunks:
+                                c.metadata["faculty"] = faculty_code
+                                c_record = {
+                                    "chunk_id": c.chunk_id,
+                                    "document_id": c.document_id,
+                                    "text": c.text,
+                                    "chunk_index": c.chunk_index,
+                                    "metadata": c.metadata,
+                                }
+                                f_out.write(json.dumps(c_record, ensure_ascii=False) + "\n")
+                                total_chunks += 1
+                                chunks_by_faculty_count[faculty_code] += 1
+
+                            self.manifest.mark_processed(
+                                doc_id,
+                                "chunked",
+                                doc_hash,
+                                title=title,
+                                extra_meta={"chunk_count": len(chunks), "faculty": faculty_code},
+                            )
+                            processed_docs += 1
+                except Exception as err:
+                    logger.warning(f"Lỗi khi đọc file {jf}: {err}")
+        finally:
+            for fh in file_handles.values():
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+
+        self.manifest.save()
+        logger.info(
+            f"Hoàn thành bóc tách processed -> chunked: Đã tạo {total_chunks} chunks cho {processed_docs} tài liệu "
+            f"chia thành các file khoa: {dict(chunks_by_faculty_count)}."
+        )
+        return {
+            "processed_docs": processed_docs,
+            "skipped_docs": skipped_docs,
+            "chunks_created": total_chunks,
+            "faculties": dict(chunks_by_faculty_count),
+        }
+
+    def _run_chunked_to_vectordb(
+        self, batch_size: int = 500
+    ) -> Dict[str, int]:
+        """Chuyển đổi dữ liệu từ chunked -> vectordb (nhúng vector và lưu vào ChromaDB)."""
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        jsonl_files = sorted(chunked_dir.glob("*.jsonl"))
+
+        total_indexed = 0
+        skipped_chunks = 0
+        batch: List[DataChunk] = []
+
+        for jf in jsonl_files:
+            try:
+                with open(jf, "r", encoding="utf-8") as f_in:
+                    for line in f_in:
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        item = json.loads(line)
+                        cid = str(item.get("chunk_id") or "")
+                        text = item.get("text") or ""
+                        doc_id = item.get("document_id")
+                        c_idx = item.get("chunk_index", 0)
+                        meta = item.get("metadata") or {}
+
+                        if self.manifest.is_processed(cid, "vectordb"):
+                            skipped_chunks += 1
+                            continue
+
+                        chunk_obj = DataChunk(
+                            chunk_id=cid,
+                            document_id=doc_id,
+                            text=text,
+                            chunk_index=c_idx,
+                            metadata=meta,
                         )
-                    return contexts
+                        batch.append(chunk_obj)
+
+                        if len(batch) >= batch_size:
+                            vectors = self.embedding_model.embed_chunks(batch)
+                            self.vector_store.store(batch, vectors)
+                            for c in batch:
+                                self.manifest.mark_processed(c.chunk_id, "vectordb", content_hash=c.chunk_id)
+                            total_indexed += len(batch)
+                            logger.info(f"Đã nhúng & lưu {total_indexed} chunks vào Vector DB...")
+                            batch.clear()
             except Exception as err:
-                logger.error(f"Lỗi tra cứu ChromaDB: {err}. Chuyển sang tìm kiếm in-memory.")
+                logger.warning(f"Lỗi khi xử lý file chunk {jf}: {err}")
 
-        # 2. Fallback: Tìm kiếm trên bộ nhớ đệm mẫu
-        query_words = set(query_text.lower().replace("?", "").replace(",", "").replace(".", "").split())
-        scored_chunks = []
-        for chunk in self._chunks:
-            chunk_text_lower = chunk.text.lower()
-            title_lower = chunk.metadata.get("title", "").lower()
-            
-            match_content = sum(1 for w in query_words if len(w) > 1 and w in chunk_text_lower)
-            match_title = sum(2 for w in query_words if len(w) > 1 and w in title_lower)
-            total_matches = match_content + match_title
+        if batch:
+            vectors = self.embedding_model.embed_chunks(batch)
+            self.vector_store.store(batch, vectors)
+            for c in batch:
+                self.manifest.mark_processed(c.chunk_id, "vectordb", content_hash=c.chunk_id)
+            total_indexed += len(batch)
+            batch.clear()
 
-            score = round(min(0.98, max(0.45, (total_matches / max(1, len(query_words))) * 1.5)), 2)
-            if total_matches > 0:
-                scored_chunks.append((score, chunk))
+        self.manifest.save()
+        return {"chunks_indexed": total_indexed, "skipped_chunks": skipped_chunks, "total_in_db": self.vector_store.count()}
 
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        if not scored_chunks:
-            scored_chunks = [(0.50, c) for c in self._chunks[:top_k]]
+    def _run_chunked_to_indexed_data(self) -> Dict[str, Any]:
+        """
+        Lập chỉ mục BM25 trực tiếp từ data/chunked_data/*.jsonl và lưu ra database/bm25_index.pkl.
+        Được thực hiện bởi phân hệ Lập chỉ mục (src.indexing), tách biệt hoàn toàn khỏi phân hệ Retrieval.
+        """
+        from src.indexing.chunks import load_chunks_from_dir
+        from src.indexing.sparse import BM25Index
 
-        results = []
-        for rank, (score, chunk) in enumerate(scored_chunks[:top_k], 1):
-            results.append(
-                RetrievedContext(
-                    chunk_id=chunk.chunk_id,
-                    text=chunk.text,
-                    similarity_score=score,
-                    rank=rank,
-                    metadata=chunk.metadata,
-                )
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        chunks = load_chunks_from_dir(chunked_dir)
+
+        bm25 = BM25Index(chunks)
+        out_path = BASE_DIR / "database" / "bm25_index.pkl"
+        bm25.save(out_path)
+
+        for chunk in chunks:
+            self.manifest.mark_processed(
+                chunk.chunk_id,
+                "indexed_data",
+                content_hash=self.manifest.compute_hash(chunk.text),
             )
+        self.manifest.save()
+
+        return {
+            "chunks_indexed": bm25.count(),
+            "sparse_file": str(out_path),
+            "status": "success",
+        }
+
+    def run_stages(
+        self,
+        from_stage: str = "raw",
+        to_stage: str = "vectordb",
+        batch_size: int = 500,
+    ) -> Dict[str, Any]:
+        """
+        Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
+        Tự động điều phối các bước trung gian hợp lệ:
+        - Tuyến Vector DB: raw -> processed -> chunked -> vectordb
+        - Tuyến Sparse Index: raw -> processed -> chunked -> indexed_data
+        """
+        from_stage = from_stage.lower().strip()
+        to_stage = to_stage.lower().strip()
+
+        if from_stage not in self.STAGES or to_stage not in self.STAGES:
+            raise ValueError(
+                f"Giai đoạn không hợp lệ. Các giai đoạn được hỗ trợ: {self.STAGES}. "
+                f"Nhận được: from='{from_stage}', to='{to_stage}'"
+            )
+
+        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3}
+        if stage_order[from_stage] >= stage_order[to_stage]:
+            raise ValueError(
+                f"from_stage '{from_stage}' phải đứng trước to_stage '{to_stage}'. "
+                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data"
+            )
+
+        results: Dict[str, Any] = {
+            "from_stage": from_stage,
+            "to_stage": to_stage,
+            "transitions": {},
+        }
+
+        with Timer() as timer:
+            # Chặng 1: raw -> processed
+            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb", "indexed_data"]:
+                logger.info("▶ BẮT ĐẦU CHẶNG: raw -> processed")
+                res_1 = self._run_raw_to_processed()
+                results["transitions"]["raw_to_processed"] = res_1
+                logger.info(f"✔ Hoàn thành raw -> processed: {res_1}")
+
+            # Chặng 2: processed -> chunked
+            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb", "indexed_data"]:
+                logger.info("▶ BẮT ĐẦU CHẶNG: processed -> chunked")
+                res_2 = self._run_processed_to_chunked()
+                results["transitions"]["processed_to_chunked"] = res_2
+                logger.info(f"✔ Hoàn thành processed -> chunked: {res_2}")
+
+            # Chặng 3a: chunked -> vectordb
+            if from_stage in ["raw", "processed", "chunked"] and to_stage == "vectordb":
+                logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> vectordb")
+                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size)
+                results["transitions"]["chunked_to_vectordb"] = res_3
+                logger.info(f"✔ Hoàn thành chunked -> vectordb: {res_3}")
+
+            # Chặng 3b: chunked -> indexed_data
+            if from_stage in ["raw", "processed", "chunked"] and to_stage == "indexed_data":
+                logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> indexed_data (BM25 Sparse Index)")
+                res_4 = self._run_chunked_to_indexed_data()
+                results["transitions"]["chunked_to_indexed_data"] = res_4
+                logger.info(f"✔ Hoàn thành chunked -> indexed_data: {res_4}")
+
+        results["latency_seconds"] = round(timer.elapsed, 2)
+        logger.info(f"Hoàn thành toàn bộ tiến trình từ '{from_stage}' đến '{to_stage}' trong {results['latency_seconds']}s")
         return results
 
-    def count(self) -> int:
-        if self._chroma_col is not None:
-            return self._chroma_col.count()
-        return len(self._chunks)
+    def get_stage_stats(self) -> Dict[str, Any]:
+        """Thống kê tổng số lượng dữ liệu hiện có ở từng giai đoạn."""
+        raw_dir = BASE_DIR / "data" / "raw_data"
+        processed_dir = BASE_DIR / "data" / "processed_data"
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        bm25_file = BASE_DIR / "database" / "bm25_index.pkl"
 
-    def clear(self) -> None:
-        self._chunks.clear()
+        raw_files = len(list(raw_dir.rglob("*.*"))) if raw_dir.exists() else 0
 
-
-class GeminiLLM(BaseLLM):
-    """Gọi trực tiếp Google Gemini API để sinh câu trả lời RAG thông minh."""
-
-    CANDIDATE_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]
-
-    def __init__(self, model_name: str = "gemini-3.8-flash"):
-        self._model_name = model_name
-        self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
-        self._client = None
-        if self.api_key:
-            try:
-                from google import genai
-                self._client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.error(f"Lỗi khởi tạo Gemini Client: {e}")
-
-    @property
-    def model_name(self) -> str:
-        return self._model_name
-
-    def generate(self, prompt: AugmentedPrompt) -> Response:
-        if self._client:
-            system_instruction = (
-                "Bạn là Trợ lý AI Tư vấn Quy chế Đào tạo và Học vụ của Trường Đại học Công nghệ - ĐHQGHN (UET).\n"
-                "Nhiệm vụ: Dựa VÀO CÁC ĐOẠN NGỮ CẢNH CĂN CỨ dưới đây để giải đáp chính xác, tự nhiên, lịch sự câu hỏi của sinh viên.\n"
-                "Yêu cầu:\n"
-                "- Trả lời đúng trọng tâm câu hỏi, dùng gạch đầu dòng rõ ràng nếu có nhiều điều kiện.\n"
-                "- Nêu rõ tên văn bản hoặc điều khoản căn cứ trích từ ngữ cảnh.\n"
-                "- Nếu ngữ cảnh không có thông tin về câu hỏi, hãy thẳng thắn thông báo chưa có thông tin trong tài liệu hiện tại và hướng dẫn sinh viên liên hệ phòng Đào tạo."
-            )
-            
-            context_block = "\n\n".join([
-                f"--- [TÀI LIỆU: {c.metadata.get('title', 'Quy chế UET')}] ---\n{c.text}"
-                for c in prompt.contexts
-            ])
-            
-            full_contents = (
-                f"{system_instruction}\n\n"
-                f"NGỮ CẢNH CĂN CỨ:\n{context_block}\n\n"
-                f"CÂU HỎI CỦA SINH VIÊN: {prompt.user_query.query_text}\n"
-                f"CÂU TRẢ LỜI CỦA BẠN:"
-            )
-
-            for m in self.CANDIDATE_MODELS:
+        proc_docs = 0
+        if processed_dir.exists():
+            for f in processed_dir.rglob("*.jsonl"):
                 try:
-                    res = self._client.models.generate_content(
-                        model=m,
-                        contents=full_contents,
-                    )
-                    if res and res.text:
-                        return Response(
-                            query_id=prompt.user_query.query_id,
-                            answer=res.text.strip(),
-                            sources=prompt.contexts,
-                            model_name=m,
-                        )
-                except Exception as e:
-                    logger.warning(f"Model {m} chưa phản hồi ({e}), thử model tiếp theo...")
+                    with open(f, encoding="utf-8") as fp:
+                        proc_docs += sum(1 for line in fp if line.strip())
+                except Exception:
+                    pass
 
-        # Fallback nếu không có mạng hoặc chưa cấu hình API key
-        context_preview = "\n".join([f"- {c.text}" for c in prompt.contexts[:2]])
-        return Response(
-            query_id=prompt.user_query.query_id,
-            answer=(
-                f"Dựa trên các văn bản quy chế đào tạo UET được tra cứu:\n\n"
-                f"{context_preview}\n\n"
-                f"*(Lưu ý: Để kích hoạt phản hồi tổng hợp thông minh từ AI, vui lòng kiểm tra GEMINI_API_KEY trong file .env)*"
-            ),
-            sources=prompt.contexts,
-            model_name="fallback-local",
-        )
+        chunk_count = 0
+        if chunked_dir.exists():
+            for f in chunked_dir.glob("*.jsonl"):
+                try:
+                    with open(f, encoding="utf-8") as fp:
+                        chunk_count += sum(1 for line in fp if line.strip())
+                except Exception:
+                    pass
 
+        db_count = self.vector_store.count()
+        bm25_exists = bm25_file.exists()
+        bm25_size_mb = round(bm25_file.stat().st_size / (1024 * 1024), 2) if bm25_exists else 0.0
 
-class SimplePromptAugmenter(BasePromptAugmenter):
-    """Ghép ngữ cảnh và câu hỏi vào mẫu prompt hoàn chỉnh."""
-
-    def augment(self, query: UserQuery, contexts: List[RetrievedContext]) -> AugmentedPrompt:
-        context_str = "\n".join([f"- {c.text}" for c in contexts])
-        system_instruction = "Bạn là trợ lý AI tư vấn quy chế đào tạo UET."
-        formatted = f"{system_instruction}\n\nNgữ cảnh:\n{context_str}\n\nCâu hỏi: {query.query_text}\nTrả lời:"
-        return AugmentedPrompt(
-            user_query=query,
-            contexts=contexts,
-            system_instruction=system_instruction,
-            formatted_prompt=formatted,
-        )
-
-
-class SimpleEmbeddingModel(BaseEmbeddingModel):
-    """Mô hình nhúng phục vụ tìm kiếm."""
-
-    @property
-    def dimension(self) -> int:
-        return 384
-
-    @property
-    def model_name(self) -> str:
-        return "simple-embedding"
-
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        return [[0.1, 0.2, 0.3] for _ in texts]
+        return {
+            "stages": {
+                "raw": {"path": str(raw_dir.relative_to(BASE_DIR)), "file_count": raw_files},
+                "processed": {"path": str(processed_dir.relative_to(BASE_DIR)), "document_count": proc_docs},
+                "chunked": {"path": str(chunked_dir.relative_to(BASE_DIR)), "chunk_count": chunk_count},
+                "vectordb": {"path": "database/vector_db", "vector_count": db_count},
+                "indexed_data": {"path": "database/bm25_index.pkl", "exists": bm25_exists, "size_mb": bm25_size_mb},
+            },
+            "manifest_tracking": self.manifest.get_stats(),
+        }
 
 
 # =========================================================================
-# 2. CÁC PIPELINE ĐIỀU PHỐI CHÍNH THỨC CỦA DỰ ÁN
+# 3. CỖ MÁY ONLINE: RAG PIPELINE
 # =========================================================================
 
 class UETRAGPipeline(BaseRAGPipeline):
     """
     [CỖ MÁY ONLINE]: Phục vụ Chatbot tra cứu thông tin học vụ.
-    Điều phối luồng: Nhận câu hỏi -> Truy xuất ngữ cảnh (UETRetriever: BM25 + Vector -> Hybrid RRF -> Rerank -> Top-K) -> Ghép prompt -> Gọi LLM -> Trả lời.
+    Điều phối luồng: Nhận câu hỏi -> Truy xuất ngữ cảnh (UETRetriever: BM25 + Vector -> Hybrid RRF -> Rerank -> Top-K)
+                   -> Ghép prompt (UETPromptAugmenter) -> Gọi LLM (UETLLMClient) -> Trả lời.
     """
 
     def __init__(
         self,
-        embedding_model: BaseEmbeddingModel,
-        vector_store: BaseVectorStore,
-        prompt_augmenter: BasePromptAugmenter,
-        llm: BaseLLM,
+        embedding_model: Optional[BaseEmbeddingModel] = None,
+        vector_store: Optional[BaseVectorStore] = None,
+        prompt_augmenter: Optional[BasePromptAugmenter] = None,
+        llm: Optional[BaseLLM] = None,
         retriever: Optional[UETRetriever] = None,
     ):
+        emb = embedding_model or UETEmbedder()
+        vs = vector_store or UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=emb)
+        pa = prompt_augmenter or UETPromptAugmenter()
+        client_llm = llm or UETLLMClient()
+
         super().__init__(
-            embedding_model=embedding_model,
-            vector_store=vector_store,
-            prompt_augmenter=prompt_augmenter,
-            llm=llm,
+            embedding_model=emb,
+            vector_store=vs,
+            prompt_augmenter=pa,
+            llm=client_llm,
         )
-        # Tích hợp UETRetriever (Task 5) điều phối quy trình BM25 + Vector + Hybrid RRF + Rerank
+
+        # UETRetriever điều phối quy trình BM25 + Vector + Hybrid RRF + Reranker
         self.retriever = retriever or UETRetriever(
             embedding_model=self.embedding_model,
             vector_store=self.vector_store,
@@ -277,33 +603,43 @@ class UETRAGPipeline(BaseRAGPipeline):
     def query(self, query: UserQuery, top_k: int = 5) -> Response:
         """
         Thực thi quy trình trả lời câu hỏi:
-        1. Gọi UETRetriever (Task 5): BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K (5 chunks)
+        1. Gọi UETRetriever: BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K
         2. Ghép ngữ cảnh vào Prompt (AugmentedPrompt) theo chuẩn BaseRAGPipeline
         3. Gọi LLM sinh câu trả lời
         """
-        # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever (phân hệ Task 5)
+        with Timer() as timer:
+            # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever
+            contexts = self.retriever.retrieve(
+                query=query,
+                top_k=top_k,
+                filters=query.filters,
+            )
+
+            # Bước 2 & 3: Ghép prompt và gọi LLM
+            augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
+            response = self.llm.generate(augmented_prompt)
+
+        response.latency_seconds = round(timer.elapsed, 3)
+        return response
+
+    def query_stream(self, query: UserQuery, top_k: int = 5) -> Generator[str, None, None]:
+        """
+        Sinh phản hồi dạng luồng (streaming) cho giao diện Web/Chatbot.
+        """
         contexts = self.retriever.retrieve(
             query=query,
             top_k=top_k,
             filters=query.filters,
         )
-
-        # Bước 2 & 3: Giữ nguyên vẹn hợp đồng luồng xử lý chuẩn của BaseRAGPipeline
         augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
-        response = self.llm.generate(augmented_prompt)
-        return response
+        yield from self.llm.generate_stream(augmented_prompt)
 
+# =========================================================================
+# 4. KHỞI TẠO PIPELINES (FACTORY & SINGLETON)
+# =========================================================================
 
-class UETIngestionPipeline(BaseIngestionPipeline):
-    """
-    [CỖ MÁY OFFLINE]: Nạp và lập chỉ mục dữ liệu đào tạo UET.
-    Điều phối luồng: Cào web/Đọc file -> Làm sạch -> Cắt chunk -> Embed -> Lưu vào Vector DB.
-    """
-    pass
-
-
-# Quản lý Singleton Pipeline đang hoạt động
-_active_rag_pipeline: UETRAGPipeline | None = None
+_active_rag_pipeline: Optional[UETRAGPipeline] = None
+_active_ingestion_pipeline: Optional[UETIngestionPipeline] = None
 
 
 def get_rag_pipeline() -> UETRAGPipeline:
@@ -312,11 +648,12 @@ def get_rag_pipeline() -> UETRAGPipeline:
     if _active_rag_pipeline is not None:
         return _active_rag_pipeline
 
-    vector_store = SmartVectorStore(persist_dir=BASE_DIR / "vector_db", collection_name="uet_knowledge_base")
-    
-    # Nếu ChromaDB chưa có dữ liệu hoặc chạy trên máy mới chưa có vector_db/, nạp 5 chunk dự phòng
+    embedding_model = UETEmbedder()
+    vector_store = UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=embedding_model)
+
+    # Nếu ChromaDB chưa có dữ liệu hoặc chạy lần đầu, nạp 5 chunk quy chế mẫu dự phòng
     if vector_store.count() == 0:
-        logger.info("Chưa có cơ sở dữ liệu vector_db/, nạp 5 chunk quy chế mẫu dự phòng...!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        logger.info("Chưa có cơ sở dữ liệu database/vector_db/, nạp 5 chunk quy chế mẫu dự phòng...")
         initial_chunks = [
             DataChunk(
                 text="Điều kiện để sinh viên được xét công nhận tốt nghiệp đại học tại UET:\n"
@@ -363,32 +700,114 @@ def get_rag_pipeline() -> UETRAGPipeline:
         ]
         vector_store.store(initial_chunks)
     else:
-        logger.info(f"ĐÃ KẾT NỐI VÀ SỬ DỤNG {vector_store.count()} VECTORS THỰC TẾ TỪ vector_db/")
+        logger.info(f"Đã kết nối và sử dụng {vector_store.count()} vectors thực tế từ database/vector_db/")
+
+    prompt_augmenter = UETPromptAugmenter()
+    llm = UETLLMClient()
+    retriever = UETRetriever(embedding_model=embedding_model, vector_store=vector_store)
 
     _active_rag_pipeline = UETRAGPipeline(
-        embedding_model=SimpleEmbeddingModel(),
+        embedding_model=embedding_model,
         vector_store=vector_store,
-        prompt_augmenter=SimplePromptAugmenter(),
-        llm=GeminiLLM(),
+        prompt_augmenter=prompt_augmenter,
+        llm=llm,
+        retriever=retriever,
     )
-    logger.info("Khởi tạo thành công UETRAGPipeline chính thức trong src/pipeline.py")
+    logger.info("Khởi tạo thành công UETRAGPipeline tích hợp đầy đủ trong src/pipeline.py")
     return _active_rag_pipeline
+
+
+def get_ingestion_pipeline() -> UETIngestionPipeline:
+    """Khởi tạo hoặc lấy Ingestion Pipeline đang hoạt động."""
+    global _active_ingestion_pipeline
+    if _active_ingestion_pipeline is not None:
+        return _active_ingestion_pipeline
+
+    _active_ingestion_pipeline = UETIngestionPipeline()
+    return _active_ingestion_pipeline
 
 
 def get_retriever() -> UETRetriever:
     """
-    [Phân hệ Retrieval - Task 5]: Khởi tạo và cung cấp UETRetriever điều phối tìm kiếm đa tầng.
+    [Phân hệ Retrieval]: Khởi tạo và cung cấp UETRetriever điều phối tìm kiếm đa tầng.
     """
-    vector_store = SmartVectorStore(persist_dir=BASE_DIR / "vector_db", collection_name="uet_knowledge_base")
+    embedding_model = UETEmbedder()
+    vector_store = UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=embedding_model)
     return UETRetriever(
-        embedding_model=SimpleEmbeddingModel(),
+        embedding_model=embedding_model,
         vector_store=vector_store,
     )
 
 
+def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
+    """Khởi chạy quy trình điều phối và nạp dữ liệu đa chặng với báo cáo kết quả trên terminal."""
+    print("\n" + "=" * 65)
+    print(f"📦 BẮT ĐẦU ĐIỀU PHỐI DỮ LIỆU ĐA CHẶNG: [{from_stage.upper()}] ──> [{to_stage.upper()}]")
+    print("=" * 65)
+
+    pipeline = get_ingestion_pipeline()
+    try:
+        res = pipeline.run_stages(from_stage=from_stage, to_stage=to_stage)
+    except Exception as e:
+        print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
+        return
+
+    print("\n" + "=" * 65)
+    print("📊 BÁO CÁO KẾT QUẢ ĐIỀU PHỐI DỮ LIỆU (INGESTION REPORT)")
+    print("=" * 65)
+    transitions = res.get("transitions", {})
+    if "raw_to_processed" in transitions:
+        t = transitions["raw_to_processed"]
+        print(f"  • Chặng [raw ──> processed]    : {t.get('processed', 0)} đã xử lý, {t.get('skipped', 0)} bỏ qua (trùng lặp)")
+    if "processed_to_chunked" in transitions:
+        t = transitions["processed_to_chunked"]
+        faculties = t.get("faculties", {})
+        faculties_str = f" ({len(faculties)} file khoa: {', '.join(faculties.keys())})" if faculties else ""
+        print(f"  • Chặng [processed ──> chunked]: {t.get('processed_docs', 0)} tài liệu bóc tách -> {t.get('chunks_created', 0)} chunks mới{faculties_str}, {t.get('skipped_docs', 0)} bỏ qua")
+    if "chunked_to_vectordb" in transitions:
+        t = transitions["chunked_to_vectordb"]
+        print(f"  • Chặng [chunked ──> vectordb]     : {t.get('chunks_indexed', 0)} chunks nhúng mới, {t.get('skipped_chunks', 0)} bỏ qua (đã có trong DB)")
+        print(f"    Tổng số vectors hiện có trong ChromaDB: {t.get('total_in_db', 0)}")
+    if "chunked_to_indexed_data" in transitions:
+        t = transitions["chunked_to_indexed_data"]
+        print(f"  • Chặng [chunked ──> indexed_data] : {t.get('chunks_indexed', 0)} chunks đã lập chỉ mục BM25")
+        print(f"    File lưu trữ BM25 index: {t.get('sparse_file')}")
+
+    print(f"\n⏱️  Tổng thời gian thực thi: {res.get('latency_seconds', 0)}s")
+    print("=" * 65 + "\n")
+
+
+def run_ingest_status_cli():
+    """Xem báo cáo thống kê số lượng dữ liệu ở từng chặng hiển thị trên terminal."""
+    pipeline = get_ingestion_pipeline()
+    stats = pipeline.get_stage_stats()
+    stages = stats.get("stages", {})
+    manifest = stats.get("manifest_tracking", {})
+
+    print("\n" + "=" * 65)
+    print("📊 THỐNG KÊ TRẠNG THÁI DỮ LIỆU CÁC CHẶNG (INGESTION STAGES)")
+    print("=" * 65)
+    print(f"  1. Giai đoạn [RAW]         : {stages.get('raw', {}).get('file_count', 0)} tệp/thư mục ({stages.get('raw', {}).get('path')})")
+    print(f"  2. Giai đoạn [PROCESSED]   : {stages.get('processed', {}).get('document_count', 0)} tài liệu sạch ({stages.get('processed', {}).get('path')})")
+    print(f"  3. Giai đoạn [CHUNKED]     : {stages.get('chunked', {}).get('chunk_count', 0)} chunks ({stages.get('chunked', {}).get('path')})")
+    print(f"  4. Giai đoạn [VECTORDB]    : {stages.get('vectordb', {}).get('vector_count', 0)} vectors ({stages.get('vectordb', {}).get('path')})")
+    idx_info = stages.get("indexed_data", {})
+    status_str = f"Sẵn sàng ({idx_info.get('size_mb')} MB)" if idx_info.get("exists") else "Chưa tạo"
+    print(f"  5. Giai đoạn [INDEXED_DATA]: {status_str} ({idx_info.get('path')})")
+
+    print("\n📋 Sổ cái theo dõi chống trùng lặp (Manifest Tracker):")
+    print(f"  • Tổng tài liệu đang theo dõi : {manifest.get('total_tracked_documents', 0)}")
+    comp = manifest.get("stages_completed", {})
+    print(f"  • Hoàn thành chặng processed  : {comp.get('processed', 0)}")
+    print(f"  • Hoàn thành chặng chunked    : {comp.get('chunked', 0)}")
+    print(f"  • Hoàn thành chặng vectordb   : {comp.get('vectordb', 0)}")
+    print(f"  • Hoàn thành chặng indexed_data: {comp.get('indexed_data', 0)}")
+    print(f"  • Lần cập nhật gần nhất       : {manifest.get('last_updated') or 'Chưa có'}")
+    print("=" * 65 + "\n")
+
+
 if __name__ == "__main__":
-    # Cho phép chạy kiểm tra nhanh End-to-End: python src/pipeline.py
-    import sys
+    # Chạy kiểm thử End-to-End: python src/pipeline.py
     if sys.platform.startswith("win"):
         try:
             sys.stdout.reconfigure(encoding="utf-8")
@@ -399,14 +818,14 @@ if __name__ == "__main__":
     rag = get_rag_pipeline()
     test_query = UserQuery(query_text="Điều kiện xét học bổng xuất sắc tại UET là gì?")
     res = rag.query(test_query)
-    
+
     print("\n" + "=" * 60)
     print("Câu hỏi:", test_query.query_text)
     print("Mô hình:", res.model_name)
+    print(f"Thời gian: {res.latency_seconds}s")
     print("Trả lời:", res.answer)
     print(f"Số lượng nguồn trích dẫn: {len(res.sources)}")
     for s in res.sources[:3]:
         title = s.metadata.get("title") or s.metadata.get("source") or "Văn bản UET"
         print(f" - [{int(s.similarity_score * 100)}%] {title}")
     print("=" * 60)
-

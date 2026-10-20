@@ -6,9 +6,16 @@ Nhiệm vụ: Gọi API của Google Gemini, OpenAI, Claude hoặc LLM cục b�
 
 from __future__ import annotations
 import os
-from typing import Optional, Generator
+import sys
+from pathlib import Path
+from typing import Optional, Generator, List, Any
+
+_BASE_DIR = Path(__file__).resolve().parent.parent.parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
 from src.base import BaseLLM, AugmentedPrompt, Response
-from src.utils.helpers import get_logger, Timer
+from src.utils.helpers import get_logger, Timer, load_yaml_config
 
 logger = get_logger("llm")
 
@@ -166,27 +173,240 @@ class UETLLMClient(BaseLLM):
     def generate(self, prompt: AugmentedPrompt) -> Response:
         """
         Gửi prompt đến LLM để nhận câu trả lời cho người dùng.
-        :param prompt: Đối tượng AugmentedPrompt chứa câu hỏi và ngữ cảnh
-        :return: Đối tượng Response
+        Hỗ trợ tự động chuyển đổi mô hình (Model Failover) và tự động đổi API Key (Key Failover) khi hết hạn mức.
         """
         logger.info(f"Đang gửi yêu cầu sinh câu trả lời đến mô hình '{self.model_name}'...")
 
-        # =========================================================================
-        # TODO: THÀNH VIÊN PHỤ TRÁCH TỰ CÀI ĐẶT PHẦN NÀY:
-        # Gợi ý:
-        # 1. Khởi tạo client của Google GenAI SDK (hoặc OpenAI client):
-        #    `from google import genai; client = genai.Client(api_key=self.api_key)`
-        # 2. Gọi API sinh phản hồi:
-        #    `res = client.models.generate_content(model=self.model_name, contents=prompt.formatted_prompt)`
-        # 3. Đo độ trễ (latency_seconds) bằng Timer trong src.utils.helpers.
-        # 4. Đóng gói kết quả thành đối tượng `Response(...)` theo base.py:
-        #    - query_id=prompt.user_query.query_id
-        #    - answer=res.text
-        #    - sources=prompt.contexts
-        #    - model_name=self.model_name
-        #    - latency_seconds=...
-        # =========================================================================
+        errors_encountered: List[str] = []
 
-        raise NotImplementedError(
-            "TODO: Thành viên phụ trách LLM cần tự cài đặt logic hàm generate() trong src/llm/llm_client.py!"
+        with Timer() as timer:
+            # 1. Duyệt qua các API Keys khả dụng (bắt đầu từ key đang hoạt động tốt)
+            if self.api_keys:
+                ordered_keys = (
+                    self.api_keys[self.current_key_index:] +
+                    self.api_keys[:self.current_key_index]
+                )
+                models_to_try = [self.model_name] + [m for m in self.candidate_models if m != self.model_name]
+                generate_config = {"temperature": self.temperature}
+
+                for key_idx, key in enumerate(ordered_keys):
+                    key_num = self.api_keys.index(key) + 1
+                    client = self._get_client_for_key(key)
+                    if not client:
+                        continue
+
+                    for m in models_to_try:
+                        try:
+                            res = client.models.generate_content(
+                                model=m,
+                                contents=prompt.formatted_prompt,
+                                config=generate_config,
+                            )
+                            if res and res.text:
+                                meta = {}
+                                if hasattr(res, "usage_metadata") and res.usage_metadata:
+                                    meta["prompt_tokens"] = getattr(res.usage_metadata, "prompt_token_count", None)
+                                    meta["candidates_tokens"] = getattr(res.usage_metadata, "candidates_token_count", None)
+
+                                # Lưu lại index của key hoạt động tốt để các lượt truy vấn sau tiếp tục dùng
+                                self.current_key_index = self.api_keys.index(key)
+
+                                return Response(
+                                    query_id=prompt.user_query.query_id,
+                                    answer=res.text.strip(),
+                                    sources=prompt.contexts,
+                                    model_name=m,
+                                    latency_seconds=round(timer.elapsed, 3),
+                                    metadata=meta,
+                                )
+                        except Exception as e:
+                            err_str = str(e)
+                            errors_encountered.append(f"Key#{key_num}-Model[{m}]: {err_str}")
+                            logger.warning(f"API Key #{key_num} - Model '{m}' gặp lỗi ({err_str}).")
+
+                            # Nếu gặp lỗi quyền (403 - khóa không hợp lệ), bỏ qua ngay các model còn lại của key này
+                            if "403" in err_str or "PERMISSION_DENIED" in err_str:
+                                break
+
+                    # Nếu tất cả các model của key này đều gặp lỗi, chuyển sang API Key tiếp theo
+                    if len(ordered_keys) > 1 and key_idx < len(ordered_keys) - 1:
+                        next_key_num = self.api_keys.index(ordered_keys[key_idx + 1]) + 1
+                        logger.warning(
+                            f"🔄 API Key #{key_num} đã hết hạn mức ở tất cả model. "
+                            f"Tự động chuyển sang API Key dự phòng #{next_key_num}..."
+                        )
+
+            # 2. Xử lý trường hợp tất cả mô hình và tất cả API Key đều từ chối dịch vụ hoặc chưa có API Key
+            logger.info("Sử dụng chế độ thông báo lỗi / fallback trích đoạn tài liệu quy chế.")
+
+            if errors_encountered:
+                combined_err = " | ".join(errors_encountered)
+                if "503" in combined_err or "UNAVAILABLE" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 503 - SERVER QUÁ TẢI)**"
+                    error_detail = (
+                        "Máy chủ Google Gemini hiện đang chịu tải quá lớn (High Demand) trên toàn cầu "
+                        "và tạm thời từ chối xử lý yêu cầu lúc này."
+                    )
+                elif "429" in combined_err or "RESOURCE_EXHAUSTED" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 429 - TẤT CẢ API KEY ĐỀU HẾT HẠN MỨC)**"
+                    error_detail = (
+                        f"Tất cả {len(self.api_keys)} API Key Google Gemini đã sử dụng hết hạn mức yêu cầu miễn phí (Quota Exceeded) "
+                        "hoặc gửi quá số lượng request cho phép trong ngày."
+                    )
+                elif "403" in combined_err or "PERMISSION_DENIED" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (MÃ LỖI 403 - LỖI QUYỀN TRUY CẬP)**"
+                    error_detail = "Các khóa API không có quyền truy cập mô hình này hoặc đã bị Google vô hiệu hóa."
+                elif "SAFETY" in combined_err or "BLOCK" in combined_err:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ (BỘ LỌC AN TOÀN - SAFETY FILTER)**"
+                    error_detail = "Nội dung câu hỏi hoặc phản hồi đã bị bộ lọc an toàn của Google Gemini từ chối."
+                else:
+                    error_title = "⚠️ **MÔ HÌNH AI TỪ CHỐI DỊCH VỤ / LỖI KẾT NỐI API**"
+                    short_err = errors_encountered[-1].split("\n")[0][:120]
+                    error_detail = f"Không thể nhận phản hồi từ dịch vụ Google Gemini ({short_err})."
+
+                if prompt.contexts:
+                    context_preview = "\n\n".join([
+                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
+                        for c in prompt.contexts[:3]
+                    ])
+                    fallback_answer = (
+                        f"{error_title}\n\n"
+                        f"> {error_detail}\n\n"
+                        f"---\n"
+                        f"📂 **HỆ THỐNG TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ TRÍCH XUẤT TÀI LIỆU CĂN CỨ:**\n\n"
+                        f"{context_preview}\n\n"
+                        f"*(Bạn có thể cấu hình thêm API Key dự phòng trong file .env hoặc đối chiếu với các trích đoạn văn bản trên).*"
+                    )
+                else:
+                    fallback_answer = (
+                        f"{error_title}\n\n"
+                        f"> {error_detail}\n\n"
+                        f"Đồng thời, hệ thống chưa tìm thấy văn bản quy chế nào phù hợp với câu hỏi này trong cơ sở dữ liệu. Vui lòng thử lại sau."
+                    )
+                resp_model_name = "gemini-service-denied-fallback"
+
+            elif not self.api_keys:
+                if prompt.contexts:
+                    context_preview = "\n\n".join([
+                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
+                        for c in prompt.contexts[:3]
+                    ])
+                    fallback_answer = (
+                        f"Dựa trên các văn bản quy chế đào tạo UET được tra cứu:\n\n"
+                        f"{context_preview}\n\n"
+                        f"*(Lưu ý: Để kích hoạt phản hồi tổng hợp thông minh từ AI, vui lòng kiểm tra GEMINI_API_KEY trong file .env)*"
+                    )
+                else:
+                    fallback_answer = (
+                        "Xin lỗi, hiện tôi chưa tìm thấy quy định cụ thể về vấn đề này trong tài liệu hiện có. "
+                        "Bạn vui lòng liên hệ trực tiếp Phòng Đào tạo (uet.vnu.edu.vn) để được hỗ trợ chính xác nhất."
+                    )
+                resp_model_name = "offline-fallback"
+
+            else:
+                fallback_answer = (
+                    "Xin lỗi em, hiện tại hệ thống chưa nhận được phản hồi phù hợp từ mô hình AI. Vui lòng thử lại sau."
+                )
+                resp_model_name = f"{self.model_name}-fallback"
+
+        return Response(
+            query_id=prompt.user_query.query_id,
+            answer=fallback_answer,
+            sources=prompt.contexts,
+            model_name=resp_model_name,
+            latency_seconds=round(timer.elapsed, 3),
         )
+
+    def generate_stream(self, prompt: AugmentedPrompt) -> Generator[str, None, None]:
+        """
+        Sinh phản hồi dạng luồng (streaming) cho giao diện người dùng.
+        Hỗ trợ tự động chuyển sang API Key khác nếu key hiện tại hết hạn mức.
+        """
+        if self.api_keys:
+            ordered_keys = (
+                self.api_keys[self.current_key_index:] +
+                self.api_keys[:self.current_key_index]
+            )
+            models_to_try = [self.model_name] + [m for m in self.candidate_models if m != self.model_name]
+            generate_config = {"temperature": self.temperature}
+
+            for key_idx, key in enumerate(ordered_keys):
+                key_num = self.api_keys.index(key) + 1
+                client = self._get_client_for_key(key)
+                if not client:
+                    continue
+
+                for m in models_to_try:
+                    try:
+                        stream = client.models.generate_content_stream(
+                            model=m,
+                            contents=prompt.formatted_prompt,
+                            config=generate_config,
+                        )
+                        has_content = False
+                        for chunk in stream:
+                            if chunk.text:
+                                has_content = True
+                                yield chunk.text
+                        if has_content:
+                            self.current_key_index = self.api_keys.index(key)
+                            return
+                    except Exception as e:
+                        err_str = str(e)
+                        logger.warning(f"Streaming thất bại với API Key #{key_num} - Model '{m}': {err_str}")
+                        if "403" in err_str or "PERMISSION_DENIED" in err_str:
+                            break
+
+                if len(ordered_keys) > 1 and key_idx < len(ordered_keys) - 1:
+                    next_key_num = self.api_keys.index(ordered_keys[key_idx + 1]) + 1
+                    logger.warning(
+                        f"🔄 Streaming: API Key #{key_num} đã hết hạn mức ở tất cả model. "
+                        f"Tự động chuyển sang API Key dự phòng #{next_key_num}..."
+                    )
+
+        # Fallback stream nếu không có client hoặc streaming thất bại
+        yield self.generate(prompt).answer
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    if str(_BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(_BASE_DIR))
+
+    # Kiểm thử độc lập module LLM Client
+    from src.prompts.prompt_templates import UETPromptAugmenter
+    from src.base import UserQuery, RetrievedContext
+
+    print("=" * 60)
+    print("KIỂM THỬ ĐỘC LẬP: UETLLMClient (src/llm)")
+    print("=" * 60)
+
+    llm_client = UETLLMClient()
+    print(f"[+] Model đang cấu hình: {llm_client.model_name}")
+
+    sample_query = UserQuery(query_text="Điều kiện xét học bổng khuyến khích học tập loại Giỏi tại UET là gì?")
+    sample_contexts = [
+        RetrievedContext(
+            chunk_id="ctx_01",
+            text="Học bổng loại Giỏi: Sinh viên có điểm GPA từ 3.20 đến 3.59 và điểm rèn luyện đạt loại Tốt trở lên (từ 80 đến 89 điểm). Mức học bổng bằng 100% mức trần học phí.",
+            similarity_score=0.95,
+            rank=1,
+            metadata={"title": "Quy chế xét học bổng khuyến khích học tập UET", "page": 6},
+        )
+    ]
+
+    augmenter = UETPromptAugmenter()
+    prompt = augmenter.augment(query=sample_query, contexts=sample_contexts)
+
+    print("\n[+] Đang gọi hàm generate()...")
+    res = llm_client.generate(prompt)
+
+    print(f"[+] Phản hồi từ mô hình: {res.model_name}")
+    print(f"[+] Thời gian xử lý: {res.latency_seconds} giây")
+    print(f"[+] Số nguồn dẫn: {len(res.sources)}")
+    print("\n--- NỘI DUNG CÂU TRẢ LỜI ---")
+    print(res.answer)
+    print("=" * 60)
+    print(" KIỂM THỬ LLM CLIENT THÀNH CÔNG!")
