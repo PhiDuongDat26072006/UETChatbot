@@ -82,7 +82,7 @@ class UETPromptAugmenter(BasePromptAugmenter):
 
         formatted_prompt = (
             f"{self.system_prompt}\n\n"
-            f"=== NGỮ CẢNH ĐƯỢC CUNG CẤP (TÀI LIỆU QUY CHẾ UET) ===\n"
+            f"=== NGỮ CẢNH ĐƯỢC CUNG CẤP===\n"
             f"{context_block}\n"
             f"====================================================\n\n"
             f"CÂU HỎI CỦA NGƯỜI DÙNG: {query.query_text}\n\n"

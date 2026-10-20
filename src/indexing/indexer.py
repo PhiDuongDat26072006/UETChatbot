@@ -283,7 +283,7 @@ def main():
     # 1. Parse command options
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/chunk_data")
-    parser.add_argument("--persist-dir", default=str(BASE_DIR / "vector_db"))
+    parser.add_argument("--persist-dir", default=str(BASE_DIR / "database" / "vector_db"))
     parser.add_argument("--collection-name", default="uet_knowledge_base")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--sample", type=int)

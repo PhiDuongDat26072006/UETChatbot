@@ -208,3 +208,5 @@ class BM25Index:
         self.idf.clear()
         self.avg_doc_len = 0.0
         self._is_indexed = False
+
+

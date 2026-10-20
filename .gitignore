@@ -21,8 +21,10 @@ ENV/
 *.env
 !.env.example
 
-# 4. Vector Database (Local SQLite & HNSW index - sinh tự động khi nạp)
+# 4. Database (Vector DB & BM25 index - sinh tự động khi nạp)
 vector_db/
+database/*
+!database/doc.md
 
 # 5. Backup Code & Logs
 backup_code/

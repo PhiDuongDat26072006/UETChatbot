@@ -65,7 +65,12 @@ class ChromaVectorStore(BaseVectorStore):
         :param embedding_model: Mô hình nhúng tùy chọn để tự nhúng chunk khi không truyền vectors
         """
         if persist_dir is None:
-            self.persist_dir = BASE_DIR / "vector_db"
+            if (BASE_DIR / "database" / "vector_db").exists():
+                self.persist_dir = BASE_DIR / "database" / "vector_db"
+            elif (BASE_DIR / "vector_db").exists():
+                self.persist_dir = BASE_DIR / "vector_db"
+            else:
+                self.persist_dir = BASE_DIR / "database" / "vector_db"
         else:
             self.persist_dir = Path(persist_dir)
 
@@ -226,14 +231,30 @@ class ChromaVectorStore(BaseVectorStore):
         """Trả về tổng số chunk/vector trong collection ChromaDB."""
         return self.collection.count()
 
-    def get_chunks(self) -> List[DataChunk]:
-        """Read stored chunks for index consistency checks and sparse migration."""
-        data = self.collection.get(include=["documents", "metadatas"])
-        return [DataChunk(chunk_id=cid, text=text,
-                          document_id=(meta or {}).get("document_id"),
-                          chunk_index=(meta or {}).get("chunk_index", 0),
-                          metadata=meta or {})
-                for cid, text, meta in zip(data["ids"], data["documents"], data["metadatas"])]
+    def get_chunks(self, batch_size: int = 5000) -> List[DataChunk]:
+        """Read stored chunks with pagination to avoid SQLite variable limit."""
+        total = self.count()
+        chunks: List[DataChunk] = []
+        for offset in range(0, total, batch_size):
+            data = self.collection.get(
+                limit=batch_size,
+                offset=offset,
+                include=["documents", "metadatas"]
+            )
+            ids = data.get("ids", [])
+            docs = data.get("documents", [])
+            metas = data.get("metadatas", [])
+            for cid, text, meta in zip(ids, docs, metas):
+                chunks.append(
+                    DataChunk(
+                        chunk_id=cid,
+                        text=text,
+                        document_id=(meta or {}).get("document_id"),
+                        chunk_index=(meta or {}).get("chunk_index", 0),
+                        metadata=meta or {},
+                    )
+                )
+        return chunks
 
     def delete(self, chunk_ids: List[str]) -> None:
         """Remove obsolete chunks without replacing the collection."""
@@ -243,11 +264,14 @@ class ChromaVectorStore(BaseVectorStore):
     def clear(self) -> None:
         """Xóa toàn bộ dữ liệu trong collection để reset lại database."""
         try:
-            # Lấy tất cả các ID hiện có trong collection
-            existing_data = self.collection.get(include=[])
-            if existing_data and existing_data.get("ids"):
-                # Xóa các vector theo ID thay vì xóa bỏ hoàn toàn collection
-                self.collection.delete(ids=existing_data["ids"])
+            total = self.count()
+            while total > 0:
+                existing_data = self.collection.get(limit=5000, include=[])
+                ids = existing_data.get("ids", [])
+                if not ids:
+                    break
+                self.collection.delete(ids=ids)
+                total = self.count()
             logger.info(f"Đã xóa sạch dữ liệu trong collection '{self.collection_name}'.")
         except Exception as e:
             logger.error(f"Lỗi khi xóa dữ liệu collection '{self.collection_name}': {e}")

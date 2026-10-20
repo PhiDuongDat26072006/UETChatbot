@@ -68,6 +68,86 @@ class TestUETLLMClient(unittest.TestCase):
         combined = "".join(chunks)
         self.assertIn("Tối thiểu tích lũy 130 tín chỉ.", combined)
 
+    def test_key_masking(self):
+        """Kiểm tra hàm che giấu API key để bảo mật log."""
+        self.assertEqual(UETLLMClient._mask_key(""), "")
+        self.assertEqual(UETLLMClient._mask_key("short"), "***")
+        masked = UETLLMClient._mask_key("AIzaSyD-1234567890abcdef")
+        self.assertTrue(masked.startswith("AIza..."))
+        self.assertTrue(masked.endswith("cdef"))
+
+    def test_load_api_keys_priority_and_dedup(self):
+        """Kiểm tra nạp nhiều khóa từ các biến môi trường khác nhau."""
+        import os
+        from unittest.mock import patch
+
+        env_mock = {
+            "GEMINI_API_KEY": "key_primary",
+            "GEMINI_API_KEY_2": "key_backup_2",
+            "GEMINI_API_KEYS": "key_primary,key_group_3",
+            "GEMINI_BACKUP_API_KEY": "key_backup_final",
+        }
+        with patch.dict(os.environ, env_mock, clear=True):
+            keys = UETLLMClient._load_api_keys()
+            self.assertIn("key_primary", keys)
+            self.assertIn("key_backup_2", keys)
+            self.assertIn("key_group_3", keys)
+            self.assertIn("key_backup_final", keys)
+            # Kiểm tra không bị trùng lặp
+            self.assertEqual(len(keys), len(set(keys)))
+
+    def test_auto_failover_on_429_quota_exhausted(self):
+        """Kiểm tra tự động chuyển sang API key dự phòng khi gặp lỗi 429 RESOURCE_EXHAUSTED."""
+        from unittest.mock import MagicMock
+
+        client = UETLLMClient(api_key="")
+        client.api_keys = ["mock_key_1", "mock_key_2"]
+        client.current_key_index = 0
+
+        # Mock client 1 bị lỗi 429
+        mock_client_1 = MagicMock()
+        mock_client_1.models.generate_content.side_effect = Exception("429 Quota Exceeded: RESOURCE_EXHAUSTED")
+
+        # Mock client 2 thành công
+        mock_client_2 = MagicMock()
+        mock_res = MagicMock()
+        mock_res.text = "Câu trả lời thành công từ API Key 2."
+        mock_client_2.models.generate_content.return_value = mock_res
+
+        def mock_get_client(key):
+            if key == "mock_key_1":
+                return mock_client_1
+            return mock_client_2
+
+        client._get_client_for_key = mock_get_client
+
+        response = client.generate(self.prompt)
+        self.assertEqual(response.answer, "Câu trả lời thành công từ API Key 2.")
+        # Hệ thống phải cập nhật key đang hoạt động sang mock_key_2
+        self.assertEqual(client.api_key, "mock_key_2")
+
+    def test_custom_keys_list_initialization(self):
+        """Kiểm tra khởi tạo client với tham số api_keys dạng danh sách."""
+        client = UETLLMClient(api_keys=["key_custom_A", "key_custom_B"])
+        self.assertIn("key_custom_A", client.api_keys)
+        self.assertIn("key_custom_B", client.api_keys)
+
+    def test_load_api_keys_multiline_env(self):
+        """Kiểm tra nạp danh sách key trong .env theo dạng nhiều dòng hoặc chấm phẩy."""
+        import os
+        from unittest.mock import patch
+
+        env_mock = {
+            "GEMINI_API_KEYS": "key_line_1\nkey_line_2;key_line_3",
+            "GEMINI_API_KEY_3": "key_line_4",
+        }
+        with patch.dict(os.environ, env_mock, clear=True):
+            keys = UETLLMClient._load_api_keys()
+            self.assertIn("key_line_1", keys)
+            self.assertIn("key_line_2", keys)
+            self.assertIn("key_line_3", keys)
+            self.assertIn("key_line_4", keys)
+
 
 if __name__ == "__main__":
     unittest.main()
