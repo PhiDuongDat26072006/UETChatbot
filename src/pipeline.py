@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from collections import defaultdict
+from urllib.parse import urlparse
 from typing import Any, Dict, Generator, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -102,16 +104,29 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         embedding_model: Optional[BaseEmbeddingModel] = None,
         vector_store: Optional[BaseVectorStore] = None,
         manifest: Optional[DataManifestTracker] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
+        cfg = config or load_yaml_config()
+        chunk_cfg = cfg.get("chunking", {})
+
+        # Nạp trực tiếp tham số từ config.yaml cho UETChunker
+        active_chunker = chunker or UETChunker(
+            chunk_size=chunk_cfg.get("chunk_size"),
+            chunk_overlap=chunk_cfg.get("chunk_overlap"),
+            separators=chunk_cfg.get("separators"),
+            config=cfg,
+        )
+
         emb = embedding_model or UETEmbedder()
         vs = vector_store or UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=emb)
         super().__init__(
             crawler=crawler or UETDataLoader(),
             preprocessor=preprocessor or UETPreprocessor(),
-            chunker=chunker or UETChunker(),
+            chunker=active_chunker,
             embedding_model=emb,
             vector_store=vs,
         )
+        self.config = cfg
         self.manifest = manifest or DataManifestTracker(manifest_path=BASE_DIR / "data" / ".ingest_manifest.json")
 
     def run(self, sources: List[DataSource], clear_existing: bool = False) -> Dict[str, Any]:
@@ -174,19 +189,92 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self.manifest.save()
         return {"processed": processed_count, "skipped": skipped_count}
 
-    def _run_processed_to_chunked(self) -> Dict[str, int]:
-        """Chuyển đổi dữ liệu từ processed -> chunked."""
+    @staticmethod
+    def _extract_faculty_code(data: Dict[str, Any], meta: Dict[str, Any], file_path: Optional[Path] = None) -> str:
+        """
+        Trích xuất mã khoa chuẩn hóa (fit, fat, fce, fema, fepn, fet, iai, sae, uet...)
+        từ unit, domain, URL nguồn hoặc tên file.
+        """
+        # 1. Thử lấy từ unit (e.g. FIT, FAT, FEPN, FEMA, FET, SAE, IAI, FCE, UET...)
+        raw_unit = str(data.get("unit") or meta.get("unit") or meta.get("faculty") or "").strip().lower()
+        if raw_unit:
+            clean_unit = "".join(c for c in raw_unit if c.isalnum() or c in "_-")
+            if clean_unit:
+                return clean_unit
+
+        # 2. Thử lấy từ domain (e.g. fit.uet.vnu.edu.vn, uet.edu.vn...)
+        raw_domain = str(data.get("domain") or meta.get("domain") or "").strip().lower()
+        if raw_domain:
+            parts = raw_domain.split(".")
+            if "uet" in parts:
+                idx = parts.index("uet")
+                if idx > 0:
+                    candidate = parts[idx - 1]
+                    return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                return "uet"
+            elif parts and parts[0]:
+                return parts[0]
+
+        # 3. Thử trích xuất từ URL hoặc đường dẫn file cục bộ trong source
+        source = str(data.get("source_url_or_path") or meta.get("source") or "").strip()
+        if source:
+            if "://" in source:
+                try:
+                    parts = urlparse(source).netloc.lower().split(".")
+                    if "uet" in parts:
+                        idx = parts.index("uet")
+                        if idx > 0:
+                            candidate = parts[idx - 1]
+                            return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+                    elif parts and parts[0]:
+                        return parts[0]
+                except Exception:
+                    pass
+            for part in source.replace("\\", "/").split("/"):
+                if "uet." in part.lower():
+                    p_split = part.lower().split(".")
+                    if "uet" in p_split:
+                        idx = p_split.index("uet")
+                        if idx > 0:
+                            candidate = p_split[idx - 1]
+                            return p_split[idx - 2] if candidate == "www" and idx > 1 else candidate
+                        return "uet"
+
+        # 4. Thử lấy từ tên file đang đọc (ví dụ: fit.uet.vnu.edu.vn.jsonl -> fit)
+        if file_path is not None:
+            stem = file_path.stem.lower()
+            if "uet." in stem:
+                parts = stem.split(".")
+                if "uet" in parts:
+                    idx = parts.index("uet")
+                    if idx > 0:
+                        candidate = parts[idx - 1]
+                        return parts[idx - 2] if candidate == "www" and idx > 1 else candidate
+                    return "uet"
+            elif stem and stem != "ingested_processed":
+                return stem
+
+        return "general"
+
+    def _run_processed_to_chunked(self) -> Dict[str, Any]:
+        """
+        Chuyển đổi dữ liệu từ processed -> chunked.
+        Phân loại và lưu chunks theo từng khoa vào các file riêng biệt:
+        data/chunked_data/{faculty}_chunks.jsonl (ví dụ: fit_chunks.jsonl, fat_chunks.jsonl...).
+        """
         processed_dir = BASE_DIR / "data" / "processed_data"
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         chunked_dir.mkdir(parents=True, exist_ok=True)
-        out_file = chunked_dir / "staged_chunks.jsonl"
 
         jsonl_files = sorted(processed_dir.rglob("*.jsonl"))
         processed_docs = 0
         skipped_docs = 0
         total_chunks = 0
+        chunks_by_faculty_count: Dict[str, int] = defaultdict(int)
 
-        with open(out_file, "a", encoding="utf-8") as f_out:
+        file_handles: Dict[str, Any] = {}
+        try:
             for jf in jsonl_files:
                 try:
                     with open(jf, "r", encoding="utf-8") as f_in:
@@ -210,6 +298,15 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                                 meta["source"] = data["source_url_or_path"]
                             if title and "title" not in meta:
                                 meta["title"] = title
+                            if "domain" in data and "domain" not in meta:
+                                meta["domain"] = data["domain"]
+                            if "unit" in data and "unit" not in meta:
+                                meta["unit"] = data["unit"]
+                            if "category" in data and "category" not in meta:
+                                meta["category"] = data["category"]
+
+                            faculty_code = self._extract_faculty_code(data, meta, jf)
+                            meta["faculty"] = faculty_code
 
                             proc_doc = ProcessedData(
                                 id=doc_id,
@@ -218,7 +315,14 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                                 metadata=meta,
                             )
                             chunks = self.chunker.chunk(proc_doc)
+
+                            if faculty_code not in file_handles:
+                                out_file = chunked_dir / f"{faculty_code}_chunks.jsonl"
+                                file_handles[faculty_code] = open(out_file, "a", encoding="utf-8")
+
+                            f_out = file_handles[faculty_code]
                             for c in chunks:
+                                c.metadata["faculty"] = faculty_code
                                 c_record = {
                                     "chunk_id": c.chunk_id,
                                     "document_id": c.document_id,
@@ -228,16 +332,36 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                                 }
                                 f_out.write(json.dumps(c_record, ensure_ascii=False) + "\n")
                                 total_chunks += 1
+                                chunks_by_faculty_count[faculty_code] += 1
 
                             self.manifest.mark_processed(
-                                doc_id, "chunked", doc_hash, title=title, extra_meta={"chunk_count": len(chunks)}
+                                doc_id,
+                                "chunked",
+                                doc_hash,
+                                title=title,
+                                extra_meta={"chunk_count": len(chunks), "faculty": faculty_code},
                             )
                             processed_docs += 1
                 except Exception as err:
                     logger.warning(f"Lỗi khi đọc file {jf}: {err}")
+        finally:
+            for fh in file_handles.values():
+                try:
+                    fh.close()
+                except Exception:
+                    pass
 
         self.manifest.save()
-        return {"processed_docs": processed_docs, "skipped_docs": skipped_docs, "chunks_created": total_chunks}
+        logger.info(
+            f"Hoàn thành bóc tách processed -> chunked: Đã tạo {total_chunks} chunks cho {processed_docs} tài liệu "
+            f"chia thành các file khoa: {dict(chunks_by_faculty_count)}."
+        )
+        return {
+            "processed_docs": processed_docs,
+            "skipped_docs": skipped_docs,
+            "chunks_created": total_chunks,
+            "faculties": dict(chunks_by_faculty_count),
+        }
 
     def _run_chunked_to_vectordb(
         self, batch_size: int = 500
@@ -637,7 +761,9 @@ def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
         print(f"  • Chặng [raw ──> processed]    : {t.get('processed', 0)} đã xử lý, {t.get('skipped', 0)} bỏ qua (trùng lặp)")
     if "processed_to_chunked" in transitions:
         t = transitions["processed_to_chunked"]
-        print(f"  • Chặng [processed ──> chunked]: {t.get('processed_docs', 0)} tài liệu bóc tách -> {t.get('chunks_created', 0)} chunks mới, {t.get('skipped_docs', 0)} bỏ qua")
+        faculties = t.get("faculties", {})
+        faculties_str = f" ({len(faculties)} file khoa: {', '.join(faculties.keys())})" if faculties else ""
+        print(f"  • Chặng [processed ──> chunked]: {t.get('processed_docs', 0)} tài liệu bóc tách -> {t.get('chunks_created', 0)} chunks mới{faculties_str}, {t.get('skipped_docs', 0)} bỏ qua")
     if "chunked_to_vectordb" in transitions:
         t = transitions["chunked_to_vectordb"]
         print(f"  • Chặng [chunked ──> vectordb]     : {t.get('chunks_indexed', 0)} chunks nhúng mới, {t.get('skipped_chunks', 0)} bỏ qua (đã có trong DB)")

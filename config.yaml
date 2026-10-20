@@ -12,8 +12,8 @@ paths:
   eval_dataset_file: "data/eval_data/test_qa_dataset.json"
 
 chunking:
-  chunk_size: 600
-  chunk_overlap: 100
+  chunk_size: 800
+  chunk_overlap: 150
   separators:
     - "\n\n"
     - "\n"
