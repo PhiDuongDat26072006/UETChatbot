@@ -42,6 +42,7 @@ Thumbs.db
 
 # 7. Heavy Data files (Tránh đẩy hàng trăm MB tài liệu PDF lên GitHub)
 data/*
+database/*
 
 # 8. Explicitly track metadata and benchmark test sets
 # !data/doc.md

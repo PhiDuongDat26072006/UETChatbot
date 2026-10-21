@@ -369,43 +369,18 @@ class UETLLMClient(BaseLLM):
                     short_err = errors_encountered[0].split("\n")[0][:120]
                     error_detail = f"Không thể nhận phản hồi từ dịch vụ Groq ({short_err})."
 
-                if prompt.contexts:
-                    context_preview = "\n\n".join([
-                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
-                        for c in prompt.contexts[:3]
-                    ])
-                    fallback_answer = (
-                        f"{error_title}\n\n"
-                        f"> {error_detail}\n\n"
-                        f"---\n"
-                        f"📂 **HỆ THỐNG TỰ ĐỘNG CHUYỂN SANG CHẾ ĐỘ TRÍCH XUẤT TÀI LIỆU CĂN CỨ:**\n\n"
-                        f"{context_preview}\n\n"
-                        f"*(Bạn có thể cấu hình thêm API Key Groq dự phòng trong file .env hoặc đối chiếu với các trích đoạn văn bản trên).*"
-                    )
-                else:
-                    fallback_answer = (
-                        f"{error_title}\n\n"
-                        f"> {error_detail}\n\n"
-                        f"Đồng thời, hệ thống chưa tìm thấy văn bản quy chế nào phù hợp với câu hỏi này trong cơ sở dữ liệu. Vui lòng thử lại sau."
-                    )
+                fallback_answer = (
+                    f"{error_title}\n\n"
+                    f"> {error_detail}\n\n"
+                    f"*(Bạn có thể cấu hình thêm API Key Groq dự phòng trong file .env hoặc thử lại sau ít phút).*"
+                )
                 resp_model_name = "groq-service-denied-fallback"
 
             elif not self.api_keys:
-                if prompt.contexts:
-                    context_preview = "\n\n".join([
-                        f"- **{c.metadata.get('title', 'Tài liệu quy chế')}**:\n  {c.text.strip()}"
-                        for c in prompt.contexts[:3]
-                    ])
-                    fallback_answer = (
-                        f"Dựa trên các văn bản quy chế đào tạo UET được tra cứu:\n\n"
-                        f"{context_preview}\n\n"
-                        f"*(Lưu ý: Để kích hoạt phản hồi tổng hợp thông minh từ AI, vui lòng kiểm tra GROQ_API_KEY trong file .env)*"
-                    )
-                else:
-                    fallback_answer = (
-                        "Xin lỗi, hiện tôi chưa tìm thấy quy định cụ thể về vấn đề này trong tài liệu hiện có. "
-                        "Em vui lòng tra cứu thêm tại Cổng thông tin đào tạo UET hoặc liên hệ Phòng Đào tạo (Phòng 105-E3) nhé."
-                    )
+                fallback_answer = (
+                    "⚠️ **CHƯA CẤU HÌNH API KEY**\n\n"
+                    "> Vui lòng kiểm tra và thêm `GROQ_API_KEY` vào file `.env` để kích hoạt phản hồi thông minh từ AI."
+                )
                 resp_model_name = "groq-offline-fallback"
 
             else:

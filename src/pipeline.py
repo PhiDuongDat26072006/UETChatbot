@@ -653,52 +653,7 @@ def get_rag_pipeline() -> UETRAGPipeline:
 
     # Nếu ChromaDB chưa có dữ liệu hoặc chạy lần đầu, nạp 5 chunk quy chế mẫu dự phòng
     if vector_store.count() == 0:
-        logger.info("Chưa có cơ sở dữ liệu database/vector_db/, nạp 5 chunk quy chế mẫu dự phòng...")
-        initial_chunks = [
-            DataChunk(
-                text="Điều kiện để sinh viên được xét công nhận tốt nghiệp đại học tại UET:\n"
-                     "1. Cho đến thời điểm xét tốt nghiệp không bị truy cứu trách nhiệm hình sự hoặc không đang trong thời gian bị kỷ luật ở mức đình chỉ học tập.\n"
-                     "2. Tích lũy đủ số học phần và số tín chỉ quy định trong chương trình đào tạo của ngành học.\n"
-                     "3. Điểm trung bình chung tích lũy toàn khóa học đạt từ 2,00 trở lên (theo thang điểm 4).\n"
-                     "4. Đạt chuẩn đầu ra về Ngoại ngữ (tối thiểu B2 hoặc tương đương VSTEP bậc 4) và Tin học theo quy định của ĐHQGHN.\n"
-                     "5. Có chứng chỉ Giáo dục Quốc phòng - An ninh và chứng chỉ Giáo dục Thể chất.",
-                metadata={"title": "Quy định điều kiện xét tốt nghiệp đại học chính quy UET", "page": 42, "file_path": "quy_che_tot_nghiep_dhcq.pdf"},
-            ),
-            DataChunk(
-                text="Quy định xét cấp học bổng khuyến khích học tập tại UET (Theo Quyết định số 4616/QĐ-ĐHQGHN):\n"
-                     "- Học bổng loại Xuất sắc: Sinh viên có điểm trung bình chung học tập (GPA) từ 3.60 trở lên và điểm rèn luyện đạt loại Xuất sắc (từ 90 đến 100 điểm). Mức học bổng bằng 120% mức trần học phí của ngành.\n"
-                     "- Học bổng loại Giỏi: Sinh viên có điểm GPA từ 3.20 đến 3.59 và điểm rèn luyện đạt loại Tốt trở lên (từ 80 đến 89 điểm). Mức học bổng bằng 100% mức trần học phí.\n"
-                     "- Học bổng loại Khá: Điểm GPA từ 2.50 đến 3.19 và điểm rèn luyện đạt loại Khá trở lên (từ 65 đến 79 điểm).\n"
-                     "Lưu ý: Không bị kỷ luật từ mức khiển trách trở lên và không có học phần nào bị điểm F trong kỳ xét.",
-                metadata={"title": "Quy chế xét học bổng khuyến khích học tập UET", "page": 6, "file_path": "quy_che_hoc_bong_uet.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Cảnh báo kết quả học tập và Buộc thôi học tại UET:\n"
-                     "- Sinh viên bị cảnh báo kết quả học tập nếu thuộc một trong các trường hợp sau:\n"
-                     "  + Điểm trung bình chung học kỳ đạt dưới 0,80 đối với học kỳ đầu của khóa học;\n"
-                     "  + Điểm trung bình chung học kỳ đạt dưới 1,00 đối với các học kỳ tiếp theo;\n"
-                     "  + Tổng số tín chỉ chưa tích lũy tính từ đầu khóa học vượt quá 24 tín chỉ.\n"
-                     "- Sinh viên bị buộc thôi học nếu bị cảnh báo học tập 2 lần liên tiếp hoặc có thời gian học tập vượt quá thời gian tối đa cho phép theo quy định.",
-                metadata={"title": "Quy chế đào tạo đại học chính quy ĐHQGHN", "page": 21, "file_path": "quy_che_canh_bao_hoc_tap.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Đăng ký học phần, Hủy học phần và Học cải thiện điểm:\n"
-                     "- Rút bớt học phần: Sinh viên được nộp đơn xin rút bớt học phần trong vòng 2 tuần kể từ đầu học kỳ chính. Học phần xin rút không được hoàn học phí và nhận điểm W (không tính vào GPA).\n"
-                     "- Học cải thiện điểm: Sinh viên có học phần đạt điểm D, D+, C, C+ được phép đăng ký học lại để cải thiện điểm trung bình chung tích lũy. Điểm học phần mới sẽ thay thế điểm cũ.",
-                metadata={"title": "Hướng dẫn đăng ký học phần & học vụ UET", "page": 12, "file_path": "huong_dan_dang_ky_tin_chi.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Đánh giá kết quả rèn luyện của sinh viên UET:\n"
-                     "Khung điểm đánh giá rèn luyện sinh viên theo thang điểm 100:\n"
-                     "- Từ 90 đến 100 điểm: Xếp loại Xuất sắc\n"
-                     "- Từ 80 đến dưới 90 điểm: Xếp loại Tốt\n"
-                     "- Từ 65 đến dưới 80 điểm: Xếp loại Khá\n"
-                     "- Từ 50 đến dưới 65 điểm: Xếp loại Trung bình\n"
-                     "- Dưới 50 điểm: Xếp loại Yếu/Kém. Sinh viên xếp loại rèn luyện Yếu, Kém trong 2 học kỳ liên tiếp sẽ bị xem xét tạm dừng học tập.",
-                metadata={"title": "Quy định đánh giá điểm rèn luyện sinh viên ĐHQGHN", "page": 15, "file_path": "quy_che_diem_ren_luyen.pdf"},
-            ),
-        ]
-        vector_store.store(initial_chunks)
+        logger.info("Chưa có cơ sở dữ liệu vector_db/, nạp 5 chunk quy chế mẫu dự phòng...")
     else:
         logger.info(f"Đã kết nối và sử dụng {vector_store.count()} vectors thực tế từ database/vector_db/")
 
