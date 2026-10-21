@@ -1,4 +1,4 @@
-from src.evaluation.evaluator import UETEvaluator
+from src.evaluation.evaluator import UETEvaluator, UETRagasEvaluator, run_eval_e2e_cli
 from src.evaluation.evaluate_retrieval import RetrievalEvaluator
 from src.evaluation.metrics import (
     compute_faithfulness,
@@ -14,6 +14,8 @@ from src.evaluation.metrics import (
 
 __all__ = [
     "UETEvaluator",
+    "UETRagasEvaluator",
+    "run_eval_e2e_cli",
     "RetrievalEvaluator",
     "compute_faithfulness",
     "compute_context_relevance",

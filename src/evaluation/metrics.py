@@ -41,25 +41,37 @@ def compute_context_relevance(query: str, contexts: List[str]) -> float:
 def compute_faithfulness(answer: str, contexts: List[str]) -> float:
     """
     Ước tính tính trung thực (Groundedness / Faithfulness) của câu trả lời so với ngữ cảnh.
-    Trả về điểm từ 0.0 đến 1.0.
+    Trả về điểm từ 0.0 đến 1.0 dựa trên tập từ vựng (token set overlap).
     """
     if not contexts or not answer:
         return 0.0
-    combined_context = " ".join(contexts).lower()
-    answer_words = answer.lower().split()
+    combined_context_words = set(" ".join(contexts).lower().split())
+    answer_words = [w for w in answer.lower().split() if len(w) > 1]
     if not answer_words:
         return 0.0
-    matched = sum(1 for w in answer_words if w in combined_context)
-    return min(1.0, (matched / len(answer_words)) * 1.2)  # Hệ số chuẩn hóa
+    matched = sum(1 for w in answer_words if w in combined_context_words)
+    return min(1.0, matched / len(answer_words))
 
 
 # ============================================================================
 # Information Retrieval (IR) Metrics (Retrieval Evaluation)
 # ============================================================================
 
+def deduplicate_preserve_order(ids: List[str]) -> List[str]:
+    """Khử trùng lặp danh sách ID nhưng vẫn bảo toàn thứ hạng xuất hiện đầu tiên."""
+    seen = set()
+    unique = []
+    for item in ids:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
+
+
 def precision_at_k(retrieved_ids: List[str], relevant_ids: Set[str], k: int) -> float:
     """
     Precision@K: Tỉ lệ documents liên quan trong top-K kết quả trả về.
+    Tự động khử trùng lặp các documents giữ nguyên thứ tự xếp hạng đầu tiên.
     
     :param retrieved_ids: Danh sách ID documents trả về (theo thứ tự xếp hạng)
     :param relevant_ids: Tập ID documents liên quan (ground truth)
@@ -68,7 +80,8 @@ def precision_at_k(retrieved_ids: List[str], relevant_ids: Set[str], k: int) -> 
     """
     if k <= 0 or not relevant_ids:
         return 0.0
-    top_k = retrieved_ids[:k]
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
+    top_k = unique_ids[:k]
     relevant_count = sum(1 for doc_id in top_k if doc_id in relevant_ids)
     return relevant_count / k
 
@@ -82,10 +95,11 @@ def recall_at_k(retrieved_ids: List[str], relevant_ids: Set[str], k: int) -> flo
     :param k: Số lượng top kết quả
     :return: Recall@K ∈ [0, 1]
     """
-    if not relevant_ids:
+    if not relevant_ids or k <= 0:
         return 0.0
-    top_k = retrieved_ids[:k]
-    found = sum(1 for doc_id in top_k if doc_id in relevant_ids)
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
+    top_k = unique_ids[:k]
+    found = len(set(top_k).intersection(relevant_ids))
     return found / len(relevant_ids)
 
 
@@ -102,13 +116,10 @@ def ndcg_at_k(retrieved_ids: List[str], qrels: Dict[str, int], k: int) -> float:
     if k <= 0 or not qrels:
         return 0.0
     
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
     # DCG (Discounted Cumulative Gain)
     dcg = 0.0
-    seen_docs = set()
-    for i, doc_id in enumerate(retrieved_ids[:k]):
-        if doc_id in seen_docs:
-            continue
-        seen_docs.add(doc_id)
+    for i, doc_id in enumerate(unique_ids[:k]):
         rel = qrels.get(doc_id, 0)
         dcg += (2 ** rel - 1) / math.log2(i + 2)
     
@@ -131,7 +142,8 @@ def mrr(retrieved_ids: List[str], relevant_ids: Set[str]) -> float:
     :param relevant_ids: Tập ID documents liên quan
     :return: Reciprocal Rank ∈ [0, 1]
     """
-    for i, doc_id in enumerate(retrieved_ids):
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
+    for i, doc_id in enumerate(unique_ids):
         if doc_id in relevant_ids:
             return 1.0 / (i + 1)
     return 0.0
@@ -148,10 +160,11 @@ def average_precision(retrieved_ids: List[str], relevant_ids: Set[str]) -> float
     if not relevant_ids:
         return 0.0
     
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
     num_relevant_found = 0
     precision_sum = 0.0
     
-    for i, doc_id in enumerate(retrieved_ids):
+    for i, doc_id in enumerate(unique_ids):
         if doc_id in relevant_ids:
             num_relevant_found += 1
             precision_sum += num_relevant_found / (i + 1)
@@ -168,6 +181,7 @@ def hit_rate_at_k(retrieved_ids: List[str], relevant_ids: Set[str], k: int) -> f
     :param k: Số lượng top kết quả
     :return: 0.0 hoặc 1.0
     """
-    top_k = retrieved_ids[:k]
+    unique_ids = deduplicate_preserve_order(retrieved_ids)
+    top_k = unique_ids[:k]
     return 1.0 if any(doc_id in relevant_ids for doc_id in top_k) else 0.0
 
