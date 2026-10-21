@@ -1,7 +1,6 @@
 """Coordinate dense Chroma and persistent BM25 indexes over shared chunks."""
 
 import argparse
-import hashlib
 import json
 import os
 import pickle
@@ -46,9 +45,8 @@ class UETIndexer:
         )
 
         # 3. Define index artifacts
-        key = hashlib.sha256(collection_name.encode()).hexdigest()[:16]
-        self.sparse_path = self.persist_dir / f"bm25-{key}.pkl"
-        self.pending_path = self.persist_dir / f"indexing-{key}.pending"
+        self.sparse_path = BASE_DIR / "database" / "bm25_index.pkl"
+        self.pending_path = self.sparse_path.with_suffix(".pending")
         self.sparse_load_error = None
 
         # 4. Load existing BM25
@@ -104,6 +102,7 @@ class UETIndexer:
         logger.info("Indexing started")
         chunks = normalize_chunks(chunks)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
 
         # 2. Check previous state
         if self.pending_path.exists() and not clear_existing:
