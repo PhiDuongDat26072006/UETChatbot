@@ -51,6 +51,15 @@ class BM25Index:
     def __init__(self, chunks=(), workers=6):
         self.chunks = normalize_chunks(chunks)
 
+        # Retriever may need an empty index before a persisted artifact exists.
+        # Do not create worker processes or fit BM25 for an empty corpus.
+        if not self.chunks:
+            self.tokens = []
+            self.model = None
+            self.postings = {}
+            self.build_timings = {}
+            return
+
         texts = [chunk.text for chunk in self.chunks]
 
         started = time.perf_counter()
@@ -119,11 +128,13 @@ class BM25Index:
             raise FileNotFoundError(f"Không tìm thấy file BM25 index tại: {path}")
         with path.open("rb") as stream:
             state = pickle.load(stream)
-        if isinstance(state, dict) and "index" in state:
-            return state["index"]
         if isinstance(state, cls):
-            return state
-        return state
+            return state  # Backward compatibility with direct-class pickles.
+        if isinstance(state, dict) and state.get("version") == 1:
+            index = state.get("index")
+            if isinstance(index, cls):
+                return index
+        raise ValueError(f"Invalid or incompatible BM25 artifact: {path}")
 
     def search(
         self,
