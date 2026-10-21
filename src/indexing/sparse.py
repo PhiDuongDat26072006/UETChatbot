@@ -3,69 +3,21 @@ import os
 import pickle
 import re
 import tempfile
+import time
 import unicodedata
 from pathlib import Path
-
+from collections import defaultdict
 from src.utils.helpers import get_logger
+import heapq
 
 logger = get_logger("indexing.sparse")
-
-try:
-    from rank_bm25 import BM25Plus
-except ImportError:
-    logger.warning("Không tìm thấy thư viện 'rank_bm25'. Đang sử dụng lớp BM25Plus dự phòng (Pure-Python fallback).")
-    class BM25Plus:
-        """Pure-Python fallback for BM25Plus when rank_bm25 is not installed."""
-        def __init__(self, corpus, k1=1.5, b=0.75, delta=1.0):
-            import math
-            self.k1 = k1
-            self.b = b
-            self.delta = delta
-            self.corpus_size = len(corpus)
-            self.doc_len = [len(doc) for doc in corpus]
-            self.avgdl = sum(self.doc_len) / self.corpus_size if self.corpus_size > 0 else 0.0
-            self.doc_freqs = []
-            self.nd = {}
-            for doc in corpus:
-                frequencies = {}
-                for word in doc:
-                    frequencies[word] = frequencies.get(word, 0) + 1
-                self.doc_freqs.append(frequencies)
-                for word in frequencies:
-                    self.nd[word] = self.nd.get(word, 0) + 1
-            self.idf = {}
-            for word, freq in self.nd.items():
-                self.idf[word] = math.log((self.corpus_size - freq + 0.5) / (freq + 0.5) + 1.0)
-
-        def get_scores(self, query):
-            scores = [0.0] * self.corpus_size
-            for q in query:
-                q_idf = self.idf.get(q, 0.0)
-                for idx, doc_freq in enumerate(self.doc_freqs):
-                    freq = doc_freq.get(q, 0)
-                    if freq > 0:
-                        len_norm = 1.0 - self.b + self.b * (self.doc_len[idx] / (self.avgdl or 1.0))
-                        tf_comp = (freq * (self.k1 + 1.0)) / (freq + self.k1 * len_norm)
-                        scores[idx] += q_idf * (tf_comp + self.delta)
-            return scores
-
-try:
-    from underthesea import word_tokenize
-except ImportError:
-    logger.warning("Không tìm thấy thư viện 'underthesea'. Đang sử dụng hàm word_tokenize dự phòng (Regex fallback).")
-    def word_tokenize(text):
-        clean = text.lower().strip()
-        words = re.findall(r"[\w\-]+", clean)
-        tokens = list(words)
-        for i in range(len(words) - 1):
-            if len(words[i]) > 1 and len(words[i+1]) > 1:
-                tokens.append(f"{words[i]}_{words[i+1]}")
-        return tokens
 
 from src.base import RetrievedContext
 from src.indexing.chunks import normalize_chunks
 
 from concurrent.futures import ProcessPoolExecutor
+from rank_bm25 import BM25Plus
+from underthesea import word_tokenize
 
 # Mixed ASCII letters/digits are identifiers, never Vietnamese word segments.
 IDENTIFIER = re.compile(r"\b(?=[A-Za-z0-9_]*[A-Za-z])(?=[A-Za-z0-9_]*\d)[A-Za-z0-9_]+\b")
@@ -101,6 +53,7 @@ class BM25Index:
 
         texts = [chunk.text for chunk in self.chunks]
 
+        started = time.perf_counter()
         # 1. Tokenize corpus
         if workers == 1:
             self.tokens = [tokenize(text) for text in texts]
@@ -114,12 +67,30 @@ class BM25Index:
                     )
                 )
 
+        tokenized = time.perf_counter()
         # 2. Build BM25
         self.model = (
             BM25Plus(self.tokens)
             if any(self.tokens)
             else None
         )
+
+        constructed = time.perf_counter()
+        # 3. Build Inverted Index
+        self.postings = defaultdict(list)
+
+        if self.model is not None:
+            for doc_idx, frequencies in enumerate(self.model.doc_freqs):
+                for token in frequencies:
+                    self.postings[token].append(doc_idx)
+
+        self.postings = dict(self.postings)
+        self.build_timings = {
+            "tokenization": tokenized - started,
+            "bm25_construction": constructed - tokenized,
+            "inverted_index": time.perf_counter() - constructed,
+        }
+
 
     def count(self) -> int:
         """Trả về tổng số chunk trong chỉ mục."""
@@ -154,17 +125,63 @@ class BM25Index:
             return state
         return state
 
-    def search(self, query: str, top_k: int = 5) -> list[RetrievedContext]:
-        """Return lexical matches with raw BM25 scores (not cosine similarities)."""
+    def search(
+        self,
+        query: str,
+        top_k: int = 5
+    ) -> list[RetrievedContext]:
+        """Retrieve Top-K documents using inverted index and BM25Plus."""
+
         if top_k <= 0 or self.model is None:
             return []
-        query_tokens = set(tokenize(query))
+
+        # 1. Tokenize query
+        query_tokens = sorted(set(tokenize(query)))
+
         if not query_tokens:
             return []
-        scores = self.model.get_scores(sorted(query_tokens))
-        # BM25Plus gives a baseline even to nonmatches; exclude those explicitly.
-        matches = [i for i, tokens in enumerate(self.tokens) if query_tokens.intersection(tokens)]
-        matches.sort(key=lambda i: (-scores[i], self.chunks[i].chunk_id))
-        return [RetrievedContext(chunk_id=self.chunks[i].chunk_id, text=self.chunks[i].text,
-                                 metadata=self.chunks[i].metadata, similarity_score=float(scores[i]), rank=rank)
-                for rank, i in enumerate(matches[:top_k], 1)]
+
+        # 2. Find candidate documents
+        candidates = self.get_candidates(query_tokens)
+
+        if not candidates:
+            return []
+
+        # 3. Score only candidate documents
+        scores = self.model.get_batch_scores(
+            query_tokens,
+            candidates
+        )
+
+        # 4. Top-K results
+        top_results = heapq.nlargest(
+            top_k,
+            zip(candidates, scores),
+            key=lambda item: float(item[1])
+        )
+
+        # 5. Return Top-K results
+        results = []
+
+        for rank, (doc_idx, score) in enumerate(top_results, start=1):
+            chunk = self.chunks[doc_idx]
+
+            results.append(
+                RetrievedContext(
+                    chunk_id=chunk.chunk_id,
+                    text=chunk.text,
+                    metadata=chunk.metadata,
+                    similarity_score=float(score),
+                    rank=rank
+                )
+            )
+
+        return results
+
+    def get_candidates(self, query_tokens: list[str]) -> list[int]:
+        """Return sorted list of chunk indices that contain any query tokens."""
+        candidates = set()
+        for token in query_tokens:
+            if token in self.postings:
+                candidates.update(self.postings[token])
+        return sorted(candidates)

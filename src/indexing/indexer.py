@@ -32,7 +32,11 @@ class UETIndexer:
         collection_name="uet_knowledge_base",
     ):
         # 1. Configure storage paths
-        default_dir = getattr(vector_store, "persist_dir", BASE_DIR / "vector_db")
+        default_dir = getattr(
+            vector_store,
+            "persist_dir",
+            BASE_DIR / "database" / "vector_db"
+        )
         self.persist_dir = Path(persist_dir or default_dir)
         self.collection_name = collection_name
 
@@ -241,7 +245,7 @@ class UETIndexer:
 
     def index_from_dir(
         self,
-        data_dir="data/chunk_data",
+        data_dir="data/chunked_data",
         batch_size=128,
         domain=None,
         max_chunks=None,
@@ -281,7 +285,7 @@ class UETIndexer:
 def main():
     # 1. Parse command options
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", default="data/chunk_data")
+    parser.add_argument("--data-dir", default="data/chunked_data")
     parser.add_argument("--persist-dir", default=str(BASE_DIR / "database" / "vector_db"))
     parser.add_argument("--collection-name", default="uet_knowledge_base")
     parser.add_argument("--batch-size", type=int, default=128)
