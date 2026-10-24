@@ -364,9 +364,15 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         }
 
     def _run_chunked_to_vectordb(
-        self, batch_size: int = 500
+        self, batch_size: int = 500, clear_existing: bool = False
     ) -> Dict[str, int]:
         """Chuyển đổi dữ liệu từ chunked -> vectordb (nhúng vector và lưu vào ChromaDB)."""
+        if clear_existing:
+            logger.info("⚠️  --clear được bật: Xóa sạch toàn bộ dữ liệu cũ trong ChromaDB và manifest stage 'vectordb'...")
+            self.vector_store.clear()
+            self.manifest.clear_stage("vectordb")
+            self.manifest.save()
+            logger.info("✅ Đã xóa sạch ChromaDB và manifest stage 'vectordb'.")
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         jsonl_files = sorted(chunked_dir.glob("*.jsonl"))
 
@@ -463,6 +469,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         from_stage: str = "raw",
         to_stage: str = "vectordb",
         batch_size: int = 500,
+        clear_existing: bool = False,
     ) -> Dict[str, Any]:
         """
         Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
@@ -510,7 +517,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             # Chặng 3a: chunked -> vectordb
             if from_stage in ["raw", "processed", "chunked"] and to_stage == "vectordb":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> vectordb")
-                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size)
+                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size, clear_existing=clear_existing)
                 results["transitions"]["chunked_to_vectordb"] = res_3
                 logger.info(f"✔ Hoàn thành chunked -> vectordb: {res_3}")
 
@@ -699,7 +706,7 @@ def get_retriever() -> UETRetriever:
     )
 
 
-def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
+def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb", clear_existing: bool = False):
     """Khởi chạy quy trình điều phối và nạp dữ liệu đa chặng với báo cáo kết quả trên terminal."""
     print("\n" + "=" * 65)
     print(f"📦 BẮT ĐẦU ĐIỀU PHỐI DỮ LIỆU ĐA CHẶNG: [{from_stage.upper()}] ──> [{to_stage.upper()}]")
@@ -707,7 +714,7 @@ def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
 
     pipeline = get_ingestion_pipeline()
     try:
-        res = pipeline.run_stages(from_stage=from_stage, to_stage=to_stage)
+        res = pipeline.run_stages(from_stage=from_stage, to_stage=to_stage, clear_existing=clear_existing)
     except Exception as e:
         print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
         return

@@ -145,7 +145,20 @@ class DataManifestTracker:
             "last_updated": self._data.get("last_updated"),
         }
 
+    def clear_stage(self, stage: str) -> None:
+        """Xóa trạng thái của một giai đoạn cụ thể trong tất cả tài liệu đang theo dõi.
+        Dùng khi muốn --clear chỉ một chặng (ví dụ: vectordb) mà không mất trạng thái các chặng trước."""
+        docs = self._data.get("documents", {})
+        cleared = 0
+        for doc_record in docs.values():
+            stages = doc_record.get("stages", {})
+            if stage in stages:
+                del stages[stage]
+                cleared += 1
+        logger.info(f"Đã xóa trạng thái stage '{stage}' khỏi {cleared} tài liệu trong manifest.")
+
     def clear(self) -> None:
+
         """Xóa sạch sổ cái trạng thái theo dõi."""
         self._data = {
             "version": "1.0",
