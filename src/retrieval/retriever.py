@@ -11,6 +11,7 @@ Quy trình chuẩn hóa từ câu hỏi đến K chunks:
 """
 
 from __future__ import annotations
+import pickle
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,7 +27,7 @@ from src.base import (
     RetrievedContext,
     UserQuery,
 )
-from src.retrieval.bm25 import BM25Index
+from src.indexing.sparse import BM25Index
 from src.retrieval.hybrid import HybridSearcher
 from src.retrieval.reranker import BaseReranker, RerankerFactory
 from src.utils.helpers import get_logger, load_yaml_config
@@ -46,6 +47,7 @@ class UETRetriever:
         vector_store: BaseVectorStore,
         reranker: Optional[BaseReranker] = None,
         config: Optional[Dict[str, Any]] = None,
+        bm25_index: Optional[BM25Index] = None,
     ):
         """
         Khởi tạo UETRetriever.
@@ -53,6 +55,7 @@ class UETRetriever:
         :param vector_store: Cơ sở dữ liệu vector kế thừa BaseVectorStore
         :param reranker: Mô hình Reranker (nếu None sẽ tự động khởi tạo qua RerankerFactory)
         :param config: Dict cấu hình tham số tùy chỉnh (hoặc tự đọc từ config.yaml)
+        :param bm25_index: Chỉ mục đã tạo sẵn (dành cho test/in-memory); production tải từ file.
         """
         self.embedding_model = embedding_model
         self.vector_store = vector_store
@@ -72,56 +75,37 @@ class UETRetriever:
         self.vector_weight: float = retrieval_cfg.get("vector_weight", 0.6)
         self.default_score_threshold: Optional[float] = retrieval_cfg.get("score_threshold", None)
 
-        # Khởi tạo BM25 Index
-        self.bm25_index = BM25Index()
+        # Chỉ sử dụng BM25Index từ src.indexing.sparse.
+        # Cho phép dependency injection khi kiểm thử, không xây dựng index trong Retriever.
+        self.bm25_index = bm25_index if bm25_index is not None else BM25Index()
 
         # Khởi tạo Reranker
         reranker_type = retrieval_cfg.get("reranker_type", "auto")
         reranker_model = retrieval_cfg.get("reranker_model", None)
         self.reranker = reranker or RerankerFactory.create(reranker_type=reranker_type, model_name=reranker_model)
 
-        # Đồng bộ dữ liệu hiện có từ VectorStore sang BM25 Index (xử lý an toàn nếu dữ liệu chưa sẵn sàng)
-        self._sync_bm25_from_vector_store()
+        # Chỉ nạp artifact khi không được inject index (ví dụ unit test).
+        if bm25_index is None:
+            self._load_bm25_index()
 
-    def _sync_bm25_from_vector_store(self) -> int:
-        """
-        Nạp BM25Index từ file chỉ mục database/bm25_index.pkl.
-        Nếu không tìm thấy file, thông báo lỗi và yêu cầu chạy pipeline tạo chỉ mục, không fallback.
-        """
-        # Hỗ trợ mock / in-memory VectorStore trong Unit Test
-        if hasattr(self.vector_store, "_chunks") and not hasattr(self.vector_store, "collection"):
-            if self.vector_store._chunks:
-                return self.bm25_index.index_chunks(list(self.vector_store._chunks))
-            self.bm25_index.clear()
-            return 0
-
-        # Xác định đường dẫn file bm25_index.pkl
+    def _load_bm25_index(self) -> int:
+        """Đọc chỉ mục BM25 đã được UETIndexer tạo; không build lại trong Retrieval."""
         bm25_path = BASE_DIR / "database" / "bm25_index.pkl"
-
-        if not bm25_path or not bm25_path.exists():
-            logger.error(
-                f"Không tìm thấy file chỉ mục BM25 tại '{bm25_path}'. "
-                "Vui lòng chạy lệnh tạo chỉ mục: 'python main.py --ingest --from chunked --to indexed_data'."
+        if not bm25_path.exists():
+            logger.warning(
+                "Chưa có BM25 artifact tại '%s'; chạy UETIndexer trước khi tìm kiếm.",
+                bm25_path,
             )
             return 0
 
         try:
-            from src.indexing.sparse import BM25Index as SparseBM25Index
-            self.bm25_index = SparseBM25Index.load(bm25_path)
-            count = getattr(self.bm25_index, "count", lambda: len(getattr(self.bm25_index, "chunks", [])))()
-            logger.info(f"Đã nạp thành công {count} chunks vào BM25Index từ file '{bm25_path}'.")
+            self.bm25_index = BM25Index.load(bm25_path)
+            count = self.bm25_index.count()
+            logger.info("Đã nạp %s chunks từ BM25 artifact '%s'.", count, bm25_path)
             return count
-        except Exception as e:
-            logger.error(f"Không tìm thấy/Lỗi khi đọc file chỉ mục BM25 '{bm25_path}': {e}")
+        except (OSError, ValueError, EOFError, ImportError, AttributeError, pickle.UnpicklingError) as error:
+            logger.error("Không thể nạp BM25 artifact '%s': %s", bm25_path, error)
             return 0
-
-    def index_chunks(self, chunks: List[DataChunk]) -> int:
-        """
-        Cung cấp giao diện cho phép nạp thêm hoặc cập nhật chỉ mục BM25 từ bên ngoài.
-        :param chunks: Danh sách DataChunk mới
-        :return: Số lượng chunk đã lập chỉ mục
-        """
-        return self.bm25_index.index_chunks(chunks)
 
     def retrieve(
         self,
@@ -149,10 +133,6 @@ class UETRetriever:
             return []
 
         logger.info(f"Bắt đầu quy trình Hybrid Retrieval cho: '{query_text}'")
-
-        # Đảm bảo BM25 Index đã nạp dữ liệu nếu ban đầu chưa có
-        if self.bm25_index.count() == 0:
-            self._sync_bm25_from_vector_store()
 
         effective_top_k = top_k or self.default_top_k
         active_filters = filters or query.filters
@@ -308,8 +288,13 @@ if __name__ == "__main__":
 
     # Khởi tạo UETRetriever
     store = DummyStore()
-    retriever = UETRetriever(embedding_model=DummyEmbedder(), vector_store=store)
-    retriever.index_chunks(store.mock_chunks)
+    # Inject mock BM25. Retriever KHÔNG tự build/chỉnh sửa index trong production.
+    mock_bm25 = BM25Index(chunks=store.mock_chunks, workers=1)
+    retriever = UETRetriever(
+        embedding_model=DummyEmbedder(),
+        vector_store=store,
+        bm25_index=mock_bm25,
+    )
 
     # Thử nghiệm câu hỏi
     test_q = UserQuery(query_text="học bổng xuất sắc UET cần điều kiện GPA bao nhiêu?")

@@ -1,7 +1,6 @@
 """Coordinate dense Chroma and persistent BM25 indexes over shared chunks."""
 
 import argparse
-import hashlib
 import json
 import os
 import pickle
@@ -33,7 +32,11 @@ class UETIndexer:
         collection_name="uet_knowledge_base",
     ):
         # 1. Configure storage paths
-        default_dir = getattr(vector_store, "persist_dir", BASE_DIR / "vector_db")
+        default_dir = getattr(
+            vector_store,
+            "persist_dir",
+            BASE_DIR / "database" / "vector_db"
+        )
         self.persist_dir = Path(persist_dir or default_dir)
         self.collection_name = collection_name
 
@@ -46,9 +49,8 @@ class UETIndexer:
         )
 
         # 3. Define index artifacts
-        key = hashlib.sha256(collection_name.encode()).hexdigest()[:16]
-        self.sparse_path = self.persist_dir / f"bm25-{key}.pkl"
-        self.pending_path = self.persist_dir / f"indexing-{key}.pending"
+        self.sparse_path = BASE_DIR / "database" / "bm25_index.pkl"
+        self.pending_path = self.sparse_path.with_suffix(".pending")
         self.sparse_load_error = None
 
         # 4. Load existing BM25
@@ -104,6 +106,7 @@ class UETIndexer:
         logger.info("Indexing started")
         chunks = normalize_chunks(chunks)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
 
         # 2. Check previous state
         if self.pending_path.exists() and not clear_existing:
@@ -242,7 +245,7 @@ class UETIndexer:
 
     def index_from_dir(
         self,
-        data_dir="data/chunk_data",
+        data_dir="data/chunked_data",
         batch_size=128,
         domain=None,
         max_chunks=None,
@@ -282,7 +285,7 @@ class UETIndexer:
 def main():
     # 1. Parse command options
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", default="data/chunk_data")
+    parser.add_argument("--data-dir", default="data/chunked_data")
     parser.add_argument("--persist-dir", default=str(BASE_DIR / "database" / "vector_db"))
     parser.add_argument("--collection-name", default="uet_knowledge_base")
     parser.add_argument("--batch-size", type=int, default=128)
