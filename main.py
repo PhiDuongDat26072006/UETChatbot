@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
     parser.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
     parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    parser.add_argument("--clear", "--reset", action="store_true", dest="clear_existing", help="Xóa sạch dữ liệu cũ ở chặng đích trước khi nạp mới")
 
     args = parser.parse_args()
     print_banner()
@@ -85,7 +86,7 @@ def main():
             run_ingest_status_cli()
         else:
             from src.pipeline import run_ingest_cli
-            run_ingest_cli(from_stage=args.from_stage, to_stage=args.to_stage)
+            run_ingest_cli(from_stage=args.from_stage, to_stage=args.to_stage, clear_existing=args.clear_existing)
 
     else:
         print("📌 CÁC LỆNH CHÍNH ĐỂ SỬ DỤNG HỆ THỐNG:")
