@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import re
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from ..utils import clean_whitespace
 
 # Các selector phổ biến chứa nội dung bài viết WordPress trên các site UET
 WP_CONTENT_SELECTORS: list[str] = [
-    "article",
     "div.content_single",
     "div.content_pages",
     "div.content_detail",
@@ -26,13 +25,27 @@ WP_CONTENT_SELECTORS: list[str] = [
     "div.site-content",
     "div#content",
     "div.page-content",
+    "article",
 ]
 
 # Các tag rác cần loại bỏ triệt để trong fallback
 NOISE_TAGS: list[str] = [
-    "script", "style", "nav", "header", "footer", "aside",
-    "noscript", "svg", "form", "iframe", "button",
+    "script", "style", "nav", "footer", "aside",
+    "noscript", "svg", "iframe",
 ]
+
+NOISE_CLASS_TOKENS = {
+    "sidebar", "widget", "related", "related-posts", "share", "sharing",
+    "social-share", "comments", "comment-list", "popup", "banner",
+    "breadcrumb", "breadcrumbs", "site-footer", "site-header",
+    "blog-meta", "entry-meta", "post-meta", "article-meta",
+}
+
+BOILERPLATE_LINE = re.compile(
+    r"^(?:©|copyright\b).*?(?:VNU|UET|rights reserved|bản quyền)|"
+    r"^all rights reserved\.?$",
+    flags=re.IGNORECASE,
+)
 
 # Các class và id liên quan đến nhân sự, giảng viên, CTĐT được bảo vệ
 PROTECTED_CLASSES: set[str] = {
@@ -68,18 +81,62 @@ __all__ = [
     "GENERIC_LINK_TEXTS",
     "table_to_markdown",
     "is_thin_content",
+    "find_main_content",
+    "strip_boilerplate_lines",
 ]
+
+
+def find_main_content(soup: BeautifulSoup) -> Tag:
+    """Prefer a content container over a small <article> card or teaser."""
+    for selector in WP_CONTENT_SELECTORS:
+        matches = soup.select(selector)
+        if matches:
+            substantial = [tag for tag in matches if tag.get_text(" ", strip=True)]
+            if substantial:
+                return max(substantial, key=lambda tag: len(tag.get_text(" ", strip=True)))
+    return soup.body or soup
+
+
+def strip_boilerplate_lines(content: str) -> str:
+    """Remove unmistakable footer lines, never broad institution-name matches."""
+    return "\n".join(
+        line for line in content.splitlines()
+        if not BOILERPLATE_LINE.match(line.strip())
+    ).strip()
 
 
 def table_to_markdown(table_tag: BeautifulSoup) -> str:
     """Chuyển đổi thẻ <table> HTML thành bảng Markdown chuẩn (| Col 1 | Col 2 |)."""
     rows: list[list[str]] = []
+    # A nested table belongs to its own parent cell; do not duplicate its rows.
+    pending_rowspans: dict[int, int] = {}
     for tr in table_tag.find_all("tr"):
+        if tr.find_parent("table") is not table_tag:
+            continue
         cells: list[str] = []
-        for cell in tr.find_all(["th", "td"]):
+        def advance_spans() -> None:
+            while len(cells) in pending_rowspans:
+                col = len(cells)
+                cells.append("")
+                pending_rowspans[col] -= 1
+                if pending_rowspans[col] == 0:
+                    del pending_rowspans[col]
+
+        for cell in tr.find_all(["th", "td"], recursive=False):
+            advance_spans()
             cell_text = clean_whitespace(cell.get_text(separator=" ", strip=True))
             cell_text = cell_text.replace("\n", " ").replace("|", "\\|")
-            cells.append(cell_text)
+            try:
+                colspan = max(1, int(cell.get("colspan", 1)))
+                rowspan = max(1, int(cell.get("rowspan", 1)))
+            except (TypeError, ValueError):
+                colspan = rowspan = 1
+            start_col = len(cells)
+            cells.extend([cell_text] + [""] * (colspan - 1))
+            if rowspan > 1:
+                for col in range(start_col, start_col + colspan):
+                    pending_rowspans[col] = rowspan - 1
+        advance_spans()
         if any(c for c in cells):
             rows.append(cells)
 

@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
+from bs4 import UnicodeDammit
 
 from ..classifier import Category, classify_endpoint
 from ..config.faculties import FACULTY_TARGETS, faculty_storage_name, find_faculty, resolve_unit
@@ -113,7 +114,7 @@ def extract_files_for_domain(
     """Add attachment records; return discovered files and unextractable-file count."""
     doc_files: list[Path] = []
     if files_dir.exists():
-        exts = (".pdf", ".docx", ".xlsx", ".doc", ".txt", ".csv")
+        exts = (".pdf", ".docx", ".xlsx", ".xlsm", ".pptx", ".doc", ".rtf", ".txt", ".csv")
         doc_files = [p for p in files_dir.rglob("*") if p.is_file() and p.name != "files_list.txt" and p.suffix.lower() in exts]
 
     raw_map = raw_recs_by_path or {}
@@ -290,10 +291,10 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
         # 1. Ưu tiên đọc trực tiếp từ RawData HTML payload đã bảo tồn trên đĩa
         if raw_html_path.exists():
             html_bytes = raw_html_path.read_bytes()
-            try:
-                html_text = html_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                html_text = html_bytes.decode("utf-8", errors="replace")
+            html_text = UnicodeDammit(html_bytes, is_html=True).unicode_markup
+            if not html_text:
+                logger.warning("Cannot decode raw HTML: %s", raw_html_path)
+                return None
         elif raw_rec and raw_rec.get("raw_metadata", {}).get("status") == "failed":
             # Bản ghi crawl đã ghi nhận thất bại trước đó trong raw_records, không fetch lại
             return None
@@ -339,6 +340,7 @@ def extract_domain_documents(domain: str, max_workers: int = 10, force: bool = F
             "content": extracted["text"],
             "content_length": extracted["text_length"],
             "cloud_links": extracted.get("cloud_links", []),
+            "extraction_method": extracted.get("extraction_method"),
         }
 
     failed_requests = 0

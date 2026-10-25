@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import requests
 import trafilatura
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 from ..classifier import clean_page_title
 from ..config.faculties import FacultyTarget
@@ -16,9 +17,10 @@ from .cloud_links import extract_cloud_links, format_cloud_links_markdown
 from .date_extractor import extract_html_date
 from .html_cleaner import (
     NOISE_TAGS,
-    PROTECTED_CLASSES,
-    WP_CONTENT_SELECTORS,
+    NOISE_CLASS_TOKENS,
+    find_main_content,
     is_thin_content,
+    strip_boilerplate_lines,
     table_to_markdown,
 )
 
@@ -57,7 +59,7 @@ def fetch_html_text(
 
 
 def extract_html_fallback(html_text: str) -> tuple[str, str]:
-    """Fallback trích xuất bài viết qua BeautifulSoup khi Trafilatura thất bại hoặc thin."""
+    """Structure-aware BS4 fallback; preserve headings, lists, tables, inline phrases."""
     soup = BeautifulSoup(html_text, "lxml")
 
     title = ""
@@ -71,37 +73,54 @@ def extract_html_fallback(html_text: str) -> tuple[str, str]:
         if title_tag:
             title = clean_page_title(title_tag.get_text().strip())
 
-    for noise_name in NOISE_TAGS:
-        for t in soup.find_all(noise_name):
-            t.decompose()
+    main_el = find_main_content(soup)
 
-    main_el = None
-    for sel in WP_CONTENT_SELECTORS:
-        found = soup.select_one(sel)
-        if found:
-            main_el = found
-            break
-    if not main_el:
-        main_el = soup.body or soup
+    def render(node: Tag) -> list[str]:
+        if not isinstance(node, Tag):
+            return []
+        classes = {part.lower() for part in node.get("class", [])}
+        if node.name in NOISE_TAGS or (classes & NOISE_CLASS_TOKENS):
+            return []
+        if node.name == "table":
+            return [table_to_markdown(node)]
+        if node.name in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            heading = node.get_text(" ", strip=True)
+            return [f"{'#' * int(node.name[1])} {heading}"] if heading else []
+        if node.name == "li":
+            # A single list item is one semantic unit, even with inline links.
+            line = node.get_text(" ", strip=True)
+            return [f"- {line}"] if line else []
+        if node.name == "p":
+            line = node.get_text(" ", strip=True)
+            return [line] if line else []
+        result: list[str] = []
+        for child in node.children:
+            if isinstance(child, Tag):
+                result.extend(render(child))
+            elif isinstance(child, NavigableString) and child.strip():
+                result.append(str(child).strip())
+        return result
 
-    for table_tag in main_el.find_all("table"):
-        md_table = table_to_markdown(table_tag)
-        if md_table:
-            table_tag.replace_with(soup.new_string(md_table))
-        else:
-            table_tag.decompose()
-
-    for el in main_el.find_all(["div", "section", "aside"]):
-        attrs = getattr(el, "attrs", None) or {}
-        classes = attrs.get("class", [])
-        c_str = " ".join(classes).lower() if isinstance(classes, list) else str(classes).lower()
-        if any(p in c_str for p in PROTECTED_CLASSES):
-            continue
-        if any(bad in c_str for bad in ("sidebar", "comment", "share", "widget", "related", "banner", "popup")):
-            el.decompose()
-
-    text = clean_whitespace(main_el.get_text(separator="\n", strip=True))
+    text = clean_whitespace("\n\n".join(render(main_el)))
     return text, title
+
+
+def _key_content_coverage(html_soup: BeautifulSoup, content: str) -> float:
+    """Measure recall of high-value headings, list items, and table headers."""
+    main = find_main_content(html_soup)
+    phrases = []
+    for node in main.find_all(["h2", "h3", "li", "th"]):
+        if node.find_parent(["nav", "aside", "footer"]):
+            continue
+        phrase = node.get_text(" ", strip=True)
+        if len(phrase) >= 4 and phrase not in phrases:
+            phrases.append(phrase)
+        if len(phrases) >= 80:
+            break
+    if not phrases:
+        return 1.0
+    normalized = re.sub(r"\s+", " ", content).casefold()
+    return sum(re.sub(r"\s+", " ", phrase).casefold() in normalized for phrase in phrases) / len(phrases)
 
 
 def extract_html_content(
@@ -134,12 +153,14 @@ def extract_html_content(
         pass
 
     extracted_text, extracted_title = None, raw_title
+    method = "trafilatura"
 
     # 1. Trích xuất chính qua Trafilatura
     try:
         extracted_text = trafilatura.extract(
             html_text, url=url, include_comments=False, include_tables=True,
-            include_links=True, output_format="txt", with_metadata=False, deduplicate=True,
+            include_links=True, output_format="markdown", with_metadata=False,
+            favor_recall=True, deduplicate=False,
         )
     except Exception:
         extracted_text = None
@@ -150,21 +171,31 @@ def extract_html_content(
         or len(extracted_text.strip()) < min_length
         or is_thin_content(extracted_text, title=extracted_title, min_length=min_length, category=category)
     )
-
-    if use_fallback:
+    primary_coverage = _key_content_coverage(title_soup, extracted_text or "") if title_soup else 1.0
+    if use_fallback or primary_coverage < 1.0:
         fb_text, fb_title = extract_html_fallback(html_text)
-        if fb_text and len(fb_text) >= min_length:
+        fallback_coverage = _key_content_coverage(title_soup, fb_text) if title_soup else 1.0
+        if fb_text and (
+            (use_fallback and (len(fb_text) >= min_length or bool(cloud_links)))
+            or fallback_coverage > primary_coverage + 0.05
+        ):
             extracted_text = fb_text
             extracted_title = fb_title or extracted_title
+            method = "beautifulsoup"
 
     if not extracted_text:
         return None
 
-    clean_content = clean_whitespace(extracted_text)
+    clean_content = clean_whitespace(strip_boilerplate_lines(extracted_text))
     if cloud_links:
-        clean_content += format_cloud_links_markdown(cloud_links)
+        # Avoid duplicating links already emitted inline by Trafilatura Markdown.
+        missing_links = [link for link in cloud_links if link["url"] not in clean_content]
+        if missing_links:
+            clean_content += format_cloud_links_markdown(missing_links)
 
-    if is_thin_content(clean_content, title=extracted_title, min_length=min_length, category=category):
+    if is_thin_content(clean_content, title=extracted_title, min_length=min_length, category=category) and not (
+        cloud_links and len(clean_content.split()) >= 5
+    ):
         return None
 
     published_date = extract_html_date(
@@ -178,4 +209,5 @@ def extract_html_content(
         "text": clean_content,
         "text_length": len(clean_content),
         "cloud_links": cloud_links,
+        "extraction_method": method,
     }
