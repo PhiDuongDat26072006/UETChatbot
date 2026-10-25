@@ -430,15 +430,20 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         Được thực hiện bởi phân hệ Lập chỉ mục (src.indexing), tách biệt hoàn toàn khỏi phân hệ Retrieval.
         """
         from src.indexing.chunks import load_chunks_from_dir
-        from src.indexing.sparse import BM25Index
+        from src.indexing import UETIndexer
 
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         chunks = load_chunks_from_dir(chunked_dir)
 
-        bm25 = BM25Index(chunks)
         out_path = BASE_DIR / "database" / "bm25_index.pkl"
-        bm25.save(out_path)
 
+        indexer = UETIndexer(
+            vector_store=self.vector_store,
+            sparse_path=out_path,
+        )
+        result = indexer.index_chunks(chunks)
+
+        # Chỉ cập nhật manifest khi kiểm tra và lưu BM25 thành công.
         for chunk in chunks:
             self.manifest.mark_processed(
                 chunk.chunk_id,
@@ -448,9 +453,9 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self.manifest.save()
 
         return {
-            "chunks_indexed": bm25.count(),
+            "chunks_indexed": result["indexed_chunks"],
             "sparse_file": str(out_path),
-            "status": "success",
+            "status": result["status"],
         }
 
     def run_stages(
