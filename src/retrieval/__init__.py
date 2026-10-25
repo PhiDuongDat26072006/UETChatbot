@@ -3,7 +3,7 @@ src/retrieval - Phân hệ Truy xuất Ngữ cảnh (Retrieval & Similarity Sear
 """
 
 from src.retrieval.retriever import UETRetriever
-from src.retrieval.bm25 import BM25Index
+from src.indexing.sparse import BM25Index
 from src.retrieval.hybrid import HybridSearcher
 from src.retrieval.reranker import (
     BaseReranker,
