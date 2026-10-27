@@ -1,0 +1,74 @@
+site: FEMA
+version: 2
+seeds:
+- https://fema.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - fema.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  listing_patterns:
+  - ^/(category|tag|author)(/|$)
+  - (?:^|/)page(?:/|$)
+discovery:
+  link_selectors:
+  - main a[href]
+  - article a[href]
+  - nav a[href]
+  - .category-listing a[href]
+  - .wrap-category a[href]
+  - .pagination a[href]
+  - '#content a[href]'
+  - '#wrapper a[href]'
+  - .td-main-content-wrap a[href]
+  - .container a[href]
+extraction:
+  content_selectors:
+  - article.type-post .entry-content
+  - body.page .entry-content
+  - article.type-page .entry-content
+  - .wrap-detail article.post
+  - .entry-content
+  - main#main
+  - '#primary'
+  - .article
+  title_selectors:
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - h1
+  - title
+  date_selectors:
+  - .entry-meta time
+  - .entry-meta
+  - time[datetime]
+  - time
+  - meta[property="article:published_time"]
+  - .entry-date
+  remove_selectors:
+  - .breadcrums
+  - .wrap-sidebar
+  - aside#secondary
+  - .widget-area
+  - .related-posts
+  - .entry-meta
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

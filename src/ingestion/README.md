@@ -1,121 +1,112 @@
-# UET ingestion
+# UET ingestion — HTML-first, streaming extraction
 
-The ingestion stages discover URLs and attachments, validate endpoints, classify
-URLs into seven categories, extract clean text, and load processed records for RAG.
-Each CLI invocation runs one stage; crawling remains the default.
+Chạy từ thư mục gốc dự án. Dùng DataSource, RawData, ProcessedData trong
+src/base.py; RawData cần trường `metadata` (thay cho `raw_metadata`). Cài dependencies
+trong `src/ingestion/requirements.txt`. Bản vá này áp dụng sau bản network speed patch;
+ZIP chỉ chứa các file thay đổi, không có dữ liệu hoặc tests/.
 
-```text
-Faculty configuration → HTTP session → crawl → raw endpoint/file lists
-                                             ↓
-                          validate → classify → extract → processed JSONL
-                                                              ↓
-                                              UETDataLoader → chunking/indexing
-```
-
-## Responsibilities
-
-- `config/faculties.py`: one faculty definition list, source identity, host/path scope,
-  and derived storage names.
-- `config/paths.py`: YAML paths, defaults, and environment overrides.
-- `config/ignore_rules.py`: URL exclusions, document/asset extensions, cloud hosts,
-  and tracking-query exclusions.
-- `config/session.py`: headers, timeouts, connection pooling, retry counts, and
-  scoped redirect handling.
-- `filters.py`: URL cleanup, endpoint validation, attachment/cloud filtering.
-- `crawler/crawl.py`: API discovery, bounded BFS, persistence, and target orchestration.
-  `scraper.py`, `wp_api.py`, and `downloader.py` own HTML link discovery, WordPress
-  pagination, and attachment downloads respectively.
-- `validator/validation.py`: soft-404 detection, slash recovery, endpoint-file
-  validation, and faculty iteration.
-- `classifier/taxonomy.py`: category definitions, patterns, priorities, and weights.
-  `scoring.py` owns title cleanup/fetching and classification; `classification.py`
-  persists metadata and category lists.
-- `extractor/`: cohesive HTML cleaning/extraction, document readers, date extraction,
-  cloud links, summary generation, and `pipeline.py` for incremental JSONL output.
-- `loader.py`: the `BaseDataCrawler` adapter for processed JSONL.
-  `manifest.py` retains the downstream deduplication/stage-tracking contract.
-- `main.py` and `__main__.py`: CLI dispatch and exit status.
-
-## Faculty configuration and storage
-
-Add or change a source in `FACULTY_TARGETS`; every target has the same JSON-compatible
-fields: `faculty_id`, `name`, `domain`, `start_urls`, and `allowed_path_prefixes`.
-An empty path-prefix list permits the whole configured domain.
-
-IAI and UET both request `uet.vnu.edu.vn`. IAI is restricted to
-`/vien-tri-tue-nhan-tao/` and descendants, with path-segment boundaries checked after
-decoding and dot-path normalization. Scoped redirects are checked before following
-another URL. IAI does not scan global WordPress media; attachments come from its
-accepted pages. Institute news elsewhere on UET is intentionally outside this scope.
-
-Request hosts are independent of storage names. Existing layouts remain:
-
-```text
-data/raw_data/<storage-name>/endpoints/endpoints.txt
-data/raw_data/<storage-name>/endpoints/endpoints_metadata.jsonl
-data/raw_data/<storage-name>/endpoints/by_category/<category>.txt
-data/raw_data/<storage-name>/files/{files_list.txt,downloaded attachments}
-data/processed_data/<storage-name>.jsonl
-```
-
-Storage names derive from faculty IDs as `<lowercase-id>.uet.vnu.edu.vn`, with the
-historical UET name `uet.edu.vn`. IAI retains `iai.uet.vnu.edu.vn` as a storage name,
-which is not its request host. Custom single-domain crawls retain their host folder.
-
-Processed records retain `id`, `source_type`, `source_url_or_path`, `title`, `domain`,
-`unit`, `category`, `published_date`, `summary`, `content`, `content_length`, and
-`cloud_links`. `domain` represents the real configured host; `unit` retains the
-faculty ID. Classification metadata additionally carries `faculty_id`.
-Chunk persistence groups known faculties by `unit` to preserve their existing
-filenames even when they share a domain. Unknown units keep the domain fallback.
-
-Cached records refresh attribution when extraction is run, without changing IDs.
-Out-of-scope cached HTML is excluded from scoped-source output. Existing datasets
-are not rewritten automatically; rerun extraction deliberately to refresh them.
-
-## Usage
-
-Use the existing Python 3.12 `.venv` and `uv`, from the repository root:
+## Lệnh chạy
 
 ```bash
-uv run python -m src.ingestion --crawl
-uv run python -m src.ingestion --crawl --no-download
-uv run python -m src.ingestion --verify
-uv run python -m src.ingestion --classify
-uv run python -m src.ingestion --extract
-uv run python -m src.ingestion --extract --domain IAI
-uv run python -m src.ingestion --extract --domain fit.uet.vnu.edu.vn --force --workers 15
-uv run python -m src.ingestion --classify --domain uet.edu.vn --debug
-uv run python src/ingestion/loader.py
+python3 -m src.ingestion.main ingest --from web --to data_source --sites UET FIT
+python3 -m src.ingestion.main ingest --from data_source --to raw --sites UET FIT
+python3 -m src.ingestion.main ingest --from web --to raw --sites UET FIT
+python3 -m src.ingestion.main ingest --from web --to processed --sites UET FIT
+python3 -m src.ingestion.main ingest --from data_source --to processed --sites UET FIT
+python3 -m src.ingestion.main ingest --from raw --to processed --sites UET FIT
+python3 -m src.ingestion.main status --sites UET FIT
 ```
 
-For classification/extraction, `--domain` accepts a faculty ID, storage name, or
-request host. Use `IAI` or its storage name to select the institute; the shared
-parent host alone selects UET. Existing stage precedence and default crawling are
-preserved. `--workers` must be positive; `--debug` enables per-request diagnostics.
+`web/data_source → processed`: các site chạy song song; khi một batch raw đã commit,
+coordinator gửi đường dẫn/hash sang process pool chung. Extractor chạy khi network
+vẫn tiếp tục, không đợi hết site hay toàn chặng raw. Web dùng lại HTTP response để
+lưu raw, không tải bài viết lần hai. Raw tồn đọng được đưa vào pool ngay đầu lượt chạy.
 
-`paths.data_dir` and `paths.processed_dir` come from root `config.yaml`, with defaults
-`data/raw_data` and `data/processed_data`. `CHATBOT_DATA_DIR` and
-`CHATBOT_PROCESSED_DIR` override them, including for the loader. Missing configuration
-uses defaults; malformed YAML, mappings, or values warn and retain valid defaults.
+## Cấu hình
 
-Normal logs show major stages, output locations, record counts, and elapsed time.
-Request/download failures retain successful results and produce an incomplete final
-status. The CLI exits with status 1 for failed or incomplete work, including missing
-stage inputs. Optional unavailable WordPress APIs fall back to HTML discovery;
-diagnostic details remain at DEBUG. HTTP retry counts, timeouts, and existing TLS
-verification behavior are preserved.
+CLI ghi đè `config/runtime.yaml`. Khởi động lại để nhận thay đổi YAML.
 
-## Verification
+| Cấu hình | Mặc định | Ý nghĩa |
+|---|---:|---|
+| download_workers | 40 | Tổng request đồng thời |
+| site_workers | 4 | Số site coordinator đồng thời |
+| per_host | 10 | Quota request theo nhóm host của site |
+| stream_extract_workers | null | null = download_workers; số process extract dùng chung |
+| extract_workers | 8 | Thread cho lệnh raw → processed chạy riêng |
+| flush_every | 20 | Batch commit metadata mạng và kết quả extract |
+| max_pages / max_depth | 10000 / 10 | Ngân sách trang mỗi site / độ sâu BFS |
+| timeout / retries / delay | 30 / 3 / 0.25 | Timeout HTTP, retry, delay mỗi worker |
+
+Với mặc định: tối đa 40 request và pool 40 process extract cho toàn lượt chạy,
+không phải 40 process/site. Nếu chỉ còn UET, per_host vẫn giới hạn 10 request;
+extractor có thể sử dụng toàn bộ pool nếu đủ raw. Không tự tăng quota UET.
 
 ```bash
-uv run --offline python -m pytest src/ingestion/tests -v
-uv run --offline python -m pytest -q
-uv run --offline python -m compileall -q src/ingestion
+# Ghi kết quả mỗi 20 mục hoàn tất; pool extract tự lấy download_workers.
+python3 -m src.ingestion.main ingest --from web --to processed \
+  --sites UET FIT --download-workers 40 --per-host 10 --flush-every 20
+
+# Ghi đè riêng số process nếu cần.
+python3 -m src.ingestion.main ingest --from web --to processed \
+  --sites UET --stream-extract-workers 40
 ```
 
-The regression suite uses temporary data directories and mocked HTTP responses for
-scope, redirects, retries/session setup, attribution, persistence, partial failures,
-CLI status, and a crawl → validate → classify → extract → load → chunk integration.
-It does not prove live site availability. Existing collection/extraction format
-support remains unchanged; collection accepts more formats than the readers support.
+## Ghi theo batch và resume
+
+- Worker chỉ đọc raw đã lưu, kiểm hash và trả kết quả; coordinator của site là writer.
+- Thu kết quả theo thứ tự hoàn thành. Đủ `flush_every` kết quả thì ghi snapshot JSONL
+  và state; batch cuối chưa đủ cũng được flush. Checkpoint mạng có thể flush sớm hơn.
+- Khi HTTP đang chờ, coordinator vẫn polling kết quả extract để ghi batch.
+- Raw → processed chạy riêng cũng dùng rolling window và batch commit; không giữ
+  tất cả kết quả đến cuối lượt chạy. Mỗi snapshot được thay thế atomic, không append
+  trùng record. Review payload riêng vẫn ghi từng file.
+- Số future pending mỗi site bị chặn ở kích thước pool; khi đầy, producer chờ kết quả.
+- Kết quả của raw cũ bị bỏ nếu source đã có raw mới hoặc không còn accepted.
+- Lỗi extract được ghi failed; không đánh dấu completed. Process pool không ghi file.
+- Sau crash, raw chưa có kết quả hợp lệ được xử lý lại; state completed được ghi sau
+  processed. Đây là replay idempotent, không phải transaction chung nhiều file.
+- `--limit` vẫn là ngân sách toàn lượt theo từng chặng; các site chạy tuần tự khi bật.
+- `--refresh` tải lại; `--reprocess` extract lại; `--retry-failed` áp dụng riêng cho
+  data_source → raw hoặc raw → processed. Checkpoint web đã complete thì resume bỏ qua.
+
+## File và giao tiếp
+
+| File | Trách nhiệm |
+|---|---|
+| main.py, config/settings.py, config/runtime.yaml | CLI, kiểm tra cấu hình, mặc định |
+| network_runner.py | Pool HTTP chung, site threads, process pool chung và report |
+| runner.py | Điều phối chặng, lưu nguồn/raw, batch cho extract độc lập |
+| crawler/engine.py | BFS, checkpoint; callback commit raw và polling extract |
+| streaming.py | Backlog, pending futures, chống kết quả cũ, batch publish |
+| extractor/worker.py | Hàm process worker: đọc raw → process_raw → payload + quality |
+| extractor/pipeline.py | Thuật toán extract/quality hiện có, không đổi |
+| utils.py | Rolling window; polling khi chờ HTTP |
+| storage.py | JSONL snapshots, atomic write, batch và writer lock hiện có |
+
+Dữ liệu giữ nguyên: `data/data_source/<SITE>.jsonl`,
+`data/raw_data/<SITE>/records.jsonl`, `data/processed_data/<SITE>.jsonl`.
+Metadata nằm trong `metadata: {}`; giữ nguyên quy tắc ID. Không tạo FIT-accepted.jsonl.
+Selectors/policy trong `config/sites/` không thay đổi. Không sửa indexing, embeddings,
+retrieval, root pipeline hoặc base. Delay/retry hiện có giữ nguyên; chưa thêm jitter.
+
+Extractor CLI riêng vẫn hoạt động:
+
+```bash
+python3 -m src.ingestion.extractor --html page.html --url https://www.fit.uet.vnu.edu.vn/example/ --site FIT
+python3 -m src.ingestion.extractor --pdf document.pdf
+```
+
+Streaming ở đây chỉ xử lý HTML, không tự gọi OCR API. Xem VERIFICATION.md để biết
+phạm vi đã kiểm tra; chưa benchmark trên máy người dùng hoặc crawl thật toàn bộ UET.
+
+## HTML icon cleanup — 2026-10-27
+
+Bộ lọc extractor/html/icons.py xử lý emoji chữ trước cả selector và trafilatura,
+loại ảnh có class emoji/wp-smiley/emojione; giữ URL, ảnh nội dung, toán học/đơn vị.
+Keycap 1️⃣ thành 1, emoji giữa hai từ thành khoảng trắng. Không sửa raw.
+Không nhận diện nguồn gốc AI, không tự xóa SVG/icon font chưa có rule.
+Bỏ qua code/pre/script/style; phạm vi là nội dung văn bản HTML thông thường.
+PROCESSOR_VERSION=html-v2-icons làm processing_key thay đổi: chạy lại raw→processed
+để tái xử lý. Downstream chunk/index không tự cập nhật theo bản vá này.
+Kiểm tra ngoài gói PASS: emoji ghép ZWJ/màu da/cờ, keycap, ký hiệu toán học, URL,
+ảnh thường và cả hai nhánh selector/fallback. Không thêm dependency hoặc tests/.
