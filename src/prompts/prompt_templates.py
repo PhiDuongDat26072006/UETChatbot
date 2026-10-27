@@ -73,8 +73,18 @@ class UETPromptAugmenter(BasePromptAugmenter):
             title = meta.get("title") or meta.get("source") or f"Tài liệu căn cứ {i}"
             page_info = f" - Trang {meta['page']}" if meta.get("page") is not None else ""
             score_info = f" [Độ phù hợp: {int(ctx.similarity_score * 100)}%]" if ctx.similarity_score is not None else ""
+            
+            search_method = meta.get("search_source")
+            if not search_method:
+                if meta.get("bm25_rank") is not None and meta.get("vector_rank") is not None:
+                    search_method = "BM25 & Vector Search"
+                elif meta.get("bm25_rank") is not None:
+                    search_method = "BM25"
+                elif meta.get("vector_rank") is not None:
+                    search_method = "Vector Search"
+            method_info = f" [Nguồn tìm kiếm: {search_method}]" if search_method else ""
 
-            header = f"[Tài liệu {i}: {title}{page_info}{score_info}]"
+            header = f"[Tài liệu {i}: {title}{page_info}{score_info}{method_info}]"
             formatted_parts.append(f"{header}\n{ctx.text.strip()}")
 
         return "\n\n".join(formatted_parts)

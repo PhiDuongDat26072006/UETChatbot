@@ -46,9 +46,21 @@ class HybridSearcher:
         # Nếu một trong hai rỗng, trả về danh sách còn lại cắt theo top_n
         if not bm25_results:
             logger.info("Chỉ có kết quả từ Vector Search, chuyển tiếp sang Reranker.")
+            for item in vector_results:
+                if item.metadata is None:
+                    item.metadata = {}
+                item.metadata.setdefault("search_source", "Vector Search")
+                item.metadata.setdefault("search_type", "vector")
+                item.metadata.setdefault("vector_rank", item.rank)
             return vector_results[:top_n]
         if not vector_results:
             logger.info("Chỉ có kết quả từ BM25 Search, chuyển tiếp sang Reranker.")
+            for item in bm25_results:
+                if item.metadata is None:
+                    item.metadata = {}
+                item.metadata.setdefault("search_source", "BM25")
+                item.metadata.setdefault("search_type", "bm25")
+                item.metadata.setdefault("bm25_rank", item.rank)
             return bm25_results[:top_n]
 
         # Bảng ánh xạ chunk_id -> thông tin hợp nhất
@@ -113,6 +125,20 @@ class HybridSearcher:
             enriched_meta["vector_rank"] = item["vector_rank"]
             enriched_meta["rrf_score"] = round(item["rrf_score"], 6)
 
+            # Xác định nguồn truy xuất: BM25, Vector Search, hay kết hợp cả hai
+            if item["bm25_rank"] is not None and item["vector_rank"] is not None:
+                search_source = "BM25 + Vector Search"
+                search_type = "hybrid"
+            elif item["bm25_rank"] is not None:
+                search_source = "BM25"
+                search_type = "bm25"
+            else:
+                search_source = "Vector Search"
+                search_type = "vector"
+
+            enriched_meta["search_source"] = search_source
+            enriched_meta["search_type"] = search_type
+
             hybrid_results.append(
                 RetrievedContext(
                     chunk_id=item["chunk_id"],
@@ -144,8 +170,18 @@ class HybridSearcher:
         if not bm25_results and not vector_results:
             return []
         if not bm25_results:
+            for item in vector_results:
+                if item.metadata is None:
+                    item.metadata = {}
+                item.metadata.setdefault("search_source", "Vector Search")
+                item.metadata.setdefault("search_type", "vector")
             return vector_results[:top_n]
         if not vector_results:
+            for item in bm25_results:
+                if item.metadata is None:
+                    item.metadata = {}
+                item.metadata.setdefault("search_source", "BM25")
+                item.metadata.setdefault("search_type", "bm25")
             return bm25_results[:top_n]
 
         candidates: Dict[str, Dict[str, Any]] = {}
@@ -157,6 +193,8 @@ class HybridSearcher:
                 "text": item.text,
                 "bm25_score": item.similarity_score,
                 "vector_score": 0.0,
+                "bm25_found": True,
+                "vector_found": False,
                 "metadata": dict(item.metadata) if item.metadata else {},
             }
 
@@ -164,6 +202,7 @@ class HybridSearcher:
             cid = item.chunk_id
             if cid in candidates:
                 candidates[cid]["vector_score"] = item.similarity_score
+                candidates[cid]["vector_found"] = True
                 if item.metadata:
                     candidates[cid]["metadata"].update(item.metadata)
             else:
@@ -172,6 +211,8 @@ class HybridSearcher:
                     "text": item.text,
                     "bm25_score": 0.0,
                     "vector_score": item.similarity_score,
+                    "bm25_found": False,
+                    "vector_found": True,
                     "metadata": dict(item.metadata) if item.metadata else {},
                 }
 
@@ -188,6 +229,21 @@ class HybridSearcher:
             meta["retrieval_method"] = "hybrid_linear"
             meta["bm25_score"] = round(item["bm25_score"], 4)
             meta["vector_score"] = round(item["vector_score"], 4)
+
+            has_bm25 = item.get("bm25_found", item["bm25_score"] > 0)
+            has_vec = item.get("vector_found", item["vector_score"] > 0)
+            if has_bm25 and has_vec:
+                search_source = "BM25 + Vector Search"
+                search_type = "hybrid"
+            elif has_bm25:
+                search_source = "BM25"
+                search_type = "bm25"
+            else:
+                search_source = "Vector Search"
+                search_type = "vector"
+
+            meta["search_source"] = search_source
+            meta["search_type"] = search_type
 
             results.append(
                 RetrievedContext(

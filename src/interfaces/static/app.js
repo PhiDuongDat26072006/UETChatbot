@@ -118,7 +118,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: JSON.stringify({
                     query: text,
                     session_id: sessionId,
-                    top_k: 4,
                 }),
             });
 
@@ -174,9 +173,45 @@ document.addEventListener("DOMContentLoaded", () => {
             const chips = sources.map((s, idx) => {
                 const title = s.metadata?.title || s.metadata?.source || `Tài liệu #${idx + 1}`;
                 const score = s.similarity_score ? (s.similarity_score * 100).toFixed(0) + "%" : "Khớp";
+
+                // Phân loại nguồn tìm kiếm: BM25 hay Vector Search hay Cả hai (Hybrid)
+                let methodType = s.search_type || s.metadata?.search_type;
+                let methodLabel = s.search_source || s.metadata?.search_source;
+
+                if (!methodType) {
+                    const bm25Rank = s.metadata?.bm25_rank;
+                    const vecRank = s.metadata?.vector_rank;
+                    if (bm25Rank != null && vecRank != null) {
+                        methodType = "hybrid";
+                        methodLabel = "BM25 + Vector";
+                    } else if (bm25Rank != null) {
+                        methodType = "bm25";
+                        methodLabel = "BM25";
+                    } else if (vecRank != null) {
+                        methodType = "vector";
+                        methodLabel = "Vector Search";
+                    } else {
+                        methodType = "hybrid";
+                        methodLabel = "Hybrid";
+                    }
+                }
+
+                if (!methodLabel) {
+                    if (methodType === "bm25") methodLabel = "BM25";
+                    else if (methodType === "vector") methodLabel = "Vector Search";
+                    else methodLabel = "BM25 + Vector";
+                }
+
+                const tooltip = methodType === "bm25"
+                    ? "Truy xuất bằng từ khóa (BM25)"
+                    : methodType === "vector"
+                    ? "Truy xuất bằng ngữ nghĩa (Vector Search)"
+                    : "Truy xuất kết hợp (BM25 + Vector Search)";
+
                 return `
-                    <button class="source-chip" data-index="${idx}">
-                        <span>📄 ${escapeHtml(title)}</span>
+                    <button class="source-chip" data-index="${idx}" title="${tooltip}">
+                        <span class="source-title">📄 ${escapeHtml(title)}</span>
+                        <span class="source-method-badge ${methodType}">${escapeHtml(methodLabel)}</span>
                         <span class="source-badge">${score}</span>
                     </button>
                 `;
@@ -253,7 +288,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const page = source.metadata?.page ? `Trang: ${source.metadata.page} | ` : "";
         const score = source.similarity_score ? `Độ tương đồng: ${(source.similarity_score * 100).toFixed(1)}%` : "";
-        modalMeta.textContent = `${page}${score} | Nguồn: ${source.metadata?.file_path || "UET Portal"}`;
+
+        // Xác định phương thức tìm kiếm
+        let methodDesc = source.search_source || source.metadata?.search_source;
+        const bm25Rank = source.metadata?.bm25_rank;
+        const vecRank = source.metadata?.vector_rank;
+
+        if (bm25Rank != null && vecRank != null) {
+            methodDesc = `BM25 & Vector Search (BM25 #${bm25Rank}, Vector #${vecRank})`;
+        } else if (bm25Rank != null) {
+            methodDesc = `BM25 (Từ khóa - Hạng #${bm25Rank})`;
+        } else if (vecRank != null) {
+            methodDesc = `Vector Search (Ngữ nghĩa - Hạng #${vecRank})`;
+        } else if (!methodDesc) {
+            methodDesc = "BM25 + Vector Search (Hybrid)";
+        }
+
+        const sourceFile = source.metadata?.file_path || source.metadata?.source || "UET Portal";
+        modalMeta.innerHTML = `${page}${score} | Phương thức: <strong style="color: var(--primary-light);">${escapeHtml(methodDesc)}</strong> | Nguồn: ${escapeHtml(sourceFile)}`;
 
         sourceModal.classList.add("active");
     }
