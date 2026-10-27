@@ -4,15 +4,14 @@ Sử dụng mã băm nội dung (SHA-256 Content Hashing) và lưu trữ trạng
 """
 
 from __future__ import annotations
-
-import hashlib
 import json
-import logging
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from src.utils.helpers import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("manifest")
 
 
 class DataManifestTracker:
@@ -24,7 +23,9 @@ class DataManifestTracker:
     DEFAULT_MANIFEST_FILE = Path("data/.ingest_manifest.json")
 
     def __init__(self, manifest_path: Optional[Path] = None):
-        self.manifest_path = Path(manifest_path) if manifest_path else self.DEFAULT_MANIFEST_FILE
+        self.manifest_path = (
+            Path(manifest_path) if manifest_path else self.DEFAULT_MANIFEST_FILE
+        )
         self._data: Dict[str, Any] = {
             "version": "1.0",
             "last_updated": None,
@@ -43,7 +44,9 @@ class DataManifestTracker:
     def load(self) -> None:
         """Nạp sổ cái trạng thái từ file JSON trên ổ đĩa."""
         if not self.manifest_path.exists():
-            logger.debug(f"Manifest file '{self.manifest_path}' chưa tồn tại, bắt đầu sổ cái mới.")
+            logger.debug(
+                f"Manifest file '{self.manifest_path}' chưa tồn tại, bắt đầu sổ cái mới."
+            )
             return
 
         try:
@@ -51,7 +54,9 @@ class DataManifestTracker:
                 loaded = json.load(f)
                 if isinstance(loaded, dict) and "documents" in loaded:
                     self._data = loaded
-            logger.debug(f"Đã nạp manifest với {len(self._data['documents'])} tài liệu.")
+            logger.debug(
+                f"Đã nạp manifest với {len(self._data['documents'])} tài liệu."
+            )
         except Exception as e:
             logger.warning(f"Lỗi khi đọc manifest file ({e}), khởi tạo lại sổ cái mới.")
             self._data = {"version": "1.0", "last_updated": None, "documents": {}}
@@ -67,7 +72,9 @@ class DataManifestTracker:
         except Exception as e:
             logger.error(f"Lỗi khi lưu manifest xuống file '{self.manifest_path}': {e}")
 
-    def is_processed(self, doc_id: str, stage: str, current_hash: Optional[str] = None) -> bool:
+    def is_processed(
+        self, doc_id: str, stage: str, current_hash: Optional[str] = None
+    ) -> bool:
         """
         Kiểm tra xem một tài liệu đã hoàn thành giai đoạn `stage` hay chưa.
         Nếu truyền `current_hash`, kiểm tra thêm xem nội dung có bị thay đổi không.

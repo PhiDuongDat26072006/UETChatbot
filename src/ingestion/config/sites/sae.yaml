@@ -1,0 +1,67 @@
+site: SAE
+version: 2
+seeds:
+- https://sae.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - sae.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+  - -c\d+\.html$
+discovery:
+  link_selectors:
+  - .wrapper a[href]
+  - .menu_top a[href]
+  - .menu-m a[href]
+  - .container-vina a[href]
+  - .subpage a[href]
+  - main a[href]
+  - article a[href]
+extraction:
+  content_selectors:
+  - .about_page
+  - .subbox
+  - .subpage .right
+  - .detail-content
+  - .content-detail
+  - .news-detail
+  - .left-content
+  - .col-md-9
+  title_selectors:
+  - h3
+  - h1
+  - title
+  - h1.entry-title
+  - h2
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .col-md-3
+  - .sidebar
+  - .other-news
+  - .related-news
+  - .box-support
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

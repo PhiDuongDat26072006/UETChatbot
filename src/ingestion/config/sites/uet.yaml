@@ -1,0 +1,78 @@
+site: UET
+version: 2
+seeds:
+- https://uet.vnu.edu.vn/
+scope:
+  hosts:
+  - uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  - /vien-tri-tue-nhan-tao
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /gioi-thieu
+  - /khoa-hoc-cong-nghe
+  - /cong-tac-nguoi-hoc
+  listing_patterns:
+  - ^/(category|tag|author)(/|$)
+  - (?:^|/)page(?:/|$)
+discovery:
+  link_selectors:
+  - .elementor-element a[href]
+  - .event-wrapper a[href]
+  - .jw-posts a[href]
+  - .item-post a[href]
+  - .sc-list-post a[href]
+  - nav a[href]
+  - .container a[href]
+  - article a[href]
+  - .pagination a[href]
+  - main a[href]
+  - '#content a[href]'
+extraction:
+  content_selectors:
+  - .page-content-inner > .entry-content
+  - .entry-content:not(.des-related)
+  - .single-post .entry-content
+  - article.post .entry-content
+  - .page .entry-content
+  - .post-content
+  - '#content .container'
+  title_selectors:
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - h1
+  - title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .sidebar
+  - aside
+  - .related-posts
+  - .post-views
+  - .breadcrumbs
+  - .entry-tag-share
+  - .entry-navigation-post
+  - .archived-posts
+  - .related-area-site-content
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

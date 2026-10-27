@@ -71,7 +71,7 @@ class UETPreprocessor(BasePreprocessor):
             first_line = clean_text.split("\n")[0].strip() if clean_text else ""
             title = first_line[:120] if first_line else "Tài liệu đào tạo UET"
 
-        metadata = dict(raw.raw_metadata or {})
+        metadata = dict(raw.metadata or {})
         metadata.setdefault("source_uri", raw.source_uri)
         metadata.setdefault("title", title)
 

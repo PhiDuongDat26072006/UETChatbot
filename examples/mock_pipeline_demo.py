@@ -58,7 +58,7 @@ class MockUETCrawer(BaseDataCrawler):
                 source_uri=source.uri,
                 title="Quy định xét học bổng khuyến khích học tập UET",
                 content="<p>Sinh viên đạt điểm GPA từ 3.6 trở lên và điểm rèn luyện xuất sắc được xét học bổng loại Xuất sắc.</p>",
-                raw_metadata={"author": "Phòng Đào Tạo", "date": "2026-09-01"},
+                metadata={"author": "Phòng Đào Tạo", "date": "2026-09-01"},
             )
         ]
 

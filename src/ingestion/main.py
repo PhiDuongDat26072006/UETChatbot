@@ -1,127 +1,158 @@
-#!/usr/bin/env python3
-"""Entry point chính để khởi chạy hệ thống crawler, phân loại và bóc tách dữ liệu UET Chatbot.
+"""Run: python3 -m src.ingestion.main ingest --from web --to raw."""
 
-Cách chạy (từ thư mục gốc repo):
-    python -m src.ingestion.main --crawl
-    python -m src.ingestion.main --classify [--domain fit.uet.vnu.edu.vn]
-    python -m src.ingestion.main --extract  [--domain fit.uet.vnu.edu.vn] [--force]
-"""
 import argparse
+import json
 import logging
-import sys
-import time
 from pathlib import Path
-
-# Đảm bảo thư mục gốc repo nằm trong sys.path khi chạy trực tiếp `python src/ingestion/main.py`
-repo_root = str(Path(__file__).resolve().parents[2])
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
-
-from src.ingestion.crawler import crawl_all_faculties
-from src.ingestion.validator import verify_all_endpoints
-from src.ingestion.classifier import classify_all_domains, classify_domain
-from src.ingestion.extractor import extract_all_domains, extract_domain_documents
+from .config.settings import DEFAULT_DATA_DIR, DEFAULT_LOG_FILE, load_runtime
 
 
-logger = logging.getLogger(__name__)
+def positive(value):
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("Must be > 0")
+    return number
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the selected stage; return nonzero for incomplete or failed work."""
-    parser = argparse.ArgumentParser(
-        description="Hệ thống Crawler, Phân loại & Bóc tách Dữ liệu UET Chatbot"
-    )
-    parser.add_argument(
-        "--extract",
-        action="store_true",
-        help="Chạy bóc tách nội dung văn bản sạch (Text Extraction) từ HTML endpoints và files tài liệu (.pdf, .docx...)."
-    )
-    parser.add_argument(
-        "--classify",
-        action="store_true",
-        help="Chạy phân loại URL (URL classification) cho các endpoints và xuất metadata JSONL, chia theo danh mục."
-    )
-    parser.add_argument(
-        "--domain",
-        type=str,
-        default=None,
-        help="Faculty ID, storage folder, or domain to classify/extract (use IAI for the AI Institute)."
-    )
-    parser.add_argument(
-        "--verify",
-        action="store_true",
-        help="Chạy kiểm tra và sửa lỗi trailing slash cho các endpoints."
-    )
-    parser.add_argument(
-        "--crawl",
-        action="store_true",
-        help="Chạy cào toàn bộ endpoints và tài liệu cho các Khoa/Viện."
-    )
-    parser.add_argument(
-        "--no-download",
-        action="store_true",
-        help="Không tải file tài liệu khi cào dữ liệu."
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Bỏ qua cache và thực hiện xử lý lại toàn bộ."
-    )
-    parser.add_argument(
-        "--migrate",
-        action="store_true",
-        help="Thực thi di trú dữ liệu an toàn sang cấu trúc DataSource -> RawData -> ProcessedData.",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=10,
-        help="Số luồng bóc tách nội dung (mặc định: 10)."
-    )
+def nonnegative(value):
+    number = float(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("Must be >= 0")
+    return number
 
-    parser.add_argument("--debug", action="store_true", help="Enable detailed diagnostics.")
+
+def build_parser():
+    defaults = load_runtime()["ingestion"]
+    parser = argparse.ArgumentParser(description="UET HTML-first ingestion")
+    commands = parser.add_subparsers(dest="command", required=True)
+    ingest = commands.add_parser("ingest", help="Run staged ingestion")
+    ingest.add_argument(
+        "--from",
+        dest="from_stage",
+        choices=["web", "data_source", "raw"],
+        default="web",
+    )
+    ingest.add_argument(
+        "--to",
+        dest="to_stage",
+        choices=["data_source", "raw", "processed"],
+        default="processed",
+    )
+    ingest.add_argument(
+        "--max-pages",
+        type=positive,
+        default=defaults["max_pages"],
+        help="Fetched pages per site per invocation",
+    )
+    ingest.add_argument("--max-depth", type=int, default=defaults["max_depth"])
+    ingest.add_argument(
+        "--limit",
+        type=positive,
+        default=defaults["limit"],
+        help="Document budget per stage across selected sites",
+    )
+    ingest.add_argument(
+        "--download-workers", type=positive, default=defaults["download_workers"]
+    )
+    ingest.add_argument(
+        "--site-workers",
+        type=positive,
+        default=defaults["site_workers"],
+        help="Concurrent sites without --limit",
+    )
+    ingest.add_argument(
+        "--flush-every",
+        type=positive,
+        default=defaults["flush_every"],
+        help="Commit network metadata and extraction results every N completed items",
+    )
+    ingest.add_argument("--per-host", type=positive, default=defaults["per_host"])
+    ingest.add_argument(
+        "--extract-workers", type=positive, default=defaults["extract_workers"]
+    )
+    ingest.add_argument(
+        "--stream-extract-workers",
+        type=positive,
+        default=defaults["stream_extract_workers"],
+        help="Shared extraction processes for web/data_source -> processed; default: download-workers",
+    )
+    ingest.add_argument("--timeout", type=positive, default=defaults["timeout"])
+    ingest.add_argument(
+        "--max-html-bytes", type=positive, default=defaults["max_html_bytes"]
+    )
+    ingest.add_argument("--retries", type=int, default=defaults["retries"])
+    ingest.add_argument(
+        "--delay",
+        type=nonnegative,
+        default=defaults["delay"],
+        help="Delay per worker before each GET",
+    )
+    ingest.add_argument("--refresh", action="store_true")
+    ingest.add_argument("--reprocess", action="store_true")
+    ingest.add_argument("--retry-failed", action="store_true")
+    status = commands.add_parser("status", help="Read stage counts")
+    for command in (ingest, status):
+        command.add_argument("--sites", nargs="+", type=str.upper)
+        command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+        command.add_argument("--profile-dir", type=Path)
+    ingest.add_argument(
+        "--log-file",
+        type=Path,
+        default=DEFAULT_LOG_FILE,
+        help="Path to project log file (default: logs/app.log)",
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
     args = parser.parse_args(argv)
-    if args.workers < 1:
-        parser.error("--workers must be positive")
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format="%(message)s")
-    if args.debug:
-        logging.getLogger("src.ingestion").setLevel(logging.DEBUG)
-    started = time.monotonic()
-    single_target = args.domain and (args.extract or args.classify)
-    if single_target:
-        logger.info("[START] %s started", "Extraction" if args.extract else "Classification")
-        logger.info("[%s] %s", "EXTRACTING" if args.extract else "CLASSIFYING", args.domain)
+    if args.command == "ingest":
+        from .runner import STAGES
+
+        if STAGES.index(args.from_stage) >= STAGES.index(args.to_stage):
+            parser.error("--to must follow --from")
+        if args.max_depth < 0 or args.retries < 0:
+            parser.error("depth/retries must be >= 0")
+        if args.refresh and args.from_stage == "raw":
+            parser.error("--refresh requires web or data_source")
+        if args.reprocess and args.to_stage != "processed":
+            parser.error("--reprocess requires --to processed")
+        if args.retry_failed and args.from_stage == "web":
+            parser.error("Resume web automatically; --retry-failed is for stored data")
+        if (
+            args.retry_failed
+            and args.from_stage == "data_source"
+            and args.to_stage == "processed"
+        ):
+            parser.error(
+                "Retry raw and processed separately to avoid ambiguous failed-stage selection"
+            )
+        handlers = [logging.StreamHandler()]
+        log_file = args.log_file or DEFAULT_LOG_FILE
+        if log_file:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+            handlers=handlers,
+            force=True,
+        )
     try:
-        if args.migrate:
-            from src.ingestion.migration import migrate_all
-            migrate_all()
-        elif args.extract:
-            if args.domain:
-                result = extract_domain_documents(args.domain, max_workers=args.workers, force=args.force)
-                if result.get("failed"):
-                    raise RuntimeError("Extraction incomplete; successful records were saved")
-            else:
-                extract_all_domains(max_workers=args.workers, force=args.force)
-        elif args.classify:
-            if args.domain:
-                result = classify_domain(args.domain)
-                if result.get("failed"):
-                    raise RuntimeError("Classification incomplete; available results were saved")
-            else:
-                classify_all_domains()
-        elif args.verify:
-            verify_all_endpoints()
-        else:
-            crawl_all_faculties(download_files=not args.no_download)
-    except Exception as error:
-        logger.error("[FAILED] Ingestion failed after %.1fs | %s", time.monotonic() - started, error)
-        logger.debug("Ingestion failure", exc_info=True)
+        from .runner import run_ingestion, get_status
+
+        result = (
+            run_ingestion(args)
+            if args.command == "ingest"
+            else get_status(args.data_dir, args.profile_dir, args.sites)
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if result.get("status") == "failed" else 0
+    except Exception as exc:
+        logging.error("%s", exc)
         return 1
-    if single_target:
-        count = result["total_docs"] if args.extract else result["total"]
-        logger.info("[DONE] Completed in %.1fs | %s records saved", time.monotonic() - started, count)
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

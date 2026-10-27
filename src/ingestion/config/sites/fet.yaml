@@ -1,0 +1,64 @@
+site: FET
+version: 1
+seeds:
+- https://fet.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - fet.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /nghien-cuu-khoa-hoc
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+  - ^/\d{4}(/\d{2})?$
+discovery:
+  link_selectors:
+  - main a[href]
+  - article a[href]
+  - nav a[href]
+  - .pagination a[href]
+  - '#content a[href]'
+  - '#wrapper a[href]'
+  - .td-main-content-wrap a[href]
+  - .container a[href]
+extraction:
+  content_selectors:
+  - .td-ss-main-content .td-post-content
+  - .td-post-content
+  - .td-page-content
+  - .td-ss-main-content
+  title_selectors:
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - h1
+  - title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .td-post-sharing
+  - .td-post-next-prev-content
+  - .td-related-row
+  - .td-ss-main-sidebar
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review
