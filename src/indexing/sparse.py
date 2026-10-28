@@ -100,7 +100,6 @@ class BM25Index:
             "inverted_index": time.perf_counter() - constructed,
         }
 
-
     def count(self) -> int:
         """Trả về tổng số chunk trong chỉ mục."""
         return len(self.chunks)
@@ -128,12 +127,26 @@ class BM25Index:
             raise FileNotFoundError(f"Không tìm thấy file BM25 index tại: {path}")
         with path.open("rb") as stream:
             state = pickle.load(stream)
+
+        index = None
         if isinstance(state, cls):
-            return state  # Backward compatibility with direct-class pickles.
-        if isinstance(state, dict) and state.get("version") == 1:
-            index = state.get("index")
-            if isinstance(index, cls):
-                return index
+            index = state  # Backward compatibility with direct-class pickles.
+        elif isinstance(state, dict) and state.get("version") == 1:
+            raw_index = state.get("index")
+            if isinstance(raw_index, cls):
+                index = raw_index
+
+        if index is not None:
+            # Tự động dựng postings nếu artifact được tạo từ phiên bản cũ
+            if not hasattr(index, "postings") or not index.postings:
+                postings = defaultdict(list)
+                if hasattr(index, "model") and index.model is not None and hasattr(index.model, "doc_freqs"):
+                    for doc_idx, frequencies in enumerate(index.model.doc_freqs):
+                        for token in frequencies:
+                            postings[token].append(doc_idx)
+                index.postings = dict(postings)
+            return index
+
         raise ValueError(f"Invalid or incompatible BM25 artifact: {path}")
 
     def search(
@@ -191,6 +204,14 @@ class BM25Index:
 
     def get_candidates(self, query_tokens: list[str]) -> list[int]:
         """Return sorted list of chunk indices that contain any query tokens."""
+        if not hasattr(self, "postings") or not self.postings:
+            postings = defaultdict(list)
+            if hasattr(self, "model") and self.model is not None and hasattr(self.model, "doc_freqs"):
+                for doc_idx, frequencies in enumerate(self.model.doc_freqs):
+                    for token in frequencies:
+                        postings[token].append(doc_idx)
+            self.postings = dict(postings)
+
         candidates = set()
         for token in query_tokens:
             if token in self.postings:

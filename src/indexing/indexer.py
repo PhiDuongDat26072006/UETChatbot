@@ -20,7 +20,7 @@ class UETIndexer:
         vector_store=None,
         embedding_model=None,
         persist_dir=None,
-        collection_name="uet_knowledge_base",
+        collection_name=None,
         sparse_path=None,
         workers=6,
     ):

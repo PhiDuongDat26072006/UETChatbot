@@ -1,14 +1,14 @@
 """
 src/embeddings/embedder.py - Phụ trách mô hình Vector Embedding (Task 3).
 Thành viên phụ trách: Người quản lý mô hình Embedding.
-Nhiệm vụ: Chuyển đổi văn bản thành các vector số thực 384 chiều bằng mô hình `all-MiniLM-L6-v2`.
+Nhiệm vụ: Chuyển đổi văn bản thành các vector số thực 1024 chiều bằng mô hình BAAI/bge-m3.
 """
 
 from __future__ import annotations
 import hashlib
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 # Đảm bảo root directory có trong sys.path để import từ src
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -22,7 +22,7 @@ from src.base import (
     UserQuery,
     EmbeddedQueryVector,
 )
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("embeddings")
 
@@ -30,24 +30,60 @@ logger = get_logger("embeddings")
 class UETEmbedder(BaseEmbeddingModel):
     """
     Mô hình nhúng văn bản (Embedding Model) cho UET Chatbot.
-    Sử dụng mô hình: `all-MiniLM-L6-v2` (384 chiều, chạy cục bộ offline, 0đ).
+    Chuẩn hóa sử dụng mô hình BAAI/bge-m3 (1024 chiều, tối ưu tiếng Việt và đa ngữ).
+    Đồng bộ cấu hình trực tiếp từ config.yaml.
     """
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self._model_name = model_name
-        self._dimension = 384
-        self._embedding_fn = None
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        dimension: Optional[int] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ):
+        raw_cfg = config or load_yaml_config()
+        emb_cfg = raw_cfg.get("embedding", {}) if raw_cfg else {}
 
+        self._model_name = (
+            model_name
+            or emb_cfg.get("model_name")
+            or "BAAI/bge-m3"
+        )
+        self._dimension = (
+            dimension
+            or emb_cfg.get("dimension")
+            or 1024
+        )
+
+        self._st_model = None
+        self._chroma_ef = None
+
+        self._init_model()
+
+    def _init_model(self) -> None:
+        """Khởi tạo mô hình embedding tương ứng theo cấu hình."""
+        if "bge" in self._model_name.lower() or self._dimension == 1024:
+            try:
+                from sentence_transformers import SentenceTransformer
+                logger.info(f"Đang tải mô hình SentenceTransformer '{self._model_name}' ({self._dimension} chiều)...")
+                self._st_model = SentenceTransformer(self._model_name)
+                logger.info(f"Đã khởi tạo thành công mô hình embedding '{self._model_name}' ({self._dimension} chiều).")
+                return
+            except Exception as e:
+                logger.warning(
+                    f"Chưa thể nạp SentenceTransformer '{self._model_name}': {e}. Sẽ dùng fallback vector."
+                )
+
+        # Fallback hoặc mặc định cho all-MiniLM-L6-v2 (384 chiều)
         try:
             import chromadb.utils.embedding_functions as ef
-            self._embedding_fn = ef.DefaultEmbeddingFunction()
-            logger.info(f"Đã khởi tạo thành công mô hình embedding '{self._model_name}' ({self._dimension} chiều).")
+            self._chroma_ef = ef.DefaultEmbeddingFunction()
+            logger.info(f"Đã mở DefaultEmbeddingFunction của ChromaDB ({self._dimension} chiều).")
         except Exception as e:
-            logger.warning(f"Không thể khởi tạo DefaultEmbeddingFunction của Chroma: {e}. Sẽ dùng vector dự phòng.")
+            logger.warning(f"Không thể khởi tạo DefaultEmbeddingFunction của Chroma: {e}.")
 
     @property
     def dimension(self) -> int:
-        """Số chiều của vector embedding (384 chiều)."""
+        """Số chiều của vector embedding."""
         return self._dimension
 
     @property
@@ -56,8 +92,8 @@ class UETEmbedder(BaseEmbeddingModel):
         return self._model_name
 
     def _fallback_vector(self, text: str) -> List[float]:
-        """Tạo vector dự phòng 384 chiều dựa trên hash văn bản khi gặp sự cố."""
-        hash_digest = hashlib.md5(text.encode("utf-8")).digest()
+        """Tạo vector dự phòng self._dimension chiều dựa trên hash văn bản khi gặp sự cố."""
+        hash_digest = hashlib.sha256(text.encode("utf-8")).digest()
         vec = []
         for i in range(self._dimension):
             byte_val = hash_digest[i % len(hash_digest)]
@@ -66,7 +102,7 @@ class UETEmbedder(BaseEmbeddingModel):
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
-        Nhúng danh sách chuỗi văn bản thành danh sách vector số thực 384 chiều.
+        Nhúng danh sách chuỗi văn bản thành danh sách vector số thực.
         :param texts: Danh sách các câu hoặc đoạn văn bản cần nhúng
         :return: Danh sách vector (List[List[float]])
         """
@@ -75,17 +111,31 @@ class UETEmbedder(BaseEmbeddingModel):
 
         logger.info(f"Đang nhúng {len(texts)} đoạn văn bản bằng mô hình '{self.model_name}' ({self.dimension} chiều)...")
 
-        if self._embedding_fn is not None:
+        # 1. Sử dụng SentenceTransformer (bge-m3)
+        if self._st_model is not None:
+            try:
+                raw_vectors = self._st_model.encode(
+                    texts,
+                    batch_size=32,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+                return [vec.tolist() if hasattr(vec, "tolist") else list(vec) for vec in raw_vectors]
+            except Exception as e:
+                logger.error(f"Lỗi khi nhúng bằng SentenceTransformer '{self.model_name}': {e}.")
+
+        # 2. Sử dụng Chroma Default (MiniLM 384)
+        if self._chroma_ef is not None and self._dimension == 384:
             try:
                 batch_size = 64
                 all_vectors: List[List[float]] = []
                 for i in range(0, len(texts), batch_size):
-                    batch = texts[i:i + batch_size]
-                    raw_vectors = self._embedding_fn(batch)
+                    batch = texts[i : i + batch_size]
+                    raw_vectors = self._chroma_ef(batch)
                     all_vectors.extend([list(vec) for vec in raw_vectors])
                 return all_vectors
             except Exception as e:
-                logger.error(f"Lỗi khi nhúng văn bản bằng '{self.model_name}': {e}. Dùng vector dự phòng.")
+                logger.error(f"Lỗi khi nhúng bằng Chroma EF: {e}.")
 
         return [self._fallback_vector(t) for t in texts]
 
