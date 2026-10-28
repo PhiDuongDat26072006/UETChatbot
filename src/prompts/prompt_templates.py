@@ -72,7 +72,7 @@ class UETPromptAugmenter(BasePromptAugmenter):
             meta = ctx.metadata or {}
             title = meta.get("title") or meta.get("source") or f"Tài liệu căn cứ {i}"
             page_info = f" - Trang {meta['page']}" if meta.get("page") is not None else ""
-            score_info = f" [Độ phù hợp: {int(ctx.similarity_score * 100)}%]" if ctx.similarity_score is not None else ""
+            score_info = f" [Điểm Cross-Encoder: {ctx.similarity_score:.3f}]" if ctx.similarity_score is not None else ""
             
             search_method = meta.get("search_source")
             if not search_method:

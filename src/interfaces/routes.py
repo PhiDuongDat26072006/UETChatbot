@@ -75,6 +75,16 @@ def create_app():
         allow_headers=["*"],
     )
 
+    # Chống trình duyệt lưu cache file tĩnh trong quá trình phát triển
+    @app.middleware("http")
+    async def add_no_cache_headers(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static") or request.url.path == "/":
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
     # Phục vụ thư mục static (CSS, JS, assets)
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -121,6 +131,28 @@ def create_app():
         sources_data = []
         for ctx in response.sources:
             meta = dict(ctx.metadata or {})
+            # Giải mã tiêu đề chuẩn xác từ metadata hoặc văn bản
+            title = meta.get("title")
+            if not title or str(title).startswith("Tài liệu UET ("):
+                if "metadata" in meta and isinstance(meta["metadata"], str):
+                    try:
+                        import json
+                        nested = json.loads(meta["metadata"])
+                        if isinstance(nested, dict) and nested.get("title"):
+                            title = nested["title"]
+                            meta["title"] = title
+                    except Exception:
+                        pass
+                if not title or str(title).startswith("Tài liệu UET ("):
+                    import re
+                    first_line = (ctx.text or "").strip().split("\n")[0]
+                    m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
+                    if m and len(m.group(1).strip()) > 3:
+                        title = m.group(1).strip()
+                        meta["title"] = title
+                    elif meta.get("source"):
+                        title = meta["source"]
+                        meta["title"] = title
             search_type = meta.get("search_type")
             search_source = meta.get("search_source")
             if not search_type:

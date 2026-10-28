@@ -112,7 +112,7 @@ def run_cli():
             if response.sources:
                 sources_table = Table(title="📚 Tài liệu nguồn trích dẫn", show_header=True, header_style="bold magenta")
                 sources_table.add_column("#", style="dim", width=4)
-                sources_table.add_column("Độ khớp", style="yellow", width=10)
+                sources_table.add_column("Điểm Rerank", style="yellow", width=12)
                 sources_table.add_column("Phương thức", style="green", width=18)
                 sources_table.add_column("Tên tài liệu / Văn bản", style="cyan")
                 sources_table.add_column("Trích đoạn nội dung", style="white")
@@ -124,7 +124,7 @@ def run_cli():
                     snippet = src.text.replace("\n", " ").strip()
                     if len(snippet) > 80:
                         snippet = snippet[:77] + "..."
-                    score_str = f"{int(src.similarity_score * 100)}%"
+                    score_str = f"{src.similarity_score:.3f}" if (src.similarity_score is not None) else "N/A"
                     sources_table.add_row(str(idx), score_str, str(method), str(title), snippet)
 
                 console.print(sources_table)

@@ -172,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (sources && sources.length > 0) {
             const chips = sources.map((s, idx) => {
                 const title = s.metadata?.title || s.metadata?.source || `Tài liệu #${idx + 1}`;
-                const score = s.similarity_score ? (s.similarity_score * 100).toFixed(0) + "%" : "Khớp";
+                const score = (s.similarity_score !== undefined && s.similarity_score !== null) ? Number(s.similarity_score).toFixed(3) : "Khớp";
 
                 // Phân loại nguồn tìm kiếm: BM25 hay Vector Search hay Cả hai (Hybrid)
                 let methodType = s.search_type || s.metadata?.search_type;
@@ -287,7 +287,7 @@ document.addEventListener("DOMContentLoaded", () => {
         modalContent.textContent = source.text || "Không có nội dung trích xuất.";
 
         const page = source.metadata?.page ? `Trang: ${source.metadata.page} | ` : "";
-        const score = source.similarity_score ? `Độ tương đồng: ${(source.similarity_score * 100).toFixed(1)}%` : "";
+        const score = (source.similarity_score !== undefined && source.similarity_score !== null) ? `Điểm Cross-Encoder: ${Number(source.similarity_score).toFixed(3)}` : "";
 
         // Xác định phương thức tìm kiếm
         let methodDesc = source.search_source || source.metadata?.search_source;
