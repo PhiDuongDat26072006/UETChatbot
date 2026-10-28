@@ -22,7 +22,15 @@ STAGES = ("web", "data_source", "raw", "processed")
 def run_ingestion_serial(
     options, shared_fetcher=None, managed=False, extractor_pool=None
 ):
-    profiles = load_profiles(options.profile_dir, options.sites)
+    profiles = (
+        {
+            s: p
+            for s, p in options._profiles.items()
+            if not options.sites or s in options.sites
+        }
+        if hasattr(options, "_profiles")
+        else load_profiles(options.profile_dir, options.sites)
+    )
     storage = Storage(options.data_dir)
     report = {
         "run_id": str(uuid4()),
@@ -369,6 +377,13 @@ def run_ingestion(options):
     # Network stages share a pool; extraction streams only when requested.
     from .network_runner import run_network
 
+    from .overrides import attach
+
+    options._profiles = attach(
+        load_profiles(options.profile_dir), getattr(options, "overrides", None)
+    )
+    if options.sites and set(options.sites) - set(options._profiles):
+        raise ValueError("Unknown sites")
     if options.from_stage in {"web", "data_source"}:
         return run_network(options, run_ingestion_serial)
     return run_ingestion_serial(options)

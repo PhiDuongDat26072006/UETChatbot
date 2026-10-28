@@ -87,6 +87,7 @@ def build_parser():
         default=defaults["delay"],
         help="Delay per worker before each GET",
     )
+    ingest.add_argument("--overrides", type=Path, help="Exact-URL override YAML")
     ingest.add_argument("--refresh", action="store_true")
     ingest.add_argument("--reprocess", action="store_true")
     ingest.add_argument("--retry-failed", action="store_true")

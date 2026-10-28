@@ -10,7 +10,7 @@ from .html.extractor import extract_html
 def processing_key(raw_record, profile):
     payload = {
         "hash": raw_record["metadata"]["content_hash"],
-        "profile": profile,
+        "profile": {k: v for k, v in profile.items() if not k.startswith("_")},
         "processor": PROCESSOR_VERSION,
     }
     return digest(

@@ -1,0 +1,10 @@
+# Exact URLs. Edit between runs; changes take effect after restarting CLI.
+version: 1
+sites: {}
+# Example:
+# sites:
+#   UET:
+#     urls:
+#       "https://uet.vnu.edu.vn/doi-song-sinh-vien/":
+#         decision: listing
+#         note: "Trang tổng hợp; chỉ khám phá link"

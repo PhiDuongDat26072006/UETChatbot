@@ -46,7 +46,7 @@ def has_blocked_fragment(url, profile):
     }
 
 
-def in_scope(url, profile):
+def automatic_in_scope(url, profile):
     p = urlsplit(url)
     scope = profile["scope"]
     path = unquote(p.path).rstrip("/") or "/"
@@ -82,6 +82,18 @@ def in_scope(url, profile):
     return not has_blocked_fragment(url, profile)
 
 
+def in_scope(url, profile):
+    from ..overrides import lookup
+
+    rule = lookup(url, profile)
+    if rule:
+        return (
+            rule["decision"] in {"accepted", "listing"}
+            and urlsplit(url).netloc.lower() in profile["scope"]["hosts"]
+        )
+    return automatic_in_scope(url, profile)
+
+
 def is_listing(url, profile):
     p = urlsplit(url)
     path = unquote(p.path).rstrip("/") or "/"
@@ -93,11 +105,11 @@ def is_listing(url, profile):
     return any(k in parse_qs(p.query) for k in ["page", "paged"])
 
 
-def evaluate(url, profile, metadata=None):
+def automatic_evaluate(url, profile, metadata=None):
     kind = resource_type(url)
     if kind != "html":
         return "deferred" if kind != "asset" else "rejected", kind
-    if not in_scope(url, profile):
+    if not automatic_in_scope(url, profile):
         return "rejected", "outside_scope"
     if is_listing(url, profile):
         return "listing", "navigation_page"
@@ -117,11 +129,27 @@ def evaluate(url, profile, metadata=None):
     return "accepted", "html_document"
 
 
+def evaluate(url, profile, metadata=None):
+    from ..overrides import lookup
+
+    auto, reason = automatic_evaluate(url, profile, metadata)
+    rule = lookup(url, profile)
+    if metadata is not None:
+        metadata.pop("automatic_decision", None)
+        metadata.pop("override_note", None)
+        if rule:
+            metadata.update(automatic_decision=auto, override_note=rule.get("note", ""))
+    return (rule["decision"], "manual_override") if rule else (auto, reason)
+
+
 def reconcile_sources(storage, site, profile):
     """Re-evaluate saved sources offline after policy edits, before selecting jobs."""
     from ..identity import normalize_site_url, source_id
     from copy import deepcopy
 
+    from ..overrides import reconcile
+
+    reconcile(storage, site, profile)
     changed = 0
     rows = storage.records("sources", site)
     # Keep old identities as aliases for audit. Raw bytes/history remain immutable;
@@ -151,7 +179,10 @@ def reconcile_sources(storage, site, profile):
         metadata = source["metadata"]
         if metadata.get("decision") == "alias":
             continue
+        before = dict(metadata)
         decision, reason = evaluate(source["uri"], profile, metadata)
+        if before != metadata:
+            changed += 1
         if (metadata.get("decision"), metadata.get("decision_reason")) != (
             decision,
             reason,

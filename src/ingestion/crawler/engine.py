@@ -17,7 +17,13 @@ log = logging.getLogger(__name__)
 def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick=None):
     site = profile["site"]
     checkpoint = storage.root / "ingestion_state" / (site + "-crawl.json")
-    key = digest(json.dumps(profile, sort_keys=True, default=str).encode())
+    key = digest(
+        json.dumps(
+            {k: v for k, v in profile.items() if not k.startswith("_")},
+            sort_keys=True,
+            default=str,
+        ).encode()
+    )
     saved = json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
     resume = (
         saved.get("profile_hash") == key
@@ -29,7 +35,10 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
     items = (
         saved.get("frontier", [])
         if resume
-        else [(normalize_site_url(u, profile), 0, None) for u in profile["seeds"]]
+        else [
+            (normalize_site_url(u, profile), 0, None)
+            for u in profile["seeds"] + profile.get("_manual_seeds", [])
+        ]
     )
     frontier = deque(sorted((tuple(x) for x in items), key=lambda x: x[1]))
     seen = set(saved.get("seen", [])) if resume else set()

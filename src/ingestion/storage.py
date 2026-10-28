@@ -160,11 +160,14 @@ class Storage:
 
     def resolve_redirect(self, source, page, profile=None):
         """Resolve redirects using configured site identity; retain actual final URL."""
-        final = (
-            normalize_site_url(page["final_url"], profile)
-            if profile
-            else canonicalize_url(page["final_url"])
-        )
+        try:
+            final = (
+                normalize_site_url(page["final_url"], profile)
+                if profile
+                else canonicalize_url(page["final_url"])
+            )
+        except ValueError:
+            return source
         if final == source.uri:
             return source
         site = source.metadata["site"]
