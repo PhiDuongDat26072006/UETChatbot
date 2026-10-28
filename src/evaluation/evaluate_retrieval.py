@@ -26,7 +26,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 # Đảm bảo root project có trong sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -93,6 +93,8 @@ class RetrievalEvaluator:
         query_id: str,
         retrieved_doc_ids: List[str],
         k_values: List[int] = [1, 3, 5, 10, 20],
+        is_out_of_domain: bool = False,
+        refused_to_answer: bool = True,
     ) -> Dict[str, Any]:
         """
         Đánh giá kết quả retrieval cho một câu hỏi duy nhất.
@@ -100,6 +102,8 @@ class RetrievalEvaluator:
         :param query_id: ID câu hỏi
         :param retrieved_doc_ids: Danh sách doc IDs trả về bởi retriever (theo thứ tự rank)
         :param k_values: Các ngưỡng K để tính Precision@K, Recall@K, etc.
+        :param is_out_of_domain: Câu hỏi ngoài phạm vi UET (không có tài liệu ground truth)
+        :param refused_to_answer: Hệ thống có từ chối trả lời đúng chuẩn hay không
         :return: Dict chứa tất cả metrics cho query này
         """
         relevant_ids = self.get_relevant_ids(query_id)
@@ -109,7 +113,22 @@ class RetrievalEvaluator:
             "query_id": query_id,
             "num_retrieved": len(retrieved_doc_ids),
             "num_relevant_in_ground_truth": len(relevant_ids),
+            "is_out_of_domain": is_out_of_domain,
         }
+
+        # Quy tắc đánh giá out_of_domain:
+        # Nếu đúng là từ chối trả lời (hệ thống nhận diện chuẩn ngoài phạm vi) -> 1.0000
+        # Nếu cố tình trả lời -> 0.0000
+        if is_out_of_domain:
+            ood_score = 1.0 if refused_to_answer else 0.0
+            for k in k_values:
+                result[f"precision@{k}"] = ood_score
+                result[f"recall@{k}"] = ood_score
+                result[f"ndcg@{k}"] = ood_score
+                result[f"hit_rate@{k}"] = ood_score
+            result["mrr"] = ood_score
+            result["map"] = ood_score
+            return result
 
         # Tính Precision@K, Recall@K, NDCG@K, HitRate@K cho từng K
         for k in k_values:
@@ -141,10 +160,14 @@ class RetrievalEvaluator:
         for query in self.queries:
             qid = query["query_id"]
             retrieved = retrieval_results.get(qid, [])
-            res = self.evaluate_single_query(qid, retrieved, k_values)
+            q_types = query.get("query_types") or ([query.get("query_type")] if query.get("query_type") else [])
+            is_ood = "out_of_domain" in q_types or (len(self.get_relevant_ids(qid)) == 0)
+            res = self.evaluate_single_query(
+                qid, retrieved, k_values, is_out_of_domain=is_ood, refused_to_answer=True
+            )
             res["query_text"] = query.get("query_text", "")
             res["difficulty"] = query.get("difficulty", "unknown")
-            res["query_type"] = query.get("query_type", "unknown")
+            res["query_types"] = q_types
             per_query_results.append(res)
 
         # Tách riêng OOD queries ra khỏi trung bình chính
@@ -175,15 +198,28 @@ class RetrievalEvaluator:
                     vals = [r[key] for r in diff_results if key in r]
                     difficulty_metrics[diff][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
 
-        # Phân tích theo query_type
-        type_metrics: Dict[str, Dict[str, float]] = {}
-        for qt in set(q.get("query_type", "unknown") for q in self.queries):
-            qt_results = [r for r in per_query_results if r.get("query_type") == qt]
-            if qt_results:
-                type_metrics[qt] = {}
-                for key in metric_keys:
-                    vals = [r[key] for r in qt_results if key in r]
-                    type_metrics[qt][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
+        # Phân tích theo toàn bộ query_types khai báo trong dataset_metadata.json (multi-label)
+        meta_file = self.eval_data_dir / "dataset_metadata.json"
+        target_types = []
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r", encoding="utf-8") as mf:
+                    target_types = list(json.load(mf).get("query_types", {}).keys())
+            except Exception:
+                pass
+        if not target_types:
+            target_types = ["factoid", "procedure", "list", "out_of_domain", "comparison", "informal", "multi_hop", "aggregation"]
+
+        type_metrics: Dict[str, Dict[str, Any]] = {}
+        for qt in target_types:
+            qt_results = [
+                r for q, r in zip(self.queries, per_query_results)
+                if qt in (q.get("query_types") or ([q.get("query_type")] if q.get("query_type") else []))
+            ]
+            type_metrics[qt] = {"count": len(qt_results)}
+            for key in metric_keys:
+                vals = [r[key] for r in qt_results if key in r]
+                type_metrics[qt][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
 
         return {
             "summary": {
@@ -201,7 +237,7 @@ class RetrievalEvaluator:
         self,
         retriever: Any,
         top_k: int = 5,
-        k_values: List[int] = [1, 3, 5, 10, 20],
+        k_values: Optional[List[int]] = None,
         dedup_documents: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -209,17 +245,33 @@ class RetrievalEvaluator:
         
         :param retriever: Đối tượng UETRetriever hoặc BaseRetriever
         :param top_k: Số lượng documents tối đa cần retrieve
-        :param k_values: Các ngưỡng K
+        :param k_values: Các ngưỡng K (mặc định: chỉ test với đúng [top_k])
         :param dedup_documents: Khử trùng lặp ở cấp độ Document ID (tránh các chunk cùng 1 tài liệu chiếm chỗ Top-K)
         """
+        if k_values is None:
+            k_values = [top_k]
         from src.base import UserQuery
 
         retrieval_results: Dict[str, List[str]] = {}
-        # Nếu khử trùng lặp cấp Document, lấy nhiều chunk hơn từ retriever để lọc ra đủ top_k documents duy nhất
         query_top_k = max(top_k * 4, 25) if dedup_documents else top_k
 
+        # Tự động nạp cache kết quả retrieval nếu đã từng chạy
+        cache_file = self.eval_data_dir / f".retrieval_cache_top{top_k}.json"
+        cached: Dict[str, List[str]] = {}
+        if cache_file.exists():
+            try:
+                with open(cache_file, "r", encoding="utf-8") as cf:
+                    cached = json.load(cf)
+            except Exception:
+                cached = {}
+
+        needs_save = False
         for i, query in enumerate(self.queries):
             qid = query["query_id"]
+            if qid in cached and len(cached[qid]) >= top_k:
+                retrieval_results[qid] = cached[qid][:top_k]
+                continue
+
             user_query = UserQuery(query_text=query["query_text"])
             try:
                 contexts = retriever.retrieve(user_query, top_k=query_top_k)
@@ -259,6 +311,8 @@ class RetrievalEvaluator:
                                 break
 
                 retrieval_results[qid] = retrieved_ids
+                cached[qid] = retrieved_ids
+                needs_save = True
             except Exception as e:
                 logger.error(f"Lỗi khi retrieve cho query {qid}: {e}")
                 retrieval_results[qid] = []
@@ -266,13 +320,34 @@ class RetrievalEvaluator:
             if (i + 1) % 10 == 0 or (i + 1) == len(self.queries):
                 logger.info(f"Đã retrieve {i + 1}/{len(self.queries)} queries...")
 
+        if needs_save:
+            try:
+                with open(cache_file, "w", encoding="utf-8") as cf:
+                    json.dump(cached, cf, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
         return self.evaluate_batch(retrieval_results, k_values=k_values)
 
 
-def run_eval_retrieval_cli(top_k: int = 5, eval_dir: Optional[str | Path] = None, dedup: bool = True):
+def run_eval_retrieval_cli(
+    top_k: Optional[int] = None,
+    eval_dir: Optional[str | Path] = None,
+    dedup: bool = True,
+    k_values: Optional[List[int]] = None,
+    output: Optional[Union[str, Path]] = None,
+):
     """Chạy đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG) và hiển thị trên CLI."""
+    from src.utils.helpers import load_yaml_config
+    cfg = load_yaml_config()
+    target_k = top_k if top_k is not None else cfg.get("retrieval", {}).get("final_top_k", 5)
+
+    if k_values is None:
+        k_values = [target_k]
+
     print("\n" + "=" * 65)
     print("🔬 ĐANG CHẠY ĐÁNH GIÁ PHÂN HỆ TRUY XUẤT (RETRIEVAL EVALUATION)")
+    print(f"• Cấu hình K đánh giá: K={target_k} (Lấy từ config.yaml: retrieval.final_top_k)")
     print("=" * 65)
     from src.pipeline import get_retriever
 
@@ -287,27 +362,99 @@ def run_eval_retrieval_cli(top_k: int = 5, eval_dir: Optional[str | Path] = None
 
     evaluator = RetrievalEvaluator(eval_data_dir=eval_dir)
     retriever = get_retriever()
-    eval_result = evaluator.evaluate_retriever(retriever, top_k=top_k, dedup_documents=dedup)
+    eval_result = evaluator.evaluate_retriever(
+        retriever, top_k=target_k, k_values=k_values, dedup_documents=dedup
+    )
 
     print("\n" + "=" * 65)
-    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL (TOP-K = {top_k})")
+    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL (TOP-K = {target_k})")
     print("=" * 65)
     agg = eval_result.get("aggregated_metrics", {})
     summary = eval_result.get("summary", {})
     print(f"Tổng số queries đánh giá: {summary.get('in_domain_queries', 0)} in-domain queries\n")
-    print(f"{'Metric':<20} {'K=1':<10} {'K=3':<10} {'K=5':<10} {'K=10':<10}")
+    
+    header_cols = "  ".join([f"{f'K={k}':<10}" for k in k_values])
+    print(f"{'Chỉ số (Metric)':<25} {header_cols}")
     print("-" * 65)
     for m in ["precision", "recall", "ndcg", "hit_rate"]:
-        row = f"{m.replace('_', ' ').capitalize():<20}"
-        for k in [1, 3, 5, 10]:
+        row = f"{m.replace('_', ' ').capitalize():<25} "
+        for k in k_values:
             val = agg.get(f"mean_{m}@{k}", 0.0)
-            row += f"{val:<10.4f}"
-        print(row)
+            row += f"{val:<10.4f}  "
+        print(row.strip())
 
     print("-" * 65)
-    print(f"  • MRR (Mean Reciprocal Rank) : {agg.get('mean_mrr', 0.0):.4f}")
-    print(f"  • MAP (Mean Average Precision): {agg.get('mean_map', 0.0):.4f}")
+    print(f"  • MRR (Mean Reciprocal Rank)  : {agg.get('mean_mrr', 0.0):.4f}")
+    print(f"  • MAP (Mean Average Precision) : {agg.get('mean_map', 0.0):.4f}")
     print("=" * 65 + "\n")
+
+    # =========================================================================
+    # MA TRẬN ĐÁNH GIÁ THEO DẠNG CÂU HỎI (QUERY TYPE MATRIX) - TOÀN BỘ QUERY TYPES
+    # =========================================================================
+    by_type = eval_result.get("by_query_type", {})
+
+    meta_file = eval_dir / "dataset_metadata.json"
+    ordered_types = []
+    if meta_file.exists():
+        try:
+            with open(meta_file, "r", encoding="utf-8") as mf:
+                ordered_types = list(json.load(mf).get("query_types", {}).keys())
+        except Exception:
+            pass
+    if not ordered_types:
+        ordered_types = list(by_type.keys())
+
+    matrix_types = [t for t in ordered_types if t in by_type]
+
+    if matrix_types:
+        col_w = 17
+        line_len = 14 + len(matrix_types) * col_w
+        sep = "=" * line_len
+
+        print(sep)
+        print(f"📊 MA TRẬN ĐÁNH GIÁ THEO DẠNG CÂU HỎI (QUERY TYPE MATRIX @ K={target_k})")
+        print(sep)
+
+        # Tiêu đề cột: factoid(71), procedure(17), list(28)...
+        col_headers = [f"{t}({by_type[t].get('count', 0)})" for t in matrix_types]
+        header_line = f"{'':<14}" + "".join([f"{ch:<{col_w}}" for ch in col_headers])
+        print(header_line)
+        print("-" * line_len)
+
+        # Hàng Precision và Recall (chuẩn xác theo mẫu ảnh)
+        for metric_label, metric_key in [("Precision", "precision"), ("Recall", "recall")]:
+            row_str = f"{metric_label:<14}"
+            for t in matrix_types:
+                val = by_type[t].get(f"mean_{metric_key}@{target_k}", 0.0)
+                row_str += f"{val:<{col_w}.4f}"
+            print(row_str)
+
+        print("-" * line_len)
+        # Hàng MRR và MAP
+        for metric_label, metric_key in [("MRR", "mean_mrr"), ("MAP", "mean_map")]:
+            row_str = f"{metric_label:<14}"
+            for t in matrix_types:
+                val = by_type[t].get(metric_key, 0.0)
+                row_str += f"{val:<{col_w}.4f}"
+            print(row_str)
+
+        print("-" * line_len)
+        # Các chỉ số bổ trợ (NDCG, Hit Rate)
+        for metric_label, metric_key in [("NDCG", "ndcg"), ("Hit Rate", "hit_rate")]:
+            row_str = f"{metric_label:<14}"
+            for t in matrix_types:
+                val = by_type[t].get(f"mean_{metric_key}@{target_k}", 0.0)
+                row_str += f"{val:<{col_w}.4f}"
+            print(row_str)
+
+        print(sep + "\n")
+
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(eval_result, f, ensure_ascii=False, indent=2)
+        print(f"💾 Đã lưu kết quả chi tiết: {output_path}\n")
 
 
 # ============================================================================
@@ -328,7 +475,7 @@ def main():
         default=str(PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"),
         help="Thư mục chứa dữ liệu đánh giá (mặc định: data/eval_data/retrieval_eval_data)",
     )
-    parser.add_argument("--top_k", type=int, default=5, help="Số kết quả trả về top-K (mặc định: 5)")
+    parser.add_argument("--top_k", type=int, default=None, help="Số kết quả trả về top-K (mặc định: lấy từ config.yaml)")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn file lưu kết quả JSON")
     parser.add_argument(
         "--mode",
@@ -380,7 +527,7 @@ def main():
             retriever = get_retriever()
             print("  ✅ Khởi tạo UETRetriever thành công!")
             eval_result = evaluator.evaluate_retriever(
-                retriever, top_k=args.top_k, dedup_documents=not args.no_dedup
+                retriever, top_k=args.top_k, k_values=[args.top_k], dedup_documents=not args.no_dedup
             )
 
         except Exception as e:
