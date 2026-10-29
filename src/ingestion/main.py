@@ -68,7 +68,10 @@ def build_parser():
     )
     ingest.add_argument("--per-host", type=positive, default=defaults["per_host"])
     ingest.add_argument(
-        "--extract-workers", type=positive, default=defaults["extract_workers"]
+        "--extract-workers",
+        type=positive,
+        default=defaults["extract_workers"],
+        help="Number of extraction processes for raw -> processed",
     )
     ingest.add_argument(
         "--stream-extract-workers",

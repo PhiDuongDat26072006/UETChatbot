@@ -8,7 +8,7 @@ ingestion:
   flush_every: 20
   per_host: 30
   extract_workers: 10
-  stream_extract_workers: 8  # null => equals download_workers
+  stream_extract_workers: 10  # null => equals download_workers
   timeout: 30
   max_html_bytes: 5242880
   retries: 3

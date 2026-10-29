@@ -1,4 +1,4 @@
-"""Stage coordinator; worker threads calculate, one coordinator writes."""
+"""Stage coordinator; process workers extract, one coordinator writes."""
 
 from contextlib import nullcontext
 import logging
@@ -11,7 +11,6 @@ from .crawler.policy import evaluate, reconcile_sources
 from .crawler.parser import metadata as extract_metadata
 from .downloader.http import HTMLFetcher
 from .downloader.service import download_source
-from .extractor.pipeline import process_raw, processing_key
 from .storage import Storage, writer_lock, write_json, now
 from .utils import completion_map
 
@@ -22,6 +21,14 @@ STAGES = ("web", "data_source", "raw", "processed")
 def run_ingestion_serial(
     options, shared_fetcher=None, managed=False, extractor_pool=None
 ):
+    if options.to_stage == "processed" and extractor_pool is None:
+        from concurrent.futures import ProcessPoolExecutor
+        from multiprocessing import get_context
+
+        with ProcessPoolExecutor(
+            max_workers=options.extract_workers, mp_context=get_context("spawn")
+        ) as pool:
+            return run_ingestion_serial(options, shared_fetcher, managed, pool)
     profiles = (
         {
             s: p
@@ -43,6 +50,9 @@ def run_ingestion_serial(
     fetcher = shared_fetcher or HTMLFetcher(
         options.timeout, options.max_html_bytes, options.retries, options.delay
     )
+    if options.to_stage == "processed":
+        report["extract_processes"] = (options.extract_workers if options.from_stage == "raw"
+                                       else options.stream_extract_workers)
     selected = 0
     processed_selected = 0
     stream = None
@@ -63,7 +73,8 @@ def run_ingestion_serial(
                         if options.limit is None
                         else max(0, options.limit - processed_selected)
                     )
-                    capacity = options.stream_extract_workers
+                    capacity = (options.extract_workers if options.from_stage == "raw"
+                                else options.stream_extract_workers)
                     stream = StreamingExtractor(
                         storage,
                         site,
@@ -235,108 +246,6 @@ def run_ingestion_serial(
                 if stream is not None:
                     processed_selected += stream.finish()
                     stream = None
-                elif options.to_stage == "processed":
-                    latest = {}
-                    for row in storage.records("raw", site).values():
-                        sid = row["metadata"]["source_id"]
-                        if (
-                            sid not in latest
-                            or row["created_at"] > latest[sid]["created_at"]
-                        ):
-                            latest[sid] = row
-                    jobs = []
-                    for sid, row in sorted(latest.items()):
-                        source = storage.records("sources", site).get(sid)
-                        if source and source["metadata"].get("decision") != "accepted":
-                            storage.remove_processed(site, sid)
-                            continue
-                        state = storage.records("state", site).get(
-                            "processed:" + sid, {}
-                        )
-                        if options.retry_failed and state.get("status") != "failed":
-                            continue
-                        key = processing_key(row, profile)
-                        existing = storage.records("processed", site).get(sid)
-                        if not options.reprocess and state.get("key") == key:
-                            if state.get("status") == "review" or (
-                                existing and existing["raw_data_id"] == row["id"]
-                            ):
-                                counts["processed_skipped"] += 1
-                                continue
-                        if (
-                            options.limit is not None
-                            and processed_selected >= options.limit
-                        ):
-                            break
-                        processed_selected += 1
-                        jobs.append((sid, row, key))
-
-                    def process(job):
-                        sid, row, key = job
-                        try:
-                            return (
-                                job,
-                                process_raw(storage.load_raw(row), profile),
-                                None,
-                            )
-                        except Exception as exc:
-                            return job, None, str(exc)
-
-                    with storage.batched():
-                        for completed, (
-                            _,
-                            ((sid, row, key), result, error),
-                        ) in enumerate(
-                            completion_map(process, jobs, options.extract_workers), 1
-                        ):
-                            if error:
-                                storage.remove_processed(site, sid)
-                                storage.state(
-                                    site,
-                                    sid,
-                                    "processed",
-                                    status="failed",
-                                    key=key,
-                                    error=error,
-                                )
-                                report["errors"].append(
-                                    {
-                                        "site": site,
-                                        "source_id": sid,
-                                        "stage": "processed",
-                                        "error": error,
-                                    }
-                                )
-                                counts["processed_failed"] += 1
-                            else:
-                                document, quality = result
-                                if quality["status"] == "accepted":
-                                    storage.save_processed(site, document)
-                                    status = "completed"
-                                    counts["processed_accepted"] += 1
-                                else:
-                                    storage.remove_processed(site, sid)
-                                    review = (
-                                        storage.root
-                                        / "ingestion_reports"
-                                        / "review"
-                                        / site
-                                        / (sid + ".json")
-                                    )
-                                    write_json(review, document.model_dump(mode="json"))
-                                    status = "review"
-                                    counts["processed_review"] += 1
-                                storage.state(
-                                    site,
-                                    sid,
-                                    "processed",
-                                    status=status,
-                                    key=key,
-                                    quality=quality,
-                                    raw_id=row["id"],
-                                )
-                            if completed % options.flush_every == 0:
-                                storage.flush_pending()
                 log.info("[%s] %s", site, dict(counts))
         except BaseException as exc:
             report["errors"].append(

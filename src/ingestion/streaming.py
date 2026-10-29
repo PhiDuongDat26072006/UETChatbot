@@ -39,7 +39,7 @@ class StreamingExtractor:
                 or row["created_at"] > self.latest[sid]["created_at"]
             ):
                 self.latest[sid] = row
-        self.backlog = deque(self.latest.values())
+        self.backlog = deque(self.latest[sid] for sid in sorted(self.latest))
 
     def stage(self, row):
         """Called after save_raw; submission waits for the next durable commit."""
@@ -61,10 +61,10 @@ class StreamingExtractor:
         self.seen.add(token)
         state = self.storage.records("state", self.site).get("processed:" + sid, {})
         existing = self.storage.records("processed", self.site).get(sid)
+        if self.options.retry_failed and state.get("status") != "failed":
+            return None
         if not self.options.reprocess and state.get("key") == key:
-            if state.get("status") == "review" or (
-                existing and existing["raw_data_id"] == row["id"]
-            ):
+            if existing and existing["raw_data_id"] == row["id"] and state.get("status") in {"completed", "review"}:
                 self.counts["processed_skipped"] += 1
                 return None
         if self.limit is not None and self.selected >= self.limit:
@@ -96,7 +96,7 @@ class StreamingExtractor:
             payload, quality = future.result()
             document = ProcessedData.model_validate(payload)
         except Exception as exc:
-            self.storage.remove_processed(self.site, sid)
+            # A failed attempt must not delete a previously saved document.
             self.storage.state(
                 self.site,
                 sid,
@@ -116,12 +116,13 @@ class StreamingExtractor:
                 }
             )
             return
+        # Quality is advisory; every successfully extracted payload is retained.
+        self.storage.save_processed(self.site, document)
+        self.counts["processed_saved"] += 1
         if quality["status"] == "accepted":
-            self.storage.save_processed(self.site, document)
             status = "completed"
             self.counts["processed_accepted"] += 1
         else:
-            self.storage.remove_processed(self.site, sid)
             write_json(
                 self.storage.root
                 / "ingestion_reports"

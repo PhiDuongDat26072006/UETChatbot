@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_PROFILE_DIR = Path(__file__).parent / "sites"
 DEFAULT_LOG_FILE = PROJECT_ROOT / "logs" / "app.log"
-PROCESSOR_VERSION = "html-v3-tables"
+PROCESSOR_VERSION = "html-v4-preserve"
 
 
 def load_runtime():
