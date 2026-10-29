@@ -3,45 +3,22 @@
 import re
 from copy import deepcopy
 from urllib.parse import urljoin, urlsplit
-from bs4 import NavigableString
+from bs4 import NavigableString, Comment
 
 
-def table_markdown(table):
-    rows = []
-    complex_table = any(
-        c.get("rowspan", "1") != "1" or c.get("colspan", "1") != "1"
-        for c in table.find_all(["th", "td"])
-    )
-    if complex_table:
-        # Retain HTML span semantics instead of inventing flattened cell positions.
-        return str(table)
-    for row in table.find_all("tr"):
-        if row.find_parent("table") is not table:
-            continue
-        cells = [
-            c.get_text(" ", strip=True).replace("|", r"\|")
-            for c in row.find_all(["th", "td"], recursive=False)
-        ]
-        if cells:
-            rows.append(cells)
-    if not rows:
-        return ""
-    width = max(map(len, rows))
-    rows = [r + [""] * (width - len(r)) for r in rows]
-    first = table.find("tr")
-    if not first or not first.find("th"):
-        rows.insert(0, [f"Cột {i + 1}" for i in range(width)])
-    lines = ["| " + " | ".join(r) + " |" for r in rows]
-    lines.insert(1, "| " + " | ".join(["---"] * width) + " |")
-    return "\n".join(lines)
+from .tables import table_markdown
 
 
 def render(node, url, depth=0):
+    if isinstance(node, Comment):
+        return ""
     if isinstance(node, NavigableString):
-        return re.sub(r"\s+", " ", str(node))
+        return re.sub(r"\s+", " ", str(node)).replace("<", "&lt;").replace(">", "&gt;")
     name = node.name
+    if name in {"script", "style", "noscript", "iframe", "object", "embed", "svg", "form", "button"}:
+        return ""
     if name == "table":
-        return "\n\n" + table_markdown(node) + "\n\n"
+        return "\n\n" + table_markdown(node, url, lambda cell: "".join(render(c, url, depth) for c in cell.children)) + "\n\n"
     if name in {"ul", "ol"}:
         lines = []
         for i, li in enumerate(node.find_all("li", recursive=False), 1):
@@ -57,12 +34,13 @@ def render(node, url, depth=0):
         return "\n"
     if name == "a":
         target = urljoin(url, node.get("href", ""))
+        target = target.replace("(", "%28").replace(")", "%29").replace("<", "%3C").replace(">", "%3E").replace(" ", "%20")
         if text.strip() and urlsplit(target).scheme in {"http", "https", "mailto"}:
             return f"[{text.strip()}]({target})"
     if name in {"b", "strong"} and text.strip():
         return "**" + text.strip() + "**"
     if name == "img":
-        return node.get("alt", "")
+        return node.get("alt", "").replace("<", "&lt;").replace(">", "&gt;")
     return text
 
 
