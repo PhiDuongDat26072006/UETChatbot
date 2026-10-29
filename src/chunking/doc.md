@@ -73,6 +73,12 @@ chunk nhất quán.
 nên độ dài cuối cùng của `DataChunk.text` có thể lớn hơn `chunk_size`. Việc
 chia dựa trên số ký tự, do đó không đảm bảo mỗi chunk có cùng số token.
 
+## Nhận diện bảng Markdown
+
+Chunker duyệt từng dòng trong nội dung để tìm bảng Markdown, nên bảng vẫn được nhận ra khi có tiêu đề hoặc đoạn văn đứng trước. Dòng tiêu đề bảng phải bắt đầu bằng dấu `|`, có ít nhất hai ô không rỗng. Phía sau cần có ít nhất một dòng bắt đầu bằng `|` với cùng số ô. Dòng phân cách Markdown như `| --- | --- |` được bỏ qua nếu có.
+
+Chunker tiếp tục quét phần văn bản còn lại sau mỗi bảng, vì một tài liệu có thể chứa nhiều bảng xen giữa các đoạn văn. Mỗi đoạn văn được chia theo cách thông thường. Trước khi chunking, mỗi hàng bảng được phẳng hóa thành các cặp `tên cột: giá trị`; tên bảng được chèn vào đầu mỗi chunk dưới dạng `[META: ...]`. Sau đó, cửa sổ trượt gom các hàng đã làm giàu và lặp một số hàng cuối ở chunk kế tiếp để tạo overlap. Hàng dài hơn ngân sách được giữ nguyên trong chunk riêng. Các chunk được ghép theo đúng thứ tự ban đầu. `chunk_size` và `chunk_overlap` tính bằng ký tự, không phải token. Chunk bảng có metadata `data_type: tabular`; nội dung tên bảng và tên cột đã nằm trực tiếp trong `text` để được embedding.
+
 ## Dữ liệu đầu ra
 
 `chunk(doc)` trả về `List[DataChunk]`. Mỗi chunk có:

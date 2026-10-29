@@ -151,7 +151,7 @@ class UETChunker(BaseChunker):
                     else:
                         break
 
-                # Fallback xử lý lỗi mất Overlap:
+                # Cách xử lý dự phòng khi bị mất phần gối đầu:
                 # Nếu mảnh cuối cùng dài hơn chunk_overlap khiến overlap_splits bị rỗng,
                 # thay vì để mất 100% độ gối đầu, ta cắt lấy phần đuôi của mảnh cuối cùng
                 if not overlap_splits and self.chunk_overlap > 0 and current_chunk:
@@ -174,6 +174,135 @@ class UETChunker(BaseChunker):
 
         return merged_chunks
 
+    @staticmethod
+    def _table_cells(line: str) -> List[str]:
+        """Tách các ô của một dòng Markdown."""
+        value = line.strip()
+        if not value.startswith('|'):
+            return []
+        return [cell.strip() for cell in value.strip('|').split('|')]
+
+    @staticmethod
+    def _parse_markdown_table(text: str) -> Optional[tuple[str, List[str], List[str], str]]:
+        """Tìm bảng Markdown ở bất kỳ vị trí nào trong nội dung."""
+        lines = text.splitlines()
+        for start, line in enumerate(lines):
+            headers = UETChunker._table_cells(line)
+            if len(headers) < 2 or not all(headers):
+                continue
+
+            rows = []
+            end = start + 1
+            while end < len(lines):
+                current_line = lines[end]
+                if not current_line.strip():
+                    end += 1
+                    continue
+                row_cells = UETChunker._table_cells(current_line)
+                if len(row_cells) != len(headers):
+                    break
+                if all(cell and set(cell) <= {'-', ':'} for cell in row_cells):
+                    end += 1
+                    continue
+                rows.append(current_line.strip())
+                end += 1
+
+            if rows:
+                before = "\n".join(lines[:start]).strip()
+                after = "\n".join(lines[end:]).strip()
+                return before, headers, rows, after
+        return None
+
+    @staticmethod
+    def _extract_table_title(before: str, document_title: str) -> str:
+        """Lấy tiêu đề gần nhất đứng trước bảng, nếu có."""
+        for line in reversed(before.splitlines()):
+            candidate = line.strip().lstrip('#').strip()
+            if candidate:
+                return candidate[:160]
+        return document_title or "Bảng dữ liệu"
+
+    def _chunk_markdown_table(
+        self,
+        doc: ProcessedData,
+        table_title: str,
+        headers: List[str],
+        rows: List[str],
+    ) -> List[DataChunk]:
+        """Làm giàu từng hàng bằng tiêu đề bảng/cột rồi chia theo cửa sổ trượt."""
+        prefix = f"[{doc.title}]\n" if doc.title else ""
+        injected_title = f"[META: {table_title}]\n"
+        chunk_prefix = prefix + injected_title
+        budget = max(1, self.chunk_size - len(chunk_prefix))
+        enriched_rows = []
+        for row in rows:
+            values = self._table_cells(row)
+            pairs = []
+            for index, (column, value) in enumerate(zip(headers, values)):
+                label = column or f"Cột {index + 1}"
+                pairs.append(f"{label}: {value}")
+            enriched_rows.append("- " + " | ".join(pairs))
+
+        groups: List[str] = []
+        start = 0
+        while start < len(enriched_rows):
+            end = start
+            body_len = 0
+            while end < len(enriched_rows):
+                row_len = len(enriched_rows[end])
+                if end > start and body_len + 1 + row_len > budget:
+                    break
+                # Hàng quá dài vẫn được giữ nguyên như một chunk riêng.
+                body_len += row_len + (1 if end > start else 0)
+                end += 1
+
+            groups.append("\n".join(enriched_rows[start:end]))
+            if end >= len(enriched_rows):
+                break
+
+            # Chọn các hàng cuối làm phần overlap cho cửa sổ kế tiếp.
+            next_start = end
+            overlap_len = 0
+            while next_start > start + 1 and overlap_len < self.chunk_overlap:
+                next_start -= 1
+                overlap_len += len(enriched_rows[next_start]) + 1
+            # Giảm overlap nếu nó không chừa chỗ cho ít nhất một hàng mới.
+            while next_start < end and (
+                sum(len(row) for row in enriched_rows[next_start:end + 1])
+                + (end - next_start)
+                > budget
+            ):
+                next_start += 1
+            start = max(start + 1, next_start)
+
+        result = []
+        total = len(groups)
+        for idx, body in enumerate(groups):
+            enriched = chunk_prefix + body
+            meta = dict(doc.metadata or {})
+            meta.update({"title": doc.title, "document_id": doc.id, "chunk_index": idx, "total_chunks": total, "char_count": len(enriched), "data_type": "tabular"})
+            result.append(DataChunk(document_id=doc.id, text=enriched, chunk_index=idx, metadata=meta))
+        return result
+
+    def _chunk_plain_segment(self, doc: ProcessedData, text: str) -> List[DataChunk]:
+        """Chia một đoạn văn bản theo cách thông thường của chunker."""
+        if not text.strip():
+            return []
+        if len(text) <= self.chunk_size:
+            segments = [text.strip()]
+        else:
+            segments = self._merge_splits(self._split_text(text, self.separators))
+
+        result = []
+        for idx, segment in enumerate(segments):
+            meta = dict(doc.metadata or {})
+            meta.update({"title": doc.title, "document_id": doc.id,
+                         "chunk_index": idx, "total_chunks": len(segments),
+                         "char_count": len(segment), "data_type": "text"})
+            enriched = f"[{doc.title}]\n{segment}" if doc.title else segment
+            result.append(DataChunk(document_id=doc.id, text=enriched,
+                                    chunk_index=idx, metadata=meta))
+        return result
     def chunk(self, doc: ProcessedData) -> List[DataChunk]:
         """
         Chia một tài liệu ProcessedData thành danh sách các đoạn DataChunk kèm metadata chi tiết.
@@ -186,6 +315,33 @@ class UETChunker(BaseChunker):
         if not raw_text:
             logger.warning(f"Tài liệu ID '{doc.id}' không có nội dung văn bản.")
             return []
+
+        table = self._parse_markdown_table(raw_text)
+        if table is not None:
+            chunks: List[DataChunk] = []
+            remaining = raw_text
+            while remaining:
+                table = self._parse_markdown_table(remaining)
+                if table is None:
+                    chunks.extend(self._chunk_plain_segment(doc, remaining))
+                    break
+
+                before, headers, rows, after = table
+                chunks.extend(self._chunk_plain_segment(doc, before))
+                table_title = self._extract_table_title(before, doc.title)
+                chunks.extend(self._chunk_markdown_table(doc, table_title, headers, rows))
+
+                # Ngăn vòng lặp vô hạn nếu dữ liệu lỗi khiến bộ phân tích không tiến lên.
+                if after == remaining:
+                    break
+                remaining = after
+
+            total = len(chunks)
+            for idx, chunk in enumerate(chunks):
+                chunk.chunk_index = idx
+                chunk.metadata["chunk_index"] = idx
+                chunk.metadata["total_chunks"] = total
+            return chunks
 
         # Nếu độ dài toàn bộ tài liệu nhỏ hơn hoặc bằng chunk_size -> Trả về 1 chunk duy nhất
         if len(raw_text) <= self.chunk_size:
@@ -231,7 +387,7 @@ class UETChunker(BaseChunker):
                 "char_count": len(segment),
             })
 
-            # Context Injection: Gắn tiêu đề tài liệu vào đầu mỗi chunk để bảo toàn ngữ cảnh
+            # Gắn tiêu đề tài liệu vào đầu mỗi chunk để bảo toàn ngữ cảnh.
             enriched_text = (
                 f"[{doc.title}]\n{segment}"
                 if doc.title and not segment.startswith(f"[{doc.title}]")
@@ -259,7 +415,7 @@ class UETChunker(BaseChunker):
             if clean_unit:
                 return clean_unit
 
-        # 2. domain (e.g. fit.uet.vnu.edu.vn, uet.edu.vn...)
+        # 2. Tên miền (ví dụ: fit.uet.vnu.edu.vn, uet.edu.vn...)
         raw_domain = str(meta.get("domain") or "").strip().lower()
         if raw_domain:
             parts = raw_domain.split(".")
@@ -313,7 +469,7 @@ class UETChunker(BaseChunker):
         # Phân loại chunk theo từng khoa dựa vào metadata
         chunks_by_faculty = defaultdict(list)
         for chunk in all_chunks:
-            # A shared request host must not merge distinct faculty output files.
+            # Không gộp các khoa khác nhau vào cùng tệp chỉ vì chúng dùng chung máy chủ.
             target = find_faculty(chunk.metadata.get("unit", ""))
             faculty = faculty_storage_name(target["faculty_id"]) if target else chunk.metadata.get("domain", "other")
             chunks_by_faculty[faculty].append(chunk)

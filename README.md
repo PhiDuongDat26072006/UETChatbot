@@ -201,8 +201,9 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
 
 - **Từ các đoạn `chunked` lập chỉ mục từ khóa BM25 sang `indexed_data`** (tạo file `database/bm25_index.pkl` siêu tốc ~25s):
   ```bash
-  python main.py --ingest --from chunked --to indexed_data
+  python main.py --ingest --from chunked --to indexed_data --clear
   ```
+  Cờ `--clear` chỉ xóa file chỉ mục BM25 cũ trước khi tạo lại; không xóa dense vectors trong Vector DB.
 
 - **Chạy toàn bộ quy trình từ đầu đến cuối (`raw` $\rightarrow$ `vectordb`)**:
   ```bash
