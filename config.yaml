@@ -41,8 +41,8 @@ retrieval:
   rrf_k: 60                    # Hằng số làm mượt RRF
   vector_weight: 0.6           # Trọng số nhánh Vector Search
   bm25_weight: 0.4             # Trọng số nhánh BM25 Search
-  reranker_type: "auto"        # "auto", "heuristic", "flashrank", "cross_encoder"
-  reranker_model: "ms-marco-MiniLM-L-12-v2"
+  reranker_type: "cross_encoder"        # "auto", "heuristic", "flashrank", "cross_encoder"
+  reranker_model: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
 
 llm:
