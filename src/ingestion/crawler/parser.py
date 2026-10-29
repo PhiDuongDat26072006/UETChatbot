@@ -1,8 +1,13 @@
 """BS4 discovery; selectors are supplied by site profiles."""
 
+import logging
+from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from ..identity import normalize_site_url
 from .policy import has_blocked_fragment
+
+
+log = logging.getLogger(__name__)
 
 
 def metadata(soup, profile):
@@ -54,22 +59,30 @@ def metadata(soup, profile):
 def parse_page(html, url, profile):
     soup = BeautifulSoup(html, "html.parser")
     found = {}
+    malformed = set()
     for selector in profile["discovery"]["link_selectors"]:
         for node in soup.select(selector):
-            href = node.get("href", "").strip()
-            if (
-                not href
-                or href.startswith("#")
-                or href.lower().startswith(("mailto:", "javascript:", "tel:"))
-                or ("@" in href and "://" not in href)
-                or has_blocked_fragment(href, profile)
-            ):
+            href = node.get("href", "")
+            if not isinstance(href, str):
+                continue
+            href = href.strip()
+            if not href or href.startswith("#"):
                 continue
             try:
+                if urlsplit(href).scheme.lower() not in {"", "http", "https"}:
+                    continue
+                # Fragment parsing can raise before URL canonicalization does.
+                if has_blocked_fragment(href, profile):
+                    continue
                 target = normalize_site_url(href, profile, url)
             except ValueError:
+                malformed.add(href)
                 continue
             found.setdefault(
                 target, {"url": target, "link_text": node.get_text(" ", strip=True)}
             )
+    if malformed:
+        log.warning("[%s] skipped %s malformed href(s) on %r; samples=%r",
+                    profile.get("site", "?"), len(malformed), url,
+                    [value[:160] for value in sorted(malformed)[:3]])
     return metadata(soup, profile), list(found.values())

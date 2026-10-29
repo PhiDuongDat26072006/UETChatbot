@@ -33,9 +33,20 @@ def render(node, url, depth=0):
     if name == "br":
         return "\n"
     if name == "a":
-        target = urljoin(url, node.get("href", ""))
+        href = node.get("href", "")
+        if not isinstance(href, str):
+            return text
+        try:
+            target = urljoin(url, href)
+            parts = urlsplit(target)
+            if parts.scheme in {"http", "https"}:
+                if not parts.hostname:
+                    return text
+                _ = parts.port  # Validate malformed/out-of-range ports, too.
+        except ValueError:
+            return text  # Keep anchor text even when its destination is broken.
         target = target.replace("(", "%28").replace(")", "%29").replace("<", "%3C").replace(">", "%3E").replace(" ", "%20")
-        if text.strip() and urlsplit(target).scheme in {"http", "https", "mailto"}:
+        if text.strip() and parts.scheme in {"http", "https", "mailto"}:
             return f"[{text.strip()}]({target})"
     if name in {"b", "strong"} and text.strip():
         return "**" + text.strip() + "**"
