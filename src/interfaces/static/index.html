@@ -158,7 +158,7 @@
 
             <!-- Input Box -->
             <div class="chat-input-area">
-                <form class="input-form" id="chat-form">
+                <form class="input-form" id="chat-form" onsubmit="event.preventDefault(); return false;" action="javascript:void(0);">
                     <div class="input-container">
                         <textarea id="query-input" rows="1"
                             placeholder="Nhập câu hỏi về quy chế đào tạo, điểm số, học bổng UET..."
