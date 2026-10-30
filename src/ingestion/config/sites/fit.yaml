@@ -5,52 +5,106 @@ url_normalization:
   alias_hosts:
   - fit.uet.vnu.edu.vn
   - www.fit.uet.vnu.edu.vn
+# ==============================================================================
+# CORE SCOPE (Active - chỉ lấy đúng 28 link chỉ định)
+# ==============================================================================
 seeds:
-- https://www.fit.uet.vnu.edu.vn/
+- https://www.fit.uet.vnu.edu.vn/qua-trinh-phat-trien/
+- https://www.fit.uet.vnu.edu.vn/su-menh-va-tam-nhin/
+- https://www.fit.uet.vnu.edu.vn/ban-chu-nhiem-khoa/
+- https://www.fit.uet.vnu.edu.vn/giang-vien/
+- https://www.fit.uet.vnu.edu.vn/cac-huong-nghien-cuu/
+- https://www.fit.uet.vnu.edu.vn/cac-de-tai-du-an/
+- https://www.fit.uet.vnu.edu.vn/cac-san-pham-cong-nghe/
+- https://www.fit.uet.vnu.edu.vn/chuyen-san-cntt-tt/
+- https://www.fit.uet.vnu.edu.vn/doi-tac-khoi-han-lam/
+- https://www.fit.uet.vnu.edu.vn/doanh-nghiep-dong-hanh/
+- https://www.fit.uet.vnu.edu.vn/cac-giai-thuong/
+- https://www.fit.uet.vnu.edu.vn/cac-cau-hoi-thuong-gap/
+- https://www.fit.uet.vnu.edu.vn/cuu-sinhvien/
+- https://www.fit.uet.vnu.edu.vn/cac-he-thong-thong-tin/
+- https://www.fit.uet.vnu.edu.vn/khoa-hoc-may-tinh/
+- https://www.fit.uet.vnu.edu.vn/cong-nghe-phan-mem/
+- https://www.fit.uet.vnu.edu.vn/khoa-hoc-va-ky-thuat-tinh-toan/
+- https://www.fit.uet.vnu.edu.vn/mang-va-truyen-thong-may-tinh/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-cong-nghe-tri-thuc/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-he-thong-nhung/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-tuong-tac-nguoi-may/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-an-toan-thong-tin/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-muc-tieu-tin-sinh-y-hoc/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-muc-tieu-blockchain/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-muc-tieu-toi-uu-hoa-cac-he-thong-lon/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-iot/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-dam-bao-chat-luong-phan-mem/
+- https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-tri-tue-nhan-tao/
 scope:
   hosts:
   - fit.uet.vnu.edu.vn
   - www.fit.uet.vnu.edu.vn
   path_prefixes:
   - /
+  include_patterns:
+  - ^/(?:qua-trinh-phat-trien|su-menh-va-tam-nhin|ban-chu-nhiem-khoa|giang-vien|cac-huong-nghien-cuu|cac-de-tai-du-an|cac-san-pham-cong-nghe|chuyen-san-cntt-tt|doi-tac-khoi-han-lam|doanh-nghiep-dong-hanh|cac-giai-thuong|cac-cau-hoi-thuong-gap|cuu-sinhvien|cac-he-thong-thong-tin|khoa-hoc-may-tinh|cong-nghe-phan-mem|khoa-hoc-va-ky-thuat-tinh-toan|mang-va-truyen-thong-may-tinh|phong-thi-nghiem-cong-nghe-tri-thuc|phong-thi-nghiem-he-thong-nhung|phong-thi-nghiem-tuong-tac-nguoi-may|phong-thi-nghiem-an-toan-thong-tin|phong-thi-nghiem-muc-tieu-tin-sinh-y-hoc|phong-thi-nghiem-muc-tieu-blockchain|phong-thi-nghiem-muc-tieu-toi-uu-hoa-cac-he-thong-lon|phong-thi-nghiem-iot|phong-thi-nghiem-dam-bao-chat-luong-phan-mem|phong-thi-nghiem-tri-tue-nhan-tao)/?$
   exclude_prefixes:
   - /static
   - /wp-admin
   - /wp-login.php
   - /feed
-  - /tag
-  - /category
-  - /author
-  - /comments/feed
-  - /wp-json
-  - /xmlrpc.php
-  - /wp-trackback.php
-  - /wp-includes
-  - /wp-content/themes
-  - /wp-content/plugins
-  - /en
-  listing_exact:
-  - /gioi-thieu/cac-bo-mon-va-phong-thi-nghiem
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /nguoi-hoc
-  - /nguoi-hoc/thong-tin-viec-lam
-  - /gioi-thieu
-  - /nguoi-hoc/thanh-tich-noi-bat
-  - /nguoi-hoc/cuu-sinh-vien
-  listing_patterns:
-  - (?:^|/)page(?:/|$)
-  exclude_patterns:
-  - (?i)^/(?:en/)?(?:slider[^/]*|slide-\d[^/]*)(?:/|$)
-  - ^/(?:en/)?(?:tag|category|author)(?:/|$)
-  - ^/\d{4}(?:/|$)
-  - (?:^|/)feed(?:/|$)
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://www.fit.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - fit.uet.vnu.edu.vn
+#   - www.fit.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /static
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   - /tag
+#   - /category
+#   - /author
+#   - /comments/feed
+#   - /wp-json
+#   - /xmlrpc.php
+#   - /wp-trackback.php
+#   - /wp-includes
+#   - /wp-content/themes
+#   - /wp-content/plugins
+#   - /en
+#   - /dai-hoc
+#   - /sau-dai-hoc
+#   - /tin-tuc
+#   - /nguoi-hoc/thong-tin-viec-lam
+#   listing_exact:
+#   - /gioi-thieu/cac-bo-mon-va-phong-thi-nghiem
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   - /nguoi-hoc
+#   - /nguoi-hoc/thong-tin-viec-lam
+#   - /gioi-thieu
+#   - /nguoi-hoc/thanh-tich-noi-bat
+#   - /nguoi-hoc/cuu-sinh-vien
+#   listing_patterns:
+#   - (?:^|/)page(?:/|$)
+#   exclude_patterns:
+#   - (?i)^/(?:en/)?(?:slider[^/]*|slide-\d[^/]*)(?:/|$)
+#   - ^/(?:en/)?(?:tag|category|author)(?:/|$)
+#   - ^/\d{4}(?:/|$)
+#   - (?:^|/)feed(?:/|$)
+#   - ^/(?:dai-hoc|sau-dai-hoc|tin-tuc|nguoi-hoc/thong-tin-viec-lam)(?:/.*)?$
   exclude_query_keys:
   - rest_route
   - p

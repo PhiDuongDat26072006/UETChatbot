@@ -1,28 +1,59 @@
 site: FEMA
 version: 2
+url_normalization:
+  canonical_origin: https://fema.uet.vnu.edu.vn
+  alias_hosts:
+  - fema.uet.vnu.edu.vn
+# ==============================================================================
+# CORE SCOPE (Active)
+# ==============================================================================
 seeds:
-- https://fema.uet.vnu.edu.vn/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-ve-khoa-co-hoc-ky-thuat-va-tu-dong-hoa/
+- https://fema.uet.vnu.edu.vn/chien-luoc-phat-trien/
+- https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/
+- https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/ban-chu-nhiem-khoa/
+- https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/cac-bo-mon-va-phong-thi-nghiem/
+- https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/hoi-dong-khoa-hoc-va-dao-tao/
+- https://fema.uet.vnu.edu.vn/hop-tac/
 scope:
   hosts:
   - fema.uet.vnu.edu.vn
   path_prefixes:
   - /
+  include_patterns:
+  - ^/(?:gioi-thieu-ve-khoa-co-hoc-ky-thuat-va-tu-dong-hoa|chien-luoc-phat-trien|hop-tac)/?$
+  - ^/gioi-thieu/co-cau-to-chuc(?:/(?:ban-chu-nhiem-khoa|cac-bo-mon-va-phong-thi-nghiem|hoi-dong-khoa-hoc-va-dao-tao))?/?$
   exclude_prefixes:
   - /wp-admin
   - /wp-login.php
   - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  listing_patterns:
-  - ^/(category|tag|author)(/|$)
-  - (?:^|/)page(?:/|$)
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://fema.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - fema.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   listing_exact:
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   listing_patterns:
+#   - ^/(category|tag|author)(/|$)
+#   - (?:^|/)page(?:/|$)
 discovery:
   link_selectors:
   - main a[href]

@@ -1,5 +1,9 @@
 site: IAI
 version: 1
+url_normalization:
+  canonical_origin: https://uet.vnu.edu.vn
+  alias_hosts:
+  - uet.vnu.edu.vn
 seeds:
 - https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
 scope:
@@ -7,6 +11,8 @@ scope:
   - uet.vnu.edu.vn
   path_prefixes:
   - /vien-tri-tue-nhan-tao
+  include_patterns:
+  - ^/vien-tri-tue-nhan-tao/?$
   exclude_prefixes:
   - /wp-admin
   - /wp-login.php

@@ -1,28 +1,55 @@
 site: SAE
 version: 2
+url_normalization:
+  canonical_origin: https://sae.uet.vnu.edu.vn
+  alias_hosts:
+  - sae.uet.vnu.edu.vn
+# ==============================================================================
+# CORE SCOPE (Active)
+# ==============================================================================
 seeds:
-- https://sae.uet.vnu.edu.vn/
+- https://sae.uet.vnu.edu.vn/su-menh-va-tam-nhin-a5.html
+- https://sae.uet.vnu.edu.vn/ban-lanh-dao-vien-a6.html
+- https://sae.uet.vnu.edu.vn/bo-mon-va-phong-thi-nghiem-a7.html
+- https://sae.uet.vnu.edu.vn/giang-vien-a8.html
 scope:
   hosts:
   - sae.uet.vnu.edu.vn
   path_prefixes:
   - /
+  include_patterns:
+  - ^/(?:su-menh-va-tam-nhin-a5|ban-lanh-dao-vien-a6|bo-mon-va-phong-thi-nghiem-a7|giang-vien-a8)\.html$
   exclude_prefixes:
   - /wp-admin
   - /wp-login.php
   - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  listing_patterns:
-  - ^/(category|tag|author|page)(/|$)
-  - -c\d+\.html$
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://sae.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - sae.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   listing_exact:
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   listing_patterns:
+#   - ^/(category|tag|author|page)(/|$)
+#   - -c\d+\.html$
 discovery:
   link_selectors:
   - .wrapper a[href]

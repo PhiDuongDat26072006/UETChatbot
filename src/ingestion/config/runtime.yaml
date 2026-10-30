@@ -10,7 +10,7 @@ ingestion:
   extract_workers: 10
   stream_extract_workers: 10  # null => equals download_workers
   timeout: 30
-  max_html_bytes: 5242880
+  max_html_bytes: 20971520
   retries: 3
   delay: 0.25
 pdf:

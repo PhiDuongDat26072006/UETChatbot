@@ -18,7 +18,36 @@ def processing_key(raw_record, profile):
     )
 
 
-def process_raw(raw, profile):
+def process_raw(raw, profile, raw_path=None):
+    is_pdf = raw.metadata.get("resource_type") == "pdf" or str(raw.source_uri).lower().endswith(".pdf")
+    if is_pdf and raw_path and raw_path.exists():
+        from .document.pdf_native import extract_pdf
+        pdf_res = extract_pdf(raw_path)
+        content = pdf_res["content"]
+        title = raw.title or pdf_res.get("title") or raw.source_uri
+        quality = {
+            "status": "NATIVE_OK",
+            "page_count": pdf_res["metadata"]["page_count"],
+            "extraction_method": "pymupdf",
+            "reasons": [],
+        }
+        metadata = {
+            **raw.metadata,
+            **pdf_res["metadata"],
+            "quality": quality,
+            "source_uri": raw.source_uri,
+            "processor_version": PROCESSOR_VERSION,
+            "profile_version": profile["version"],
+        }
+        document = ProcessedData(
+            id=raw.metadata["source_id"],
+            raw_data_id=raw.id,
+            title=title,
+            content=content,
+            metadata=metadata,
+        )
+        return document, quality
+
     result = extract_html(
         raw.content, raw.metadata.get("final_url", raw.source_uri), profile
     )

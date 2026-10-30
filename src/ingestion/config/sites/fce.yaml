@@ -1,7 +1,7 @@
 site: FCE
 version: 1
-seeds:
-- https://fce.uet.vnu.edu.vn/
+# NOTE: Server fce.uet.vnu.edu.vn is currently returning 504 Gateway Timeout (offline).
+seeds: []
 scope:
   hosts:
   - fce.uet.vnu.edu.vn
@@ -11,20 +11,35 @@ scope:
   - /wp-admin
   - /wp-login.php
   - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /hoat-dong
-  - /cac-cong-bo
-  - /khoa-hoc-cong-nghe
-  listing_patterns:
-  - ^/(category|tag|author|page)(/|$)
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for when FCE server is back online - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://fce.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - fce.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   listing_exact:
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   - /hoat-dong
+#   - /cac-cong-bo
+#   - /khoa-hoc-cong-nghe
+#   listing_patterns:
+#   - ^/(category|tag|author|page)(/|$)
 discovery:
   link_selectors:
   - main a[href]

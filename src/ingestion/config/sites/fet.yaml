@@ -1,29 +1,63 @@
 site: FET
 version: 1
+url_normalization:
+  canonical_origin: https://fet.uet.vnu.edu.vn
+  alias_hosts:
+  - fet.uet.vnu.edu.vn
+# ==============================================================================
+# CORE SCOPE (Active)
+# ==============================================================================
 seeds:
-- https://fet.uet.vnu.edu.vn/
+- https://fet.uet.vnu.edu.vn/2021/03/20/gioi-thieu-chung/
+- https://fet.uet.vnu.edu.vn/2021/03/11/su-menh-va-tam-nhin/
+- https://fet.uet.vnu.edu.vn/2021/03/21/chi-bo/
+- https://fet.uet.vnu.edu.vn/2021/03/20/ban-chu-nhiem-khoa-qua-cac-thoi-ky/
+- https://fet.uet.vnu.edu.vn/2021/03/20/ban-chu-nhiem-khoa/
+- https://fet.uet.vnu.edu.vn/2024/04/05/bo-mon-dien-tu-va-ky-thuat-may-tinh/
+- https://fet.uet.vnu.edu.vn/2026/05/28/bo-mon-ky-thuat-vien-thong/
+- https://fet.uet.vnu.edu.vn/2024/03/30/bo-mon-ky-thuat-robot/
+- https://fet.uet.vnu.edu.vn/2024/03/30/bo-mon-vi-co-dien-tu-va-vi-he-thong/
+- https://fet.uet.vnu.edu.vn/2021/03/20/phong-thuc-tap-dien-tu-vien-thong/
+- https://fet.uet.vnu.edu.vn/2021/03/20/phong-thi-nghiem-tin-hieu-va-he-thong/
 scope:
   hosts:
   - fet.uet.vnu.edu.vn
   path_prefixes:
   - /
+  include_patterns:
+  - ^/\d{4}/\d{2}/\d{2}/(?:gioi-thieu-chung|su-menh-va-tam-nhin|chi-bo|ban-chu-nhiem-khoa-qua-cac-thoi-ky|ban-chu-nhiem-khoa|bo-mon-dien-tu-va-ky-thuat-may-tinh|bo-mon-ky-thuat-vien-thong|bo-mon-ky-thuat-robot|bo-mon-vi-co-dien-tu-va-vi-he-thong|phong-thuc-tap-dien-tu-vien-thong|phong-thi-nghiem-tin-hieu-va-he-thong)/?$
   exclude_prefixes:
   - /wp-admin
   - /wp-login.php
   - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /nghien-cuu-khoa-hoc
-  listing_patterns:
-  - ^/(category|tag|author|page)(/|$)
-  - ^/\d{4}(/\d{2})?$
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://fet.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - fet.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   listing_exact:
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   - /nghien-cuu-khoa-hoc
+#   listing_patterns:
+#   - ^/(category|tag|author|page)(/|$)
+#   - ^/\d{4}(/\d{2})?$
 discovery:
   link_selectors:
   - main a[href]

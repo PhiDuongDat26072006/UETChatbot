@@ -1,81 +1,131 @@
 site: TUYENSINH
-version: 2                  # Nâng lên 2 để hệ thống tự động reset checkpoint và cào lại từ đầu
-seeds:
-  - https://tuyensinh.uet.vnu.edu.vn/
-  - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
-  - https://tuyensinh.uet.vnu.edu.vn/category/phuong-thuc-xet-tuyen/
-  - https://tuyensinh.uet.vnu.edu.vn/category/ket-qua-xet-tuyen/
-  - https://tuyensinh.uet.vnu.edu.vn/category/nganh-theo-khoa/
-  - https://tuyensinh.uet.vnu.edu.vn/category/ban-nen-biet/
-  - https://tuyensinh.uet.vnu.edu.vn/category/tu-van-tuyen-sinh/
-  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/
+version: 2
 
+# ==============================================================================
+# SEEDS
+# ==============================================================================
+seeds:
+  # --- CORE SCOPE (Điểm chuẩn & Văn bản hướng dẫn tuyển sinh 2026) ---
+  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/diem-chuan-cac-nganh/
+  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/van-ban-huong-dan/
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn cổng tuyển sinh) ---
+  # - https://tuyensinh.uet.vnu.edu.vn/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/phuong-thuc-xet-tuyen/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/ket-qua-xet-tuyen/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/nganh-theo-khoa/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/ban-nen-biet/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/tu-van-tuyen-sinh/
+  # - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
 scope:
   hosts:
-  - tuyensinh.uet.vnu.edu.vn
-  path_prefixes:
-  - /
-  exclude_prefixes:
-  - /wp-admin
-  - /wp-login.php
-  - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /tin-tuyen-sinh
-  - /nganh-dao-tao
-  - /phuong-thuc-xet-tuyen
-  - /ban-nen-biet
-  - /tra-cuu
-  - /huong-nghiep
-  - /tu-van-tuyen-sinh
-  listing_patterns:
-  - ^/(category|tag|author|page)(/|$)
-  - (?:^|/)page(?:/|$)
+    - tuyensinh.uet.vnu.edu.vn
 
+  path_prefixes:
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận danh mục, văn bản năm 2026, điểm chuẩn và file PDF đính kèm ---
+  include_patterns:
+    - ^/category/tra-cuu/diem-chuan-cac-nganh
+    - ^/category/tra-cuu/van-ban-huong-dan
+    - '2026'
+    - diem-trung-tuyen
+    - diem-chuan
+    - muc-diem-nhan-dang-ky
+    - thong-bao-ket-qua
+    - nguong-dau-vao-va-quy-doi-diem
+
+  # --- GENERAL SCOPE ---
+  # exclude_prefixes:
+  #   - /wp-admin
+  #   - /wp-login.php
+  #   - /feed
+
+  listing_exact:
+    - /category/tra-cuu/diem-chuan-cac-nganh
+    - /category/tra-cuu/van-ban-huong-dan
+    # --- GENERAL SCOPE ---
+    # - /
+    # - /tin-tuc
+    # - /thong-bao
+    # - /dao-tao
+    # - /nghien-cuu
+    # - /sinh-vien
+    # - /hop-tac
+    # - /tuyen-sinh
+    # - /tin-tuyen-sinh
+    # - /nganh-dao-tao
+    # - /phuong-thuc-xet-tuyen
+    # - /ban-nen-biet
+    # - /tra-cuu
+    # - /huong-nghiep
+    # - /tu-van-tuyen-sinh
+
+  listing_patterns:
+    - ^/category/tra-cuu/(diem-chuan-cac-nganh|van-ban-huong-dan)(/|$)
+    - (?:^|/)page(?:/|$)
+    # --- GENERAL SCOPE ---
+    # - ^/(category|tag|author|page)(/|$)
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
 discovery:
   link_selectors:
-  - .paginate_links a[href]       # <-- Link chuyển trang 2, 3, ... 18
-  - a.page-numbers                # <-- Số trang phân trang
-  - .content-wrapper a[href]      # <-- Vùng danh sách bài viết
-  - .content-inside a[href]       # <-- Vùng bài viết
-  - .hexagon-in1 a[href]          # <-- 7 ô danh mục ở trang chủ
-  - '#main a[href]'
-  - '#page-wrapper a[href]'
-  - article a[href]
+    # --- CORE SCOPE: Bốc link bài viết trong danh sách, phân trang và PDF đính kèm ---
+    - .content-wrapper article a[href]
+    - .paginate_links a[href]
+    - a.page-numbers
 
+    # --- GENERAL SCOPE ---
+    # - .content-wrapper a[href]
+    # - .content-inside a[href]
+    # - .hexagon-in1 a[href]
+    # - '#main a[href]'
+    # - '#page-wrapper a[href]'
+    # - article a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
 extraction:
   content_selectors:
-  - .content-wrapper-detail .content-inside # <-- Vùng bài viết thực tế
-  - .content-inside
-  - .content-wrapper-detail
-  - .content-wrapper
-  - article .entry-content
-  - .single-content
-  - .post-content
+    - .content-wrapper-detail .content-inside
+    - .content-inside
+    - .content-wrapper-detail
+    # --- GENERAL SCOPE ---
+    # - .content-wrapper
+    # - article .entry-content
+    # - .single-content
+    # - .post-content
+
   title_selectors:
-  - h1
-  - title
-  - h1.entry-title
-  - h1.td-post-title
+    - h1
+    - title
+    # --- GENERAL SCOPE ---
+    # - h1.entry-title
+    # - h1.td-post-title
+
   date_selectors:
-  - meta[property="article:published_time"]
-  - time[datetime]
-  - .entry-date
+    - meta[property="article:published_time"]
+    - time[datetime]
+    - .entry-date
+
   remove_selectors:
-  - .sidebar
-  - .widget-area
-  - .related-posts
-  - .box-tu-van
+    - .sidebar
+    - .widget-area
+    - .related-posts
+    - .box-tu-van
+
 quality:
   min_chars: 100
   max_link_density: 0.65
+
 policy:
   published_after: null
   time_sensitive_patterns: []

@@ -1,96 +1,156 @@
 site: UET
 version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
 seeds:
-- https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
-- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
-- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
-- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/quy-che-dao-tao-dai-hoc/
-- https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
-- https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
-- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
-- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/quy-che-dao-tao-sau-dai-hoc/
-- https://uet.vnu.edu.vn/
+  # --- CORE SCOPE (Đang cào trọng tâm CTĐT, ngoại ngữ và quy định) ---
+  - https://uet.edu.vn/dao-tao/
+  - https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
+  - https://uet-test.uet.edu.vn/wp-content/uploads/2026/01/2.Huong-dan-danh-gia-DRL.pdf
+  - https://2489013871.e.cdneverest.net/uet.edu.vn/2026/08/Quy-dinh-Hoc-bong-KKHT-UET-2026.pdf
+  - https://2679558515.e.cdneverest.net/uet.edu.vn/2023/03/1011.pdf
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
+  # - https://uet.vnu.edu.vn/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/quy-che-dao-tao-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
+  # - https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/quy-che-dao-tao-sau-dai-hoc/
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
 scope:
   hosts:
-  - uet.vnu.edu.vn
+    - uet.edu.vn
+    - uet.vnu.edu.vn
+    - uet-test.uet.edu.vn
+    - 2489013871.e.cdneverest.net
+    - 2679558515.e.cdneverest.net
+
   path_prefixes:
-  - /
-  exclude_prefixes:
-  - /wp-admin
-  - /wp-login.php
-  - /feed
-  - /vien-tri-tue-nhan-tao
-  - /en
-  - /cdu-en
-  - /~
-  - /tag
-  - /events
-  - /tp-event-category
-  - /Documents
-  - /Dropbox
-  - /1
-  - /dao-tao
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận CTĐT, Ngoại ngữ và PDF ---
+  include_patterns:
+    - ^/dao-tao/?$
+    - ^/chuong-trinh-dao-tao
+    - ^/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/?$
+    # Chỉ nhận ĐÚNG 3 file PDF đã chỉ định cụ thể, TUYỆT ĐỐI không nhận các file PDF khác:
+    - 2\.Huong-dan-danh-gia-DRL\.pdf$
+    - Quy-dinh-Hoc-bong-KKHT-UET-2026\.pdf$
+    - 1011\.pdf$
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
+  # exclude_prefixes:
+  #   - /wp-admin
+  #   - /wp-login.php
+  #   - /feed
+  #   - /vien-tri-tue-nhan-tao
+  #   - /en
+  #   - /cdu-en
+  #   - /~
+  #   - /tag
+  #   - /events
+  #   - /tp-event-category
+  #   - /Documents
+  #   - /Dropbox
+  #   - /1
+  #   - /dao-tao
+
   listing_exact:
-  - /chuong-trinh-dao-tao
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /gioi-thieu
-  - /khoa-hoc-cong-nghe
-  - /cong-tac-nguoi-hoc
-  listing_patterns:
-  - ^/(category|tag|author)(/|$)
-  - (?:^|/)page(?:/|$)
+    - /dao-tao
+    # --- GENERAL SCOPE ---
+    # - /chuong-trinh-dao-tao
+    # - /
+    # - /tin-tuc
+    # - /thong-bao
+    # - /nghien-cuu
+    # - /sinh-vien
+    # - /hop-tac
+    # - /tuyen-sinh
+    # - /gioi-thieu
+    # - /khoa-hoc-cong-nghe
+    # - /cong-tac-nguoi-hoc
+
+  # --- GENERAL SCOPE ---
+  # listing_patterns:
+  #   - ^/(category|tag|author)(/|$)
+  #   - (?:^|/)page(?:/|$)
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
 discovery:
   link_selectors:
-  - .elementor-element a[href]
-  - .event-wrapper a[href]
-  - .jw-posts a[href]
-  - .item-post a[href]
-  - .sc-list-post a[href]
-  - nav a[href]
-  - .container a[href]
-  - article a[href]
-  - .pagination a[href]
-  - main a[href]
-  - '#content a[href]'
+    # --- CORE SCOPE: Bốc link bảng CTĐT và bài viết trọng tâm ---
+    - table a[href]
+    - .entry-content a[href]
+    - .elementor-widget a[href]
+    - '#content a[href]'
+
+    # --- GENERAL SCOPE ---
+    # - .elementor-element a[href]
+    # - .event-wrapper a[href]
+    # - .jw-posts a[href]
+    # - .item-post a[href]
+    # - .sc-list-post a[href]
+    # - nav a[href]
+    # - .container a[href]
+    # - article a[href]
+    # - .pagination a[href]
+    # - main a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
 extraction:
   content_selectors:
-  - .page-content-inner > .entry-content
-  - .entry-content:not(.des-related)
-  - .single-post .entry-content
-  - article.post .entry-content
-  - .page .entry-content
-  - .post-content
-  - '#content .container'
+    - .entry-content
+    - .page-content-inner > .entry-content
+    - '#content .container'
+    # --- GENERAL SCOPE ---
+    # - .entry-content:not(.des-related)
+    # - .single-post .entry-content
+    # - article.post .entry-content
+    # - .page .entry-content
+    # - .post-content
+
   title_selectors:
-  - h1.entry-title
-  - h1.td-post-title
-  - article h1
-  - h1
-  - title
+    - h1.entry-title
+    - h1
+    # --- GENERAL SCOPE ---
+    # - h1.td-post-title
+    # - article h1
+    # - title
+
   date_selectors:
-  - meta[property="article:published_time"]
-  - time[datetime]
-  - .entry-date
+    - meta[property="article:published_time"]
+    - time[datetime]
+    - .entry-date
+
   remove_selectors:
-  - .sidebar
-  - aside
-  - .related-posts
-  - .post-views
-  - .breadcrumbs
-  - .entry-tag-share
-  - .entry-navigation-post
-  - .archived-posts
-  - .related-area-site-content
+    - .sidebar
+    - aside
+    - .site-footer
+    # --- GENERAL SCOPE ---
+    # - .related-posts
+    # - .post-views
+    # - .breadcrumbs
+    # - .entry-tag-share
+    # - .entry-navigation-post
+    # - .archived-posts
+    # - .related-area-site-content
+
 quality:
   min_chars: 100
   max_link_density: 0.65
+
 policy:
   published_after: null
   time_sensitive_patterns: []

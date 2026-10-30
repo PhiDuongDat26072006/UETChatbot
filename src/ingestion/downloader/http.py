@@ -98,7 +98,7 @@ class HTMLFetcher:
                     mime = (
                         response.headers.get("Content-Type", "").split(";")[0].lower()
                     )
-                    if mime and mime not in {"text/html", "application/xhtml+xml"}:
+                    if mime and mime not in {"text/html", "application/xhtml+xml", "application/pdf", "application/octet-stream"}:
                         raise ValueError(f"Unsupported content type: {mime}")
                     chunks = []
                     size = 0
@@ -107,9 +107,13 @@ class HTMLFetcher:
                         with self.lock:
                             self.bytes += len(block)
                         if size > self.max_bytes:
-                            raise ValueError("HTML exceeds --max-html-bytes")
+                            raise ValueError("Response exceeds max download bytes")
                         chunks.append(block)
                     body = b"".join(chunks)
+                    is_pdf = mime == "application/pdf" or current.lower().endswith(".pdf") or body.startswith(b"%PDF-")
+                    if is_pdf:
+                        info.update(body=body, encoding="binary")
+                        return info
                     if (
                         not mime
                         and b"<html" not in body[:4096].lower()

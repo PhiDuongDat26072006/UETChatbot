@@ -108,9 +108,18 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
             deferred.append(item)
             log.warning("[%s] crawl failed %s: %s", site, url, error)
             return
-        html = page["body"].decode(page["encoding"], errors="replace")
-        meta, links = parse_page(html, page["final_url"], profile)
-        decision, reason = evaluate(page["final_url"], profile, meta)
+        is_pdf = resource_type(url) == "pdf" or page.get("encoding") == "binary" or url.lower().endswith(".pdf")
+        if is_pdf:
+            from pathlib import PurePosixPath
+            from urllib.parse import unquote, urlsplit
+            clean_name = PurePosixPath(unquote(urlsplit(page["final_url"]).path)).stem.replace("-", " ").replace(".", " ").strip()
+            meta = {"title": clean_name, "resource_type": "pdf"}
+            links = []
+            decision, reason = evaluate(page["final_url"], profile, meta)
+        else:
+            html = page["body"].decode(page["encoding"], errors="replace")
+            meta, links = parse_page(html, page["final_url"], profile)
+            decision, reason = evaluate(page["final_url"], profile, meta)
         source = DataSource(
             source_id=identifier,
             source_type="web",
@@ -119,7 +128,7 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
                 **meta,
                 "site": site,
                 "faculty": site,
-                "resource_type": "html",
+                "resource_type": "pdf" if is_pdf else "html",
                 "discovered_from": parent,
                 "crawl_depth": depth,
                 "decision": decision,

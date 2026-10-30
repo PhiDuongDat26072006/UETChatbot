@@ -1,41 +1,67 @@
 site: FAT
 version: 2
+url_normalization:
+  canonical_origin: https://fat.uet.vnu.edu.vn
+  alias_hosts:
+  - fat.uet.vnu.edu.vn
+# ==============================================================================
+# CORE SCOPE (Active)
+# ==============================================================================
 seeds:
-- https://fat.uet.vnu.edu.vn/
+- https://fat.uet.vnu.edu.vn/chien-luoc-khoa
+- https://fat.uet.vnu.edu.vn/ban-chu-nhiem-khoa
+- https://fat.uet.vnu.edu.vn/cac-can-bo-giang-vien-trong-khoa
 scope:
   hosts:
   - fat.uet.vnu.edu.vn
   path_prefixes:
   - /
+  include_patterns:
+  - ^/(?:chien-luoc-khoa|ban-chu-nhiem-khoa|cac-can-bo-giang-vien-trong-khoa)/?$
   exclude_prefixes:
   - /wp-admin
   - /wp-login.php
   - /feed
-  listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /gioi-thieu
-  - /mo-hinh-khoi-nghiep-tu-nong-nghiep
-  - /thanh-tuu-khoa-hoc-nong-nghiep
-  - /ban-tin-nong-nghiep
-  - /tin-sinh-vien
-  - /goc-hoc-tap
-  - /dai-hoc
-  - /sau-dai-hoc
-  - /tuyen-sinh-dai-hoc
-  - /tuyen-sinh-sau-dai-hoc
-  - /khoa-hoc-cong-nghe
-  - /thu-vien-anh
-  - /thu-vien-video
-  listing_patterns:
-  - ^/(category|tag|author)(/|$)
-  - (?:^|/)page(?:/|$)
+
+# ==============================================================================
+# GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
+# ==============================================================================
+# seeds:
+# - https://fat.uet.vnu.edu.vn/
+# scope:
+#   hosts:
+#   - fat.uet.vnu.edu.vn
+#   path_prefixes:
+#   - /
+#   exclude_prefixes:
+#   - /wp-admin
+#   - /wp-login.php
+#   - /feed
+#   listing_exact:
+#   - /
+#   - /tin-tuc
+#   - /thong-bao
+#   - /dao-tao
+#   - /nghien-cuu
+#   - /sinh-vien
+#   - /hop-tac
+#   - /tuyen-sinh
+#   - /gioi-thieu
+#   - /mo-hinh-khoi-nghiep-tu-nong-nghiep
+#   - /thanh-tuu-khoa-hoc-nong-nghiep
+#   - /ban-tin-nong-nghiep
+#   - /tin-sinh-vien
+#   - /goc-hoc-tap
+#   - /dai-hoc
+#   - /sau-dai-hoc
+#   - /tuyen-sinh-dai-hoc
+#   - /tuyen-sinh-sau-dai-hoc
+#   - /khoa-hoc-cong-nghe
+#   - /thu-vien-anh
+#   - /thu-vien-video
+#   listing_patterns:
+#   - ^/(category|tag|author)(/|$)
+#   - (?:^|/)page(?:/|$)
 discovery:
   link_selectors:
   - .header a[href]
@@ -54,6 +80,7 @@ discovery:
 extraction:
   content_selectors:
   - .a-detail
+  - .category
   - .left-col
   - .a-detail-content
   - .content-detail
@@ -90,7 +117,7 @@ extraction:
   - .category-header
 quality:
   min_chars: 100
-  max_link_density: 0.65
+  max_link_density: 0.75
 policy:
   published_after: null
   time_sensitive_patterns: []

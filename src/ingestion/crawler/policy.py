@@ -52,6 +52,12 @@ def automatic_in_scope(url, profile):
     path = unquote(p.path).rstrip("/") or "/"
     if p.netloc.lower() not in scope["hosts"]:
         return False
+    seeds = {
+        s.rstrip("/")
+        for s in profile.get("_manual_seeds", []) + profile.get("seeds", [])
+    }
+    if resource_type(url) == "pdf" and url.rstrip("/") not in seeds:
+        return False
     if scope.get("exact_paths") and path not in [
         s.rstrip("/") or "/" for s in scope["exact_paths"]
     ]:
@@ -67,6 +73,10 @@ def automatic_in_scope(url, profile):
     ):
         return False
     if any(re.search(pattern, path) for pattern in scope.get("exclude_patterns", [])):
+        return False
+    if scope.get("include_patterns") and not any(
+        re.search(pattern, path) for pattern in scope["include_patterns"]
+    ):
         return False
     query = {
         k.casefold(): values
@@ -107,6 +117,10 @@ def is_listing(url, profile):
 
 def automatic_evaluate(url, profile, metadata=None):
     kind = resource_type(url)
+    if kind == "pdf":
+        if not automatic_in_scope(url, profile):
+            return "rejected", "outside_scope"
+        return "accepted", "pdf_document"
     if kind != "html":
         return "deferred" if kind != "asset" else "rejected", kind
     if not automatic_in_scope(url, profile):
