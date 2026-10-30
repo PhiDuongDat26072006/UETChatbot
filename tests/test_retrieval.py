@@ -136,6 +136,15 @@ class TestRetrievalPipeline(unittest.TestCase):
         # c2 xuất hiện ở cả 2 nhánh nên phải có điểm cao nhất
         self.assertEqual(fused[0].chunk_id, "c2")
         self.assertEqual(fused[0].rank, 1)
+        self.assertEqual(fused[0].metadata.get("search_type"), "hybrid")
+        self.assertEqual(fused[0].metadata.get("search_source"), "BM25 + Vector Search")
+
+        # c1 chỉ xuất hiện ở nhánh BM25, c3 chỉ ở nhánh Vector
+        fused_map = {item.chunk_id: item for item in fused}
+        self.assertEqual(fused_map["c1"].metadata.get("search_type"), "bm25")
+        self.assertEqual(fused_map["c1"].metadata.get("search_source"), "BM25")
+        self.assertEqual(fused_map["c3"].metadata.get("search_type"), "vector")
+        self.assertEqual(fused_map["c3"].metadata.get("search_source"), "Vector Search")
 
     def test_hybrid_searcher_edge_cases(self):
         """4. Kiểm tra Hybrid search khi 1 trong 2 nhánh hoặc cả 2 đều rỗng."""
@@ -145,10 +154,12 @@ class TestRetrievalPipeline(unittest.TestCase):
         # Chỉ có BM25
         res_bm25_only = HybridSearcher.reciprocal_rank_fusion(bm25_res, empty_res)
         self.assertEqual(len(res_bm25_only), 1)
+        self.assertEqual(res_bm25_only[0].metadata.get("search_type"), "bm25")
 
         # Chỉ có Vector
         res_vec_only = HybridSearcher.reciprocal_rank_fusion(empty_res, bm25_res)
         self.assertEqual(len(res_vec_only), 1)
+        self.assertEqual(res_vec_only[0].metadata.get("search_type"), "vector")
 
         # Cả 2 đều rỗng
         res_both_empty = HybridSearcher.reciprocal_rank_fusion(empty_res, empty_res)

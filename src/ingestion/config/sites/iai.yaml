@@ -1,0 +1,54 @@
+site: IAI
+version: 1
+seeds:
+- https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
+scope:
+  hosts:
+  - uet.vnu.edu.vn
+  path_prefixes:
+  - /vien-tri-tue-nhan-tao
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact: []
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+  exact_paths:
+  - /vien-tri-tue-nhan-tao
+discovery:
+  link_selectors:
+  - main a[href]
+  - article a[href]
+  - nav a[href]
+  - .pagination a[href]
+  - '#content a[href]'
+  - '#wrapper a[href]'
+  - .td-main-content-wrap a[href]
+  - .container a[href]
+extraction:
+  content_selectors:
+  - .entry-content
+  - .page-content
+  - main#main
+  - '#content'
+  title_selectors:
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - h1
+  - title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .sidebar
+  - .related-posts
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

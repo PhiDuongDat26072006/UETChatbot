@@ -1,0 +1,82 @@
+site: TUYENSINH
+version: 2                  # Nâng lên 2 để hệ thống tự động reset checkpoint và cào lại từ đầu
+seeds:
+  - https://tuyensinh.uet.vnu.edu.vn/
+  - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
+  - https://tuyensinh.uet.vnu.edu.vn/category/phuong-thuc-xet-tuyen/
+  - https://tuyensinh.uet.vnu.edu.vn/category/ket-qua-xet-tuyen/
+  - https://tuyensinh.uet.vnu.edu.vn/category/nganh-theo-khoa/
+  - https://tuyensinh.uet.vnu.edu.vn/category/ban-nen-biet/
+  - https://tuyensinh.uet.vnu.edu.vn/category/tu-van-tuyen-sinh/
+  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/
+
+scope:
+  hosts:
+  - tuyensinh.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /tin-tuyen-sinh
+  - /nganh-dao-tao
+  - /phuong-thuc-xet-tuyen
+  - /ban-nen-biet
+  - /tra-cuu
+  - /huong-nghiep
+  - /tu-van-tuyen-sinh
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+  - (?:^|/)page(?:/|$)
+
+discovery:
+  link_selectors:
+  - .paginate_links a[href]       # <-- Link chuyển trang 2, 3, ... 18
+  - a.page-numbers                # <-- Số trang phân trang
+  - .content-wrapper a[href]      # <-- Vùng danh sách bài viết
+  - .content-inside a[href]       # <-- Vùng bài viết
+  - .hexagon-in1 a[href]          # <-- 7 ô danh mục ở trang chủ
+  - '#main a[href]'
+  - '#page-wrapper a[href]'
+  - article a[href]
+
+extraction:
+  content_selectors:
+  - .content-wrapper-detail .content-inside # <-- Vùng bài viết thực tế
+  - .content-inside
+  - .content-wrapper-detail
+  - .content-wrapper
+  - article .entry-content
+  - .single-content
+  - .post-content
+  title_selectors:
+  - h1
+  - title
+  - h1.entry-title
+  - h1.td-post-title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .sidebar
+  - .widget-area
+  - .related-posts
+  - .box-tu-van
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

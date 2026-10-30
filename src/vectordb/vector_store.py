@@ -6,6 +6,8 @@ Nhiệm vụ: Lưu trữ DataChunk + Vector vào ChromaDB.
 
 from __future__ import annotations
 import sys
+import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -25,7 +27,7 @@ from src.base import (
     EmbeddedQueryVector,
     RetrievedContext,
 )
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("vectordb")
 
@@ -52,18 +54,55 @@ class ChromaVectorStore(BaseVectorStore):
     Thực thi lưu trữ các DataChunk + Vector và tìm kiếm tương đồng theo Cosine Distance.
     """
 
+    @staticmethod
+    def _get_safe_persist_path(persist_dir: Path) -> str:
+        """
+        Trên Windows, thư viện C++ hnswlib sử dụng std::ifstream không hỗ trợ ký tự Unicode có dấu (non-ASCII)
+        trong đường dẫn (ví dụ 'Project_cá_nhân'). Hàm này tự động tạo/sử dụng một NTFS Junction an toàn.
+        """
+        resolved_path = persist_dir.resolve()
+        path_str = str(resolved_path)
+        try:
+            path_str.encode("ascii")
+            return path_str
+        except UnicodeEncodeError:
+            pass
+
+        if sys.platform == "win32":
+            drive = resolved_path.drive or "D:"
+            junction_dir = Path(f"{drive}\\uet_vector_db")
+            if not junction_dir.exists():
+                import subprocess
+                try:
+                    subprocess.run(
+                        ["powershell", "-NoProfile", "-Command", f"New-Item -ItemType Junction -Path '{junction_dir}' -Target '{path_str}'"],
+                        capture_output=True, check=False
+                    )
+                except Exception as e:
+                    logger.warning(f"Không thể tạo junction cho ChromaDB: {e}")
+            if junction_dir.exists():
+                return str(junction_dir)
+                
+        return path_str
+
     def __init__(
         self,
         persist_dir: Optional[Union[str, Path]] = None,
-        collection_name: str = "uet_knowledge_base",
+        collection_name: Optional[str] = None,
         embedding_model: Optional[BaseEmbeddingModel] = None,
     ):
         """
         Khởi tạo ChromaVectorStore kết nối tới thư mục lưu trữ ChromaDB.
-        :param persist_dir: Đường dẫn thư mục lưu trữ ChromaDB (Mặc định: `vector_db/`)
-        :param collection_name: Tên collection trong ChromaDB (Mặc định: `uet_knowledge_base`)
+        :param persist_dir: Đường dẫn thư mục lưu trữ ChromaDB (Mặc định: `database/vector_db/`)
+        :param collection_name: Tên collection trong ChromaDB (Mặc định: lấy từ config.yaml hoặc `chatbot_collection`)
         :param embedding_model: Mô hình nhúng tùy chọn để tự nhúng chunk khi không truyền vectors
         """
+        if collection_name is None:
+            try:
+                cfg = load_yaml_config()
+                collection_name = cfg.get("paths", {}).get("collection_name", "chatbot_collection")
+            except Exception:
+                collection_name = "chatbot_collection"
         if persist_dir is None:
             if (BASE_DIR / "database" / "vector_db").exists():
                 self.persist_dir = BASE_DIR / "database" / "vector_db"
@@ -80,7 +119,8 @@ class ChromaVectorStore(BaseVectorStore):
 
         logger.info(f"Đang kết nối tới ChromaDB tại thư mục: '{self.persist_dir}'...")
         
-        self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+        safe_path = self._get_safe_persist_path(self.persist_dir)
+        self.client = chromadb.PersistentClient(path=safe_path)
         
         # Lấy hoặc tạo mới collection với cosine distance metric
         self.collection = self.client.get_or_create_collection(
@@ -203,8 +243,28 @@ class ChromaVectorStore(BaseVectorStore):
                     # Cosine distance sang cosine similarity: max(0, 1 - distance)
                     similarity = round(max(0.0, min(1.0, 1.0 - dist)), 4)
                     cleaned_meta = dict(meta or {})
-                    if "title" not in cleaned_meta:
-                        cleaned_meta["title"] = cleaned_meta.get("source") or f"Tài liệu UET ({cid})"
+                    # Giải mã metadata lồng nhau từ ChromaDB (nếu có)
+                    if "metadata" in cleaned_meta and isinstance(cleaned_meta["metadata"], str):
+                        try:
+                            nested = json.loads(cleaned_meta["metadata"])
+                            if isinstance(nested, dict):
+                                for k, v in nested.items():
+                                    if k not in cleaned_meta or cleaned_meta[k] is None:
+                                        cleaned_meta[k] = v
+                        except Exception:
+                            pass
+
+                    # Bóc tách tiêu đề chuẩn xác
+                    title = cleaned_meta.get("title")
+                    if not title or str(title).startswith("Tài liệu UET ("):
+                        first_line = doc_text.strip().split("\n")[0]
+                        m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
+                        if m and len(m.group(1).strip()) > 3:
+                            cleaned_meta["title"] = m.group(1).strip()
+                        elif cleaned_meta.get("source"):
+                            cleaned_meta["title"] = cleaned_meta["source"]
+                        else:
+                            cleaned_meta["title"] = f"Tài liệu UET ({cid[:8]})" 
 
                     contexts.append(
                         RetrievedContext(

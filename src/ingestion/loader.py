@@ -1,4 +1,5 @@
 """src/ingestion/loader.py - UETDataLoader kế thừa BaseDataCrawler theo giao ước base.py."""
+
 from __future__ import annotations
 
 import sys
@@ -15,7 +16,6 @@ from src.utils.helpers import get_logger  # noqa: E402
 
 try:
     from .loader_helpers import (  # noqa: E402
-        METADATA_FIELDS,
         default_processed_dir,
         iter_jsonl,
         resolve_uri,
@@ -23,7 +23,6 @@ try:
     )
 except ImportError:
     from src.ingestion.loader_helpers import (  # noqa: E402
-        METADATA_FIELDS,
         default_processed_dir,
         iter_jsonl,
         resolve_uri,
@@ -37,7 +36,9 @@ class UETDataLoader(BaseDataCrawler):
     """Bộ nạp dữ liệu cho UET Chatbot, kế thừa BaseDataCrawler (src/base.py)."""
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = Path(data_dir) if data_dir else default_processed_dir(_REPO_ROOT)
+        self.data_dir = (
+            Path(data_dir) if data_dir else default_processed_dir(_REPO_ROOT)
+        )
 
     def crawl(self, source: DataSource) -> List[RawData]:
         """Đọc dữ liệu đã bóc tách từ một nguồn (thư mục hoặc file JSONL)."""
@@ -93,5 +94,5 @@ if __name__ == "__main__":
     loader = UETDataLoader()
     docs = loader.load_all()
     print(f"\nĐã nạp thành công: {len(docs)} tài liệu từ {loader.data_dir}")
-    by_unit = Counter(d.raw_metadata.get("unit") for d in docs)
+    by_unit = Counter(d.metadata.get("unit") for d in docs)
     print("Phân bố theo đơn vị:", dict(by_unit.most_common()))

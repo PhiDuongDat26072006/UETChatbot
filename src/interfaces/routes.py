@@ -7,7 +7,7 @@ Nhiệm vụ: Phục vụ giao diện Web người dùng và chuyển tiếp yê
 from __future__ import annotations
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from src.base import UserQuery
 from src.pipeline import get_rag_pipeline
@@ -21,7 +21,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Nội dung câu hỏi của sinh viên")
     session_id: str = Field(default="default_session", description="Mã phiên hội thoại")
-    top_k: int = Field(default=4, description="Số lượng trích đoạn cần lấy")
+    top_k: Optional[int] = Field(default=None, description="Số lượng trích đoạn cần lấy (mặc định lấy theo config.yaml)")
 
 
 class SourceItem(BaseModel):
@@ -29,7 +29,12 @@ class SourceItem(BaseModel):
     text: str
     similarity_score: float
     rank: int
+    search_type: Optional[str] = None
+    search_source: Optional[str] = None
     metadata: Dict[str, Any] = {}
+
+
+SourceItem.model_rebuild()
 
 
 class ChatResponse(BaseModel):
@@ -38,6 +43,9 @@ class ChatResponse(BaseModel):
     sources: List[SourceItem] = []
     latency_seconds: float = 0.0
     model_name: str = ""
+
+
+ChatResponse.model_rebuild()
 
 
 def create_app():
@@ -66,6 +74,16 @@ def create_app():
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Chống trình duyệt lưu cache file tĩnh trong quá trình phát triển
+    @app.middleware("http")
+    async def add_no_cache_headers(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static") or request.url.path == "/":
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     # Phục vụ thư mục static (CSS, JS, assets)
     if STATIC_DIR.exists():
@@ -107,18 +125,66 @@ def create_app():
                 query_text=request.query,
                 session_id=request.session_id,
             )
-            response = pipeline.query(user_query, top_k=request.top_k)
+            retrieval_top_k = request.top_k if request.top_k is not None else getattr(pipeline.retriever, "default_top_k", 5)
+            response = pipeline.query(user_query, top_k=retrieval_top_k)
 
-        sources_data = [
-            SourceItem(
-                chunk_id=ctx.chunk_id,
-                text=ctx.text,
-                similarity_score=ctx.similarity_score,
-                rank=ctx.rank,
-                metadata=ctx.metadata,
+        sources_data = []
+        for ctx in response.sources:
+            meta = dict(ctx.metadata or {})
+            # Giải mã tiêu đề chuẩn xác từ metadata hoặc văn bản
+            title = meta.get("title")
+            if not title or str(title).startswith("Tài liệu UET ("):
+                if "metadata" in meta and isinstance(meta["metadata"], str):
+                    try:
+                        import json
+                        nested = json.loads(meta["metadata"])
+                        if isinstance(nested, dict) and nested.get("title"):
+                            title = nested["title"]
+                            meta["title"] = title
+                    except Exception:
+                        pass
+                if not title or str(title).startswith("Tài liệu UET ("):
+                    import re
+                    first_line = (ctx.text or "").strip().split("\n")[0]
+                    m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
+                    if m and len(m.group(1).strip()) > 3:
+                        title = m.group(1).strip()
+                        meta["title"] = title
+                    elif meta.get("source"):
+                        title = meta["source"]
+                        meta["title"] = title
+            search_type = meta.get("search_type")
+            search_source = meta.get("search_source")
+            if not search_type:
+                bm25_rank = meta.get("bm25_rank")
+                vec_rank = meta.get("vector_rank")
+                if bm25_rank is not None and vec_rank is not None:
+                    search_type = "hybrid"
+                    search_source = "BM25 + Vector Search"
+                elif bm25_rank is not None:
+                    search_type = "bm25"
+                    search_source = "BM25"
+                elif vec_rank is not None:
+                    search_type = "vector"
+                    search_source = "Vector Search"
+                else:
+                    search_type = "hybrid"
+                    search_source = "Hybrid"
+
+            meta["search_type"] = search_type
+            meta["search_source"] = search_source
+
+            sources_data.append(
+                SourceItem(
+                    chunk_id=ctx.chunk_id,
+                    text=ctx.text,
+                    similarity_score=ctx.similarity_score,
+                    rank=ctx.rank,
+                    search_type=search_type,
+                    search_source=search_source,
+                    metadata=meta,
+                )
             )
-            for ctx in response.sources
-        ]
 
         return ChatResponse(
             query=request.query,

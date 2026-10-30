@@ -1,0 +1,116 @@
+site: FIT
+version: 4
+url_normalization:
+  canonical_origin: https://www.fit.uet.vnu.edu.vn
+  alias_hosts:
+  - fit.uet.vnu.edu.vn
+  - www.fit.uet.vnu.edu.vn
+seeds:
+- https://www.fit.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - fit.uet.vnu.edu.vn
+  - www.fit.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /static
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  - /tag
+  - /category
+  - /author
+  - /comments/feed
+  - /wp-json
+  - /xmlrpc.php
+  - /wp-trackback.php
+  - /wp-includes
+  - /wp-content/themes
+  - /wp-content/plugins
+  - /en
+  listing_exact:
+  - /gioi-thieu/cac-bo-mon-va-phong-thi-nghiem
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /nguoi-hoc
+  - /nguoi-hoc/thong-tin-viec-lam
+  - /gioi-thieu
+  - /nguoi-hoc/thanh-tich-noi-bat
+  - /nguoi-hoc/cuu-sinh-vien
+  listing_patterns:
+  - (?:^|/)page(?:/|$)
+  exclude_patterns:
+  - (?i)^/(?:en/)?(?:slider[^/]*|slide-\d[^/]*)(?:/|$)
+  - ^/(?:en/)?(?:tag|category|author)(?:/|$)
+  - ^/\d{4}(?:/|$)
+  - (?:^|/)feed(?:/|$)
+  exclude_query_keys:
+  - rest_route
+  - p
+  - page_id
+  - cat
+  - s
+  - replytocom
+  - preview
+  exclude_query_values:
+    lang:
+    - en
+  exclude_fragments:
+  - respond
+  - comments
+discovery:
+  link_selectors:
+  - main a[href]
+  - article a[href]
+  - nav a[href]
+  - .pagination a[href]
+  - '#content a[href]'
+  - '#wrapper a[href]'
+  - .td-main-content-wrap a[href]
+  - .container a[href]
+extraction:
+  content_selectors:
+  - .blog-content
+  - .content_pages
+  - .content-single
+  - .entry-content
+  - article.post
+  - .col-sm-12 > div:nth-child(1) > div:nth-child(1)
+  title_selectors:
+  - meta[property="og:title"]
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - title
+  - h1
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - .sidebar
+  - .related-posts
+  - .post-meta
+  title_attributes:
+    meta[property="og:title"]: content
+  ignored_titles:
+  - Tin tức
+  - News
+  - Các bộ môn và phòng thí nghiệm
+  - Departments and laboratories
+  - Nghiên cứu
+  - Research
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

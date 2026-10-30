@@ -7,6 +7,7 @@ Hỗ trợ nhiều Backend: FlashRank (ONNX), Cross-Encoder, và Heuristic Cross
 
 from __future__ import annotations
 import re
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from src.base import RetrievedContext
@@ -183,15 +184,19 @@ class CrossEncoderReranker(BaseReranker):
     Thích hợp khi môi trường có PyTorch hoàn chỉnh hoặc mô hình tiếng Việt chuyên sâu (BGE-Reranker).
     """
 
-    def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
-        self.model_name = model_name
+    def __init__(self, model_name: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"):
+        if "/" not in model_name and not Path(model_name).exists():
+            resolved_model_name = f"cross-encoder/{model_name}"
+        else:
+            resolved_model_name = model_name
+        self.model_name = resolved_model_name
         self._model = None
         self._fallback = HeuristicReranker()
 
         try:
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(model_name)
-            logger.info(f"Đã tải thành công CrossEncoder model '{model_name}'.")
+            self._model = CrossEncoder(resolved_model_name)
+            logger.info(f"Đã tải thành công CrossEncoder model '{resolved_model_name}'.")
         except Exception as e:
             logger.warning(f"Không thể khởi tạo CrossEncoder ({e}). Chuyển sang HeuristicReranker dự phòng.")
 
@@ -248,7 +253,7 @@ class RerankerFactory:
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
 
         if rtype == "cross_encoder":
-            return CrossEncoderReranker(model_name=model_name or "BAAI/bge-reranker-v2-m3")
+            return CrossEncoderReranker(model_name=model_name or "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
 
         # Chế độ "auto": Tự động phát hiện và chọn backend an toàn nhất
         try:
@@ -259,7 +264,7 @@ class RerankerFactory:
 
         try:
             import sentence_transformers  # noqa: F401
-            return CrossEncoderReranker(model_name=model_name or "cross-encoder/ms-marco-MiniLM-L-6-v2")
+            return CrossEncoderReranker(model_name=model_name or "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
         except Exception:
             pass
 

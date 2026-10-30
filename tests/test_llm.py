@@ -72,8 +72,8 @@ class TestUETLLMClient(unittest.TestCase):
         """Kiểm tra hàm che giấu API key để bảo mật log."""
         self.assertEqual(UETLLMClient._mask_key(""), "")
         self.assertEqual(UETLLMClient._mask_key("short"), "***")
-        masked = UETLLMClient._mask_key("AIzaSyD-1234567890abcdef")
-        self.assertTrue(masked.startswith("AIza..."))
+        masked = UETLLMClient._mask_key("gsk_1234567890abcdef")
+        self.assertTrue(masked.startswith("gsk_..."))
         self.assertTrue(masked.endswith("cdef"))
 
     def test_load_api_keys_priority_and_dedup(self):
@@ -82,10 +82,10 @@ class TestUETLLMClient(unittest.TestCase):
         from unittest.mock import patch
 
         env_mock = {
-            "GEMINI_API_KEY": "key_primary",
-            "GEMINI_API_KEY_2": "key_backup_2",
-            "GEMINI_API_KEYS": "key_primary,key_group_3",
-            "GEMINI_BACKUP_API_KEY": "key_backup_final",
+            "GROQ_API_KEY": "key_primary",
+            "GROQ_API_KEY_2": "key_backup_2",
+            "GROQ_API_KEYS": "key_primary,key_group_3",
+            "GROQ_BACKUP_API_KEY": "key_backup_final",
         }
         with patch.dict(os.environ, env_mock, clear=True):
             keys = UETLLMClient._load_api_keys()
@@ -98,28 +98,16 @@ class TestUETLLMClient(unittest.TestCase):
 
     def test_auto_failover_on_429_quota_exhausted(self):
         """Kiểm tra tự động chuyển sang API key dự phòng khi gặp lỗi 429 RESOURCE_EXHAUSTED."""
-        from unittest.mock import MagicMock
-
         client = UETLLMClient(api_key="")
         client.api_keys = ["mock_key_1", "mock_key_2"]
         client.current_key_index = 0
 
-        # Mock client 1 bị lỗi 429
-        mock_client_1 = MagicMock()
-        mock_client_1.models.generate_content.side_effect = Exception("429 Quota Exceeded: RESOURCE_EXHAUSTED")
-
-        # Mock client 2 thành công
-        mock_client_2 = MagicMock()
-        mock_res = MagicMock()
-        mock_res.text = "Câu trả lời thành công từ API Key 2."
-        mock_client_2.models.generate_content.return_value = mock_res
-
-        def mock_get_client(key):
+        def mock_call_groq(key, model, prompt_text):
             if key == "mock_key_1":
-                return mock_client_1
-            return mock_client_2
+                raise Exception("429 Quota Exceeded: RESOURCE_EXHAUSTED")
+            return "Câu trả lời thành công từ API Key 2.", {}
 
-        client._get_client_for_key = mock_get_client
+        client._call_groq_generate = mock_call_groq
 
         response = client.generate(self.prompt)
         self.assertEqual(response.answer, "Câu trả lời thành công từ API Key 2.")
@@ -138,8 +126,8 @@ class TestUETLLMClient(unittest.TestCase):
         from unittest.mock import patch
 
         env_mock = {
-            "GEMINI_API_KEYS": "key_line_1\nkey_line_2;key_line_3",
-            "GEMINI_API_KEY_3": "key_line_4",
+            "GROQ_API_KEYS": "key_line_1\nkey_line_2;key_line_3",
+            "GROQ_API_KEY_3": "key_line_4",
         }
         with patch.dict(os.environ, env_mock, clear=True):
             keys = UETLLMClient._load_api_keys()
@@ -147,6 +135,22 @@ class TestUETLLMClient(unittest.TestCase):
             self.assertIn("key_line_2", keys)
             self.assertIn("key_line_3", keys)
             self.assertIn("key_line_4", keys)
+
+    def test_load_groq_api_keys(self):
+        """Kiểm tra nạp key của Groq duy nhất từ biến môi trường GROQ_API_KEY."""
+        import os
+        from unittest.mock import patch
+
+        env_mock = {
+            "GROQ_API_KEY": "gsk_primary_key_1234\ngsk_backup_key_5678",
+            "UNRELATED_KEY": "gsk_should_be_ignored",
+        }
+        with patch.dict(os.environ, env_mock, clear=True):
+            keys = UETLLMClient._load_api_keys()
+            self.assertIn("gsk_primary_key_1234", keys)
+            self.assertIn("gsk_backup_key_5678", keys)
+            self.assertNotIn("gsk_should_be_ignored", keys)
+            self.assertEqual(len(keys), 2)
 
 
 if __name__ == "__main__":

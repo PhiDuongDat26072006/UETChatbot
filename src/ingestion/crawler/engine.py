@@ -1,85 +1,198 @@
-"""Engine điều phối cào dữ liệu BFS đa tầng cho các Khoa/Viện UET."""
-from __future__ import annotations
+"""Level-order discovery with bounded HTTP work and replayable checkpoints."""
 
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse
+from collections import deque
+from contextlib import closing
+import json
+import logging
+from src.base import DataSource
+from ..identity import normalize_site_url, source_id, digest
+from ..storage import write_json
+from ..utils import completion_map
+from .parser import parse_page
+from .policy import in_scope, evaluate, resource_type
 
-from ..config import (
-    DATA_DIR,
-    MAX_CRAWL_PAGES_PER_TARGET,
-    WORKERS_API,
-    WORKERS_DOWNLOAD,
-    WORKERS_SCRAPE,
-    create_http_session,
-)
-from ..filters import get_domain_folder_name, normalize_endpoint_url
-from .downloader import download_files_parallel
-from .runner import crawl_all_faculties, crawl_domain, main
-from .scraper import scrape_single_page
-from .wp_api import (
-    fetch_wp_category_posts,
-    fetch_wp_media_documents,
-    fetch_wp_posts_and_pages,
-)
-
-__all__ = ["crawl_target", "crawl_domain", "crawl_all_faculties", "scrape_single_page", "main"]
+log = logging.getLogger(__name__)
 
 
-def crawl_target(
-    target_info: dict, base_data_dir: str = DATA_DIR, download_files: bool = True
-) -> tuple[int, int]:
-    """Thu thập endpoints và tài liệu cho một Khoa/Viện cụ thể."""
-    session = create_http_session(pool_size=20)
-    target_url = target_info["url"]
-    domain = target_info.get("domain") or urlparse(target_url).netloc
-    subpath, category_id = target_info.get("subpath"), target_info.get("category_id")
-    folder_name = target_info.get("domain") or get_domain_folder_name(target_url)
+def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick=None):
+    site = profile["site"]
+    checkpoint = storage.root / "ingestion_state" / (site + "-crawl.json")
+    key = digest(json.dumps(profile, sort_keys=True, default=str).encode())
+    saved = json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
+    resume = (
+        saved.get("profile_hash") == key
+        and saved.get("target") == options.to_stage
+        and not options.refresh
+    )
+    if resume and saved.get("complete"):
+        return {"pages": 0, "documents": 0, "errors": 0, "resumed_complete": True}
+    items = (
+        saved.get("frontier", [])
+        if resume
+        else [(normalize_site_url(u, profile), 0, None) for u in profile["seeds"]]
+    )
+    frontier = deque(sorted((tuple(x) for x in items), key=lambda x: x[1]))
+    seen = set(saved.get("seen", [])) if resume else set()
+    queued = {u for u, _, _ in frontier}
+    active = {}
+    deferred = []
+    pages = documents = errors = 0
+    flush_every = getattr(options, "flush_every", 20)
 
-    ep_dir = os.path.join(base_data_dir, folder_name, "endpoints")
-    files_dir = os.path.join(base_data_dir, folder_name, "files")
-    os.makedirs(ep_dir, exist_ok=True)
-    os.makedirs(files_dir, exist_ok=True)
+    def save():
+        storage.flush_pending()
+        if on_commit is not None:
+            on_commit()
+            storage.flush_pending()
+        # Includes submitted, completed-but-uncommitted and not-yet-submitted jobs.
+        pending = list(frontier) + list(active.values()) + deferred
+        pending = sorted({x[0]: x for x in pending}.values(), key=lambda x: x[1])
+        write_json(
+            checkpoint,
+            {
+                "profile_hash": key,
+                "target": options.to_stage,
+                "frontier": pending,
+                "seen": sorted(seen),
+                "complete": not pending,
+            },
+        )
 
-    all_eps, all_files = set(), set()
-    if category_id:
-        base_api = f"{urlparse(target_url).scheme}://{urlparse(target_url).netloc}"
-        all_eps.update(fetch_wp_category_posts(session, base_api, category_id, max_pages=5))
-    else:
-        with ThreadPoolExecutor(max_workers=WORKERS_API) as ex:
-            f_med = ex.submit(fetch_wp_media_documents, session, target_url)
-            f_pst = ex.submit(fetch_wp_posts_and_pages, session, target_url, "posts", domain)
-            f_pge = ex.submit(fetch_wp_posts_and_pages, session, target_url, "pages", domain)
-            all_files.update(f_med.result())
-            all_eps.update(f_pst.result().union(f_pge.result()))
+    def fetch(item):
+        try:
+            return fetcher.fetch(item[0], lambda u: in_scope(u, profile)), None
+        except Exception as exc:
+            return None, str(exc)
 
-    norm_target = normalize_endpoint_url(target_url)
-    all_eps.add(norm_target)
-    if subpath:
-        all_eps.add(normalize_endpoint_url(f"{urlparse(target_url).scheme}://{domain}/category/{subpath}/"))
+    def consume(item, page, error):
+        nonlocal pages, documents, errors
+        url, depth, parent = item
+        pages += 1
+        identifier = source_id(url)
+        if error:
+            errors += 1
+            storage.state(
+                site, identifier, "crawl", status="failed", url=url, error=error
+            )
+            deferred.append(item)
+            log.warning("[%s] crawl failed %s: %s", site, url, error)
+            return
+        html = page["body"].decode(page["encoding"], errors="replace")
+        meta, links = parse_page(html, page["final_url"], profile)
+        decision, reason = evaluate(page["final_url"], profile, meta)
+        source = DataSource(
+            source_id=identifier,
+            source_type="web",
+            uri=url,
+            metadata={
+                **meta,
+                "site": site,
+                "faculty": site,
+                "resource_type": "html",
+                "discovered_from": parent,
+                "crawl_depth": depth,
+                "decision": decision,
+                "decision_reason": reason,
+                "final_url": page["final_url"],
+            },
+        )
+        source = storage.resolve_redirect(source, page, profile)
+        identifier = source.source_id
+        storage.save_source(source)
+        if source.uri in seen:
+            seen.add(url)
+            return
+        if decision != "accepted":
+            storage.remove_processed(site, identifier)
+        # A bounded batch may contain more eligible pages than the remaining limit.
+        if decision == "accepted" and (
+            options.limit is None or documents < options.limit
+        ):
+            on_source(source, page)
+            documents += 1
+        elif decision == "accepted":
+            deferred.append(item)
+            return
+        for link in links:
+            target = link["url"]
+            kind = resource_type(target)
+            if kind == "asset":
+                continue
+            verdict, why = evaluate(target, profile)
+            sid = source_id(target)
+            if sid not in storage.records("sources", site):
+                storage.save_source(
+                    DataSource(
+                        source_id=sid,
+                        source_type="web",
+                        uri=target,
+                        metadata={
+                            "site": site,
+                            "faculty": site,
+                            "resource_type": kind,
+                            "discovered_from": url,
+                            "link_text": link["link_text"],
+                            "crawl_depth": depth + 1,
+                            "decision": verdict,
+                            "decision_reason": why,
+                        },
+                    )
+                )
+            if (
+                kind == "html"
+                and in_scope(target, profile)
+                and target not in seen
+                and target not in queued
+            ):
+                frontier.append((target, depth + 1, url))
+                queued.add(target)
+        seen.update((url, source.uri))
+        storage.state(site, identifier, "crawl", status="completed", url=url)
 
-    visited, to_visit = set(), set(all_eps)
-    while to_visit and len(visited) < MAX_CRAWL_PAGES_PER_TARGET:
-        batch = list(to_visit)[:min(20, MAX_CRAWL_PAGES_PER_TARGET - len(visited))]
-        to_visit -= set(batch)
-        with ThreadPoolExecutor(max_workers=WORKERS_SCRAPE) as ex:
-            futs = {ex.submit(scrape_single_page, session, target_url, domain, u, subpath): u for u in batch}
-            for fut in as_completed(futs):
-                visited.add(futs[fut])
-                eps, fls = fut.result()
-                all_files.update(fls)
-                for ep in eps:
-                    if ep not in all_eps:
-                        all_eps.add(ep)
-                        if ep not in visited:
-                            to_visit.add(ep)
+        log.info("[%s] depth=%s %s %s", site, depth, decision, url)
 
-    with open(os.path.join(ep_dir, "endpoints.txt"), "w", encoding="utf-8") as f:
-        f.writelines(ep + "\n" for ep in sorted(all_eps))
-    with open(os.path.join(files_dir, "files_list.txt"), "w", encoding="utf-8") as f:
-        f.writelines(fl + "\n" for fl in sorted(all_files))
-
-    if download_files and all_files:
-        download_files_parallel(session, sorted(list(all_files)), files_dir, max_workers=WORKERS_DOWNLOAD)
-
-    return len(all_eps), len(all_files)
+    workers = min(options.download_workers, options.per_host)
+    with storage.batched():
+        save()
+        try:
+            while frontier and pages < options.max_pages:
+                if options.limit is not None and documents >= options.limit:
+                    break
+                depth = frontier[0][1]
+                level = []
+                while (
+                    frontier
+                    and frontier[0][1] == depth
+                    and pages + len(level) < options.max_pages
+                ):
+                    item = frontier.popleft()
+                    if item[0] in seen or not in_scope(item[0], profile):
+                        continue
+                    if depth > options.max_depth:
+                        deferred.append(item)
+                        continue
+                    if item[0] not in active:
+                        active[item[0]] = item
+                        level.append(item)
+                # Checkpoint before scheduling: crash during a level never loses its URLs.
+                save()
+                with closing(
+                    completion_map(fetch, level, workers, on_tick=on_tick)
+                ) as results:
+                    for item, (page, error) in results:
+                        consume(item, page, error)
+                        active.pop(item[0])
+                        if pages % flush_every == 0:
+                            save()
+                        if options.limit is not None and documents >= options.limit:
+                            break
+                if active:  # Remaining document budget exhausted: preserve for resume.
+                    break
+        finally:
+            save()
+    return {
+        "pages": pages,
+        "documents": documents,
+        "errors": errors,
+        "remaining": len(frontier) + len(active) + len(deferred),
+    }

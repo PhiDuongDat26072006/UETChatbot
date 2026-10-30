@@ -1,22 +1,39 @@
-"""Module điều phối quy trình bóc tách văn bản (Extraction Pipeline)."""
-from __future__ import annotations
+"""Raw HTML -> validated ProcessedData, without network access or file writes."""
 
-from .pipeline_domain import extract_domain_documents
-from .pipeline_helpers import (
-    DUPLICATE_STUB_MAX_LENGTH,
-    canonicalize_url,
-    generate_doc_id,
-    is_duplicate_stub,
-    load_existing_processed_docs,
-)
-from .pipeline_runner import extract_all_domains
+import json
+from src.base import ProcessedData
+from ..identity import digest
+from ..config.settings import PROCESSOR_VERSION
+from .html.extractor import extract_html
 
-__all__ = [
-    "extract_domain_documents",
-    "extract_all_domains",
-    "DUPLICATE_STUB_MAX_LENGTH",
-    "canonicalize_url",
-    "is_duplicate_stub",
-    "generate_doc_id",
-    "load_existing_processed_docs",
-]
+
+def processing_key(raw_record, profile):
+    payload = {
+        "hash": raw_record["metadata"]["content_hash"],
+        "profile": profile,
+        "processor": PROCESSOR_VERSION,
+    }
+    return digest(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
+    )
+
+
+def process_raw(raw, profile):
+    result = extract_html(
+        raw.content, raw.metadata.get("final_url", raw.source_uri), profile
+    )
+    metadata = {
+        **raw.metadata,
+        **result["metadata"],
+        "source_uri": raw.source_uri,
+        "processor_version": PROCESSOR_VERSION,
+        "profile_version": profile["version"],
+    }
+    document = ProcessedData(
+        id=raw.metadata["source_id"],
+        raw_data_id=raw.id,
+        title=result["title"] or raw.title or raw.source_uri,
+        content=result["content"],
+        metadata=metadata,
+    )
+    return document, metadata["quality"]

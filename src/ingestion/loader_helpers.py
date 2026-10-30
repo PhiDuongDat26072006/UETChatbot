@@ -1,4 +1,5 @@
 """Hàm phụ trợ cho UETDataLoader: đọc JSONL, chuẩn hóa đường dẫn và chuyển đổi RawData."""
+
 from __future__ import annotations
 
 import json
@@ -55,18 +56,25 @@ def to_raw_data(
     record: Dict[str, Any], content: str, jsonl_file: Path, source: DataSource
 ) -> RawData:
     """Chuyển bản ghi JSONL thành đối tượng RawData theo giao ước base.py."""
-    url = record.get("source_url_or_path") or ""
-    metadata: Dict[str, Any] = {k: record.get(k) for k in METADATA_FIELDS}
+    url = (
+        record.get("source_uri")
+        or record.get("source_url_or_path")
+        or record.get("metadata", {}).get("source_uri", "")
+    )
+    metadata: Dict[str, Any] = dict(record.get("metadata") or {})
+    for key in METADATA_FIELDS:
+        if record.get(key) is not None:
+            metadata.setdefault(key, record[key])
     metadata["url"] = url
     metadata["cloud_links"] = metadata.get("cloud_links") or []
     metadata["processed_file"] = jsonl_file.name
-    metadata["source_id"] = source.source_id
+    metadata.setdefault("source_id", record.get("id") or source.source_id)
 
     kwargs: Dict[str, Any] = dict(
         content=content,
         source_uri=url or str(jsonl_file),
         title=record.get("title"),
-        raw_metadata=metadata,
+        metadata=metadata,
     )
     if record.get("id"):
         kwargs["id"] = str(record["id"])

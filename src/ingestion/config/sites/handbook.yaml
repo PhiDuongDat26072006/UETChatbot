@@ -1,0 +1,68 @@
+site: HANDBOOK
+version: 2
+seeds:
+- https://handbook.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - handbook.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /thu-vien-anh
+  - /bai-viet
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+discovery:
+  link_selectors:
+  - header a[href]
+  - main a[href]
+  - footer a[href]
+  - nav a[href]
+  - article a[href]
+  - .container a[href]
+  - '#content a[href]'
+  - a[href]
+extraction:
+  content_selectors:
+  - main
+  - main.flex-1
+  - article
+  - .entry-content
+  - .post-content
+  - .page-content
+  title_selectors:
+  - h1
+  - h2
+  - title
+  - h1.entry-title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - time
+  - .entry-date
+  remove_selectors:
+  - header
+  - footer
+  - nav
+  - .sidebar
+  - .related-news
+  - .gallery-section
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review

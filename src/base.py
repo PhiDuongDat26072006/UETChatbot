@@ -39,7 +39,7 @@ class RawData(BaseModel):
     content: str = Field(..., description="Nội dung thô (HTML, text nguyên bản, mã Markdown...)")
     source_uri: str = Field(..., description="Nguồn gốc tài liệu (URL bài viết, tên file gốc...)")
     title: Optional[str] = Field(default=None, description="Tiêu đề bài viết hoặc tên văn bản quy chế")
-    raw_metadata: Dict[str, Any] = Field(default_factory=dict, description="Metadata thô: ngày đăng, người đăng, tags...")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Metadata thô: ngày đăng, người đăng, tags...")
     created_at: datetime = Field(default_factory=datetime.now, description="Thời điểm thu thập")
 
 

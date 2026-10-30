@@ -1,0 +1,65 @@
+site: FCE
+version: 1
+seeds:
+- https://fce.uet.vnu.edu.vn/
+scope:
+  hosts:
+  - fce.uet.vnu.edu.vn
+  path_prefixes:
+  - /
+  exclude_prefixes:
+  - /wp-admin
+  - /wp-login.php
+  - /feed
+  listing_exact:
+  - /
+  - /tin-tuc
+  - /thong-bao
+  - /dao-tao
+  - /nghien-cuu
+  - /sinh-vien
+  - /hop-tac
+  - /tuyen-sinh
+  - /hoat-dong
+  - /cac-cong-bo
+  - /khoa-hoc-cong-nghe
+  listing_patterns:
+  - ^/(category|tag|author|page)(/|$)
+discovery:
+  link_selectors:
+  - main a[href]
+  - article a[href]
+  - nav a[href]
+  - .pagination a[href]
+  - '#content a[href]'
+  - '#wrapper a[href]'
+  - .td-main-content-wrap a[href]
+  - .container a[href]
+extraction:
+  content_selectors:
+  - div#primary article .entry-content
+  - main#main article.post
+  - main#main article.page
+  title_selectors:
+  - h1.entry-title
+  - h1.td-post-title
+  - article h1
+  - h1
+  - title
+  date_selectors:
+  - meta[property="article:published_time"]
+  - time[datetime]
+  - .entry-date
+  remove_selectors:
+  - div#secondary
+  - .widget-area
+  - .post-navigation
+  - .sharedaddy
+  - footer.entry-meta
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review
