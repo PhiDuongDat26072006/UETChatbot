@@ -68,10 +68,8 @@ def build_parser():
     )
     ingest.add_argument("--per-host", type=positive, default=defaults["per_host"])
     ingest.add_argument(
-        "--extract-workers",
-        type=positive,
-        default=defaults["extract_workers"],
-        help="Number of extraction processes for raw -> processed",
+        "--extract-workers", type=positive, default=defaults["extract_workers"],
+        help="Number of extraction processes for raw -> processed"
     )
     ingest.add_argument(
         "--stream-extract-workers",
@@ -99,6 +97,18 @@ def build_parser():
         command.add_argument("--sites", nargs="+", type=str.upper)
         command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
         command.add_argument("--profile-dir", type=Path)
+    ingest.add_argument("--corpus-mode", choices=["off", "balanced", "strict"], default="balanced",
+                        help="balanced: include+review; strict: include only; off: previous behavior")
+    ingest.add_argument("--corpus-config", type=Path, help="Per-site corpus registry YAML")
+    corpus = commands.add_parser("filter", help="Rank UET source links; do not modify ingestion data")
+    corpus.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    corpus.add_argument("--sources", type=Path, help="Default: data/data_source/UET.jsonl")
+    corpus.add_argument("--output-dir", type=Path, help="Default: data/corpus/UET")
+    corpus.add_argument("--policy", type=Path, help="Override policy for one site")
+    corpus.add_argument("--sites", nargs="+", type=str.upper, default=["UET"])
+    corpus.add_argument("--corpus-config", type=Path)
+    corpus.add_argument("--export-processed", action="store_true",
+                        help="Export include docs under corpus/<SITE>/processed/")
     ingest.add_argument(
         "--log-file",
         type=Path,
@@ -144,13 +154,13 @@ def main(argv=None):
             force=True,
         )
     try:
-        from .runner import run_ingestion, get_status
-
-        result = (
-            run_ingestion(args)
-            if args.command == "ingest"
-            else get_status(args.data_dir, args.profile_dir, args.sites)
-        )
+        if args.command == "filter":
+            from .corpus.runner import run_filter
+            result = run_filter(args)
+        else:
+            from .runner import run_ingestion, get_status
+            result = (run_ingestion(args) if args.command == "ingest"
+                      else get_status(args.data_dir, args.profile_dir, args.sites))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if result.get("status") == "failed" else 0
     except Exception as exc:

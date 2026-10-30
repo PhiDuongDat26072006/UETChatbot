@@ -1,7 +1,7 @@
 # CLI arguments override these defaults. Restart the process after editing.
 ingestion:
   max_pages: 10000
-  max_depth: 10
+  max_depth: 4
   limit: null
   download_workers: 120
   site_workers: 4

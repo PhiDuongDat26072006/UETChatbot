@@ -13,6 +13,7 @@ from .downloader.http import HTMLFetcher
 from .downloader.service import download_source
 from .storage import Storage, writer_lock, write_json, now
 from .utils import completion_map
+from .corpus.gate import selected as corpus_selected, priority, reconcile as reconcile_corpus, prefetch
 
 log = logging.getLogger(__name__)
 STAGES = ("web", "data_source", "raw", "processed")
@@ -65,6 +66,8 @@ def run_ingestion_serial(
                     storage, site, profile
                 )
 
+                counts["corpus_reclassified"] = reconcile_corpus(storage, site, profile)
+                counts["corpus_enabled"] = bool(profile.get("_corpus_policy"))
                 if extractor_pool is not None:
                     from .streaming import StreamingExtractor
 
@@ -91,6 +94,13 @@ def run_ingestion_serial(
                         stream.on_commit()
 
                 def accept(source, page):
+                    row = source.model_dump(mode="json")
+                    allowed = corpus_selected(row, profile)
+                    source.metadata.update(row["metadata"])
+                    storage.save_source(source)
+                    if not allowed:
+                        counts["raw_corpus_skipped"] += 1
+                        return
                     if STAGES.index(options.to_stage) >= 2:
                         record = storage.save_raw(source, page)
                         counts["raw_saved"] += 1
@@ -128,7 +138,7 @@ def run_ingestion_serial(
                         for r in storage.records("sources", site).values()
                         if r["metadata"].get("decision") == "accepted"
                     ]
-                    sources = sorted(sources, key=lambda s: s.uri)
+                    sources = sorted(sources, key=lambda s: (-priority(s.uri, profile, s.metadata), s.uri))
                     latest_raw = {}
                     for row in storage.records("raw", site).values():
                         sid = row["metadata"]["source_id"]
@@ -139,6 +149,11 @@ def run_ingestion_serial(
                             latest_raw[sid] = row
                     jobs = []
                     for source in sources:
+                        row = source.model_dump(mode="json")
+                        # Unknown titles may become include after the first GET.
+                        if prefetch(source.uri, profile) or (source.metadata.get("title") and not corpus_selected(row, profile)):
+                            counts["raw_corpus_skipped"] += 1
+                            continue
                         state = storage.records("state", site).get(
                             "raw:" + source.source_id, {}
                         )
@@ -291,6 +306,8 @@ def run_ingestion(options):
     options._profiles = attach(
         load_profiles(options.profile_dir), getattr(options, "overrides", None)
     )
+    from .corpus.gate import attach as attach_corpus
+    options._profiles = attach_corpus(options._profiles, options)
     if options.sites and set(options.sites) - set(options._profiles):
         raise ValueError("Unknown sites")
     if options.from_stage in {"web", "data_source"}:

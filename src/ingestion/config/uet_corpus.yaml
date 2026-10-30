@@ -1,0 +1,159 @@
+version: uet-corpus-v3-online
+host: uet.vnu.edu.vn
+old_notice_through: 2024
+overrides:
+  https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/:
+    decision: include
+    priority: 100
+    category: ngoai_ngu
+    reason: Nguồn chuẩn đầu ra ngoại ngữ do người dùng chỉ định ưu tiên
+rules:
+- id: fee_operations
+  decision: exclude
+  category: thong_bao_tac_nghiep
+  reason: Thu/nộp/hoàn trả hoặc xử lý hồ sơ theo đợt; không phải chính sách chung
+  priority: 0
+  patterns:
+  - ^(thong bao )?(ve viec )?(thu|nop|dong|hoan tra|bu tru) hoc phi\b
+  - \b(danh sach|ket qua).*(hoc phi|kinh phi|mien giam)\b
+  - \b(cac khoan no|hoc phi qua han|chua hoan thanh nghia vu|kinh phi con du)\b
+  - ^(thong bao )?(ve viec )?(gia han|lui|dieu chinh|du kien|ke hoach|lich|trien khai).*(thu hoc phi|nop hoc phi|nop
+    ho.*mien giam hoc phi).*\b
+  - ^(thong bao )?(ve viec )?(nop ho|nop ho so|hoan thanh ho|hoan thien ho).*mien giam hoc phi\b
+  - ^(thong bao )?(ve viec )?(mien giam|miengiam) hoc phi.*(hoc ky|hoc ki|hki|hkii)\b
+  - \bquyet dinh mien giam hoc phi.*(hoc ky|hoc ki|nam hoc)\b
+  - \bdieu chinh.*(danh sach|doi tuong).*hoc phi\b
+- id: training_sessions
+  decision: exclude
+  category: lich_su_kien
+  reason: Lịch/phân nhóm/tập huấn quy chế hoặc hướng dẫn theo buổi, không phải văn bản quy chế
+  priority: 0
+  patterns:
+  - \b(lich hoc|phan nhom|tap huan|trieu tap).*quy che\b
+  - ^lich huong dan\b
+- id: dated_admissions
+  decision: temporal
+  category: nhap_hoc_theo_dot
+  reason: Hướng dẫn nhập học/đăng ký theo đợt; cần xác minh thời hạn
+  priority: 75
+  patterns:
+  - \bnhap hoc\b.*(?:\bnam\b|\bkhoa\b|\bngay\b|\bqh\b|\bk\d+\b)
+  - \bdang ky hoc.*(?:\bdot\b|\bnam\b)
+  - \b(hoan thien thu tuc nhap hoc|hoat dong dau khoa)\b
+  - \b(thoi han|bo sung chuong trinh).*hoc bong\b
+- id: annual_rates
+  decision: review
+  category: muc_thu_theo_nam
+  reason: 'Mức học phí/học bổng theo năm: cần chọn năm áp dụng, không coi là chính sách hiện hành tự động'
+  priority: 82
+  patterns:
+  - \b(dinh muc|muc thu|muc hoc phi|muc hoc bong)\b.*\b(nam hoc|nam 20\d{2}|hoc ky|hoc ki)\b
+- id: cohort_procedure
+  decision: review
+  priority: 84
+  category: thu_tuc_theo_khoa
+  reason: Hướng dẫn riêng cho khóa/nhóm sinh viên; xác minh phạm vi trước khi chọn
+  patterns:
+  - ^huong dan.*\b(k\d+\w*|qh \d{4})\b
+- id: personal_lists
+  decision: exclude
+  category: danh_sach_ca_nhan
+  reason: Danh sách hoặc kết quả cá nhân theo đợt
+  patterns:
+  - \b(danh sach|ket qua xet).*(no hoc phi|chua (dong|nop)|mien giam hoc phi|hoc bong|tot nghiep|hoc vu|cam thi|phong
+    thi|trung tuyen|lop hoc)\b
+  - \b(danh sach lop|trieu tap sinh vien|tom tat luan an|bao ve luan an|bao ve luan van)\b
+  - \b(gioi thieu|thong tin|toan van).*luan an\b
+- id: events_media
+  decision: exclude
+  category: tin_su_kien
+  reason: Sự kiện, truyền thông hoặc lễ trao; không phải hướng dẫn đào tạo
+  patterns:
+  - \b(le (ky ket|trao|tot nghiep|khai giang|be giang)|chuc mung|chuc tet|thu chuc|gap go|vinh danh|album|chum anh|vtv1|video|hoi
+    thao|bong da)\b
+  - \b(hinh anh le|duoc cap chung chi aun|dat chung nhan chat luong|nhin lai chang duong)\b
+- id: operational_notice
+  decision: exclude
+  category: thong_bao_tac_nghiep
+  reason: Thông báo tác nghiệp hoặc nhắc việc theo đợt
+  patterns:
+  - \b(dieu chinh lich thi|trien khai (tam )?thu hoc phi|nhac (nop|dong) hoc phi|kiem tra du lieu|lay y kien phan
+    hoi)\b
+  - \b(danh sach|ket qua).*de tai\b
+- id: curriculum
+  decision: include
+  priority: 95
+  category: chuong_trinh_dao_tao
+  reason: Chương trình đào tạo theo ngành; cần giữ thông tin khóa và phiên bản
+  patterns:
+  - ^chuong trinh (dao|da) tao (nganh|cong nghe|khoa hoc|ky thuat|he thong|vat ly|co ky|mang may)\b
+- id: regulations
+  decision: include
+  priority: 94
+  category: quy_che
+  reason: Quy chế hoặc quy định phục vụ đào tạo
+  patterns:
+  - ^(ban hanh |thong bao |ve viec ban hanh )?quy che\b.*\b(dao tao|hoc tap|sinh vien|dai hoc|sau dai hoc)\b
+  - ^(ban hanh |thong bao )?quy dinh\b.*\b(hoc lai|cai thien diem|bao luu|chuyen nganh|tin chi|tot nghiep|dang ky
+    hoc|cong nhan ket qua|mien hoc|mien thi)\b
+- id: tuition_policy
+  decision: include
+  priority: 92
+  category: hoc_phi
+  reason: Mức thu hoặc chính sách học phí; cần xác định năm và khóa áp dụng
+  patterns:
+  - ^(ban hanh |thong bao )?(quy dinh|chinh sach|huong dan|thu tuc|doi tuong|dinh muc|muc thu)\b.*\bhoc phi\b
+- id: language_policy
+  decision: review
+  priority: 90
+  category: ngoai_ngu
+  reason: Đối chiếu phạm vi áp dụng với nguồn ngoại ngữ ưu tiên; không tự kết luận còn hiệu lực
+  patterns:
+  - \b(chuan dau ra|chung chi|quy doi|mien hoc|mien thi|minh chung).*ngoai ngu\b
+  - \bngoai ngu.*(chuan dau ra|chung chi|mien thi|quy doi)\b
+- id: student_procedures
+  decision: include
+  priority: 88
+  category: thu_tuc_hoc_tap
+  reason: Hướng dẫn thủ tục học tập dành cho sinh viên
+  patterns:
+  - \b(huong dan|thu tuc|quy trinh|bieu mau|don xin).*(dang ky hoc|hoc phan|hoc lai|bao luu|chuyen nganh|chuyen
+    truong|bang diem|xac nhan sinh vien|tot nghiep|tin chi|nhap hoc|cap bang)\b
+- id: scholarship_policy
+  decision: include
+  priority: 85
+  category: hoc_bong
+  reason: Chính sách hoặc tiêu chí học bổng, không phải kết quả từng đợt
+  patterns:
+  - ^(ban hanh |thong bao )?(quy dinh|chinh sach|tieu chi|cach tinh|dieu kien|quy trinh)\b.*\bhoc bong\b
+- id: year_specific_notice
+  decision: temporal
+  priority: 65
+  category: thong_bao_theo_dot
+  reason: Thông báo theo đợt cần kiểm tra thời gian và hạn chót
+  patterns:
+  - \b(hoc bong|lich thi|lich hoc|thoi khoa bieu|dang ky|tuyen sinh|ke hoach|ket qua|hoc vu|khao sat|trao doi sinh
+    vien)\b
+- id: tuition_ambiguous
+  decision: review
+  priority: 70
+  category: hoc_phi
+  reason: Liên quan học phí nhưng chưa phân biệt chắc chính sách và thông báo theo đợt
+  patterns:
+  - \bhoc phi\b
+prefetch:
+  exclude_patterns:
+  - ^(thong bao )?(ve viec )?(thu|nop|dong) hoc phi\b
+  - ^(thong bao )?(ve viec )?(nop ho|nop ho so).*mien giam hoc phi\b
+  - \bdanh sach.*(no hoc phi|chua nop hoc phi|chua dong hoc phi|kinh phi con du)\b
+  - ^(le bao ve|tom tat|gioi thieu|thong tin) luan an\b
+  - ^lich hoc quy che\b
+  exclude_prefixes:
+  - /tag
+  - /author
+  - /en
+  - /cdu-en
+  - /wp-json
+  - /wp-includes
+  - /static
+  - /uet.edu.vn

@@ -1,0 +1,16 @@
+# Template only; NOT enabled. Copy to fit.yaml, review, then register in sites.yaml.
+version: fit-corpus-v1
+host: www.fit.uet.vnu.edu.vn
+hosts: [www.fit.uet.vnu.edu.vn, fit.uet.vnu.edu.vn]
+old_notice_through: 2024
+overrides: {}
+prefetch:
+  exclude_patterns: []
+rules:
+  - id: curriculum
+    decision: include
+    priority: 95
+    category: chuong_trinh_dao_tao
+    reason: Chương trình đào tạo; cần xác minh khóa áp dụng
+    patterns: ['^chuong trinh dao tao nganh\b']
+# Unmatched pages remain review. Add faculty-specific rules; do not copy all UET rules blindly.

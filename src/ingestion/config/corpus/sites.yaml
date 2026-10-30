@@ -1,0 +1,4 @@
+version: 1
+sites:
+  UET: ../uet_corpus.yaml
+# Add FIT: fit.yaml after editing fit.example.yaml for your own dataset.

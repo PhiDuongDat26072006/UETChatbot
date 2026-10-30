@@ -8,6 +8,7 @@ from src.base import ProcessedData
 from .extractor.pipeline import processing_key
 from .extractor.worker import extract_record
 from .storage import write_json
+from .corpus.gate import selected as corpus_selected, priority
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,11 @@ class StreamingExtractor:
                 or row["created_at"] > self.latest[sid]["created_at"]
             ):
                 self.latest[sid] = row
-        self.backlog = deque(self.latest[sid] for sid in sorted(self.latest))
+        sources = storage.records("sources", site)
+        ordered = sorted(self.latest, key=lambda sid: (
+            -priority(sources.get(sid, {}).get("uri", self.latest[sid].get("source_uri", "")),
+                      profile, sources.get(sid, {}).get("metadata", {})), sid))
+        self.backlog = deque(self.latest[sid] for sid in ordered)
 
     def stage(self, row):
         """Called after save_raw; submission waits for the next durable commit."""
@@ -53,6 +58,10 @@ class StreamingExtractor:
             return None
         source = self.storage.records("sources", self.site).get(sid)
         if source and source["metadata"].get("decision") != "accepted":
+            return None
+        candidate = source or {"uri": row.get("source_uri", ""), "metadata": dict(row["metadata"])}
+        if not corpus_selected(candidate, self.profile):
+            self.counts["processed_corpus_skipped"] += 1
             return None
         key = processing_key(row, self.profile)
         token = (sid, key)
@@ -116,6 +125,12 @@ class StreamingExtractor:
                 }
             )
             return
+        candidate = source or {"uri": row.get("source_uri", ""), "metadata": dict(row["metadata"])}
+        if not corpus_selected(candidate, self.profile):
+            self.counts["processed_corpus_skipped"] += 1
+            return
+        if self.profile.get("_corpus_policy"):
+            document.metadata["corpus"] = candidate["metadata"]["corpus"]
         # Quality is advisory; every successfully extracted payload is retained.
         self.storage.save_processed(self.site, document)
         self.counts["processed_saved"] += 1

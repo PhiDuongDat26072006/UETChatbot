@@ -1,6 +1,14 @@
 site: UET
 version: 2
 seeds:
+- https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
+- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
+- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
+- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/quy-che-dao-tao-dai-hoc/
+- https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
+- https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
+- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
+- https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/quy-che-dao-tao-sau-dai-hoc/
 - https://uet.vnu.edu.vn/
 scope:
   hosts:
@@ -12,7 +20,18 @@ scope:
   - /wp-login.php
   - /feed
   - /vien-tri-tue-nhan-tao
+  - /en
+  - /cdu-en
+  - /~
+  - /tag
+  - /events
+  - /tp-event-category
+  - /Documents
+  - /Dropbox
+  - /1
+  - /dao-tao
   listing_exact:
+  - /chuong-trinh-dao-tao
   - /
   - /tin-tuc
   - /thong-bao
