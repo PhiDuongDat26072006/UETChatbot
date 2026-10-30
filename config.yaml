@@ -46,13 +46,28 @@ retrieval:
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
 
 llm:
-  provider: "groq"             # Nhà cung cấp mô hình ngôn ngữ lớn (Groq API)
-  # Mô hình Groq LPU tốc độ cao (~250-800 tokens/s)
+  provider: "groq"             # Nhà cung cấp mặc định ("groq", "sambanova", "gemini")
   model_name: "qwen/qwen3.8-27b"
   candidate_models:
+    - "qwen/qwen3.8-27b"
+    - "openai/gpt-oss-20b"
     - "llama-3.1-8b-instant"
-  temperature: 0.3
+  temperature: 0.2
   top_k_retrieval: 5
+  enable_disk_cache: true
+  cache_file: "database/llm_cache.json"
+
+  # Cấu hình đa luồng phân tải (Multi-Provider Queue cho Evaluation)
+  providers:
+    groq:
+      model: "qwen/qwen3.8-27b"
+      delay_seconds: 2.0       # 30 câu/phút
+    sambanova:
+      model: "DeepSeek-V3.1"
+      delay_seconds: 2.5       # 24 câu/phút
+    gemini:
+      model: "gemini-3.5-flash"
+      delay_seconds: 4.0       # 15 câu/phút
 
 api:
   host: "127.0.0.1"
