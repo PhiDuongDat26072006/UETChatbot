@@ -54,7 +54,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (!btnSubmit.disabled) {
-                chatForm.dispatchEvent(new Event("submit"));
+                if (typeof chatForm.requestSubmit === "function") {
+                    chatForm.requestSubmit();
+                } else {
+                    chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+                }
             }
         }
     });
@@ -84,7 +88,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 queryInput.value = query;
                 queryInput.style.height = "auto";
                 btnSubmit.disabled = false;
-                chatForm.dispatchEvent(new Event("submit"));
+                if (typeof chatForm.requestSubmit === "function") {
+                    chatForm.requestSubmit();
+                } else {
+                    chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+                }
             }
         });
     });
