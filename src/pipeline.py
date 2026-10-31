@@ -472,6 +472,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         to_stage: str = "vectordb",
         batch_size: int = 500,
         clear: bool = False,
+        clear_existing: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
@@ -482,6 +483,9 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         Nếu clear=True: xóa toàn bộ dữ liệu cũ (chunked_data, vectordb, BM25 index, manifest)
         trước khi chạy lại, đảm bảo nạp mới hoàn toàn.
         """
+        if clear_existing is not None:
+            clear = clear or clear_existing
+
         import shutil
 
         from_stage = from_stage.lower().strip()
@@ -767,7 +771,10 @@ def run_ingest_cli(
     from_stage: str = "raw",
     to_stage: str = "vectordb",
     clear: bool = False,
+    clear_existing: Optional[bool] = None,
 ):
+    if clear_existing is not None:
+        clear = clear or clear_existing
     """Khởi chạy quy trình điều phối và nạp dữ liệu đa chặng với báo cáo kết quả trên terminal."""
     print("\n" + "=" * 65)
     if clear:
@@ -781,6 +788,7 @@ def run_ingest_cli(
             from_stage=from_stage,
             to_stage=to_stage,
             clear=clear,
+            clear_existing=clear,
         )
     except Exception as e:
         print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
