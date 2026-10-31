@@ -1,131 +1,188 @@
-# Phân đoạn văn bản (Chunking)
+# Phân đoạn văn bản (Text Chunking)
 
-Tài liệu mô tả bộ phân đoạn trong `src/chunking`, chịu trách nhiệm chuyển
-`ProcessedData` thành các `DataChunk` để đưa qua bước embedding và lập chỉ mục.
-Lớp triển khai chính là `UETChunker` trong `chunker.py`.
+Tài liệu mô tả bộ phân đoạn văn bản trong `src/chunking`, chịu trách nhiệm chuyển đổi `ProcessedData` thành danh sách các `DataChunk` thông minh (Structure-Aware Chunks) để phục vụ quá trình nhúng vector (`BAAI/bge-m3`) và lập chỉ mục tìm kiếm kết hợp (Hybrid Search: Vector DB + BM25).
 
-## Vai trò trong pipeline
+Lớp triển khai chính là `UETChunker` trong [`src/chunking/chunker.py`](chunker.py).
+
+---
+
+## 1. Vai trò trong Pipeline
 
 ```text
-ProcessedData -> UETChunker -> List[DataChunk] -> Embedding -> Vector DB
+ProcessedData ──> UETChunker ──> List[DataChunk] ──> Embedding ──> Vector DB & BM25
 ```
 
-Mỗi chunk giữ nội dung văn bản cùng thông tin định danh và metadata của tài liệu
-nguồn. Việc chia nhỏ giúp truy xuất những đoạn liên quan thay vì phải tìm kiếm
-trên toàn bộ tài liệu dài.
+Mỗi chunk lưu giữ nội dung văn bản hoàn chỉnh kèm metadata chi tiết (nguồn, thứ tự, tiêu đề phân cấp, đường dẫn breadcrumb). Bộ phân đoạn được thiết kế đặc thù cho tài liệu học vụ và quy chế đào tạo của Trường Đại học Công nghệ (UET) - ĐHQGHN, bảo tồn tối đa ngữ cảnh của từng điều khoản pháp lý và bảng biểu.
 
-## Cấu hình
+---
 
-`UETChunker` đọc cấu hình `chunking` trong `config.yaml`; có thể ghi đè từng
-tham số khi khởi tạo:
+## 2. Cấu hình tham số
 
-| Tham số | Mặc định trong `config.yaml` | Ý nghĩa |
-| --- | ---: | --- |
-| `chunk_size` | `800` | Độ dài tối đa mục tiêu của một chunk, tính theo ký tự Python (`len`), không phải số token. |
-| `chunk_overlap` | `150` | Số ký tự mục tiêu được giữ lại giữa hai chunk liên tiếp. |
-| `separators` | `\n\n`, `\n`, `### `, `## `, `# `, `. `, ` ` | Các ranh giới được thử theo thứ tự, từ lớn đến nhỏ. Bộ phân đoạn thêm chuỗi rỗng làm phương án cuối nếu cấu hình chưa có. |
+`UETChunker` tự động nạp cấu hình khối `chunking` từ [`config.yaml`](../../config.yaml) và cho phép ghi đè linh hoạt khi khởi tạo:
 
-Ví dụ cấu hình:
+| Tham số | Mặc định trong `config.yaml` | Ý nghĩa kỹ thuật |
+| --- | :---: | --- |
+| `chunk_size` | `800` | Độ dài tối đa mục tiêu của một chunk, tính theo ký tự Python (`len(str)`). |
+| `chunk_overlap` | `150` | Độ dài mục tiêu của phần gối đầu giữa 2 chunk liên tiếp để bảo toàn mạch ngữ nghĩa. |
+| `min_chunk_size` | `100` | Ngưỡng ký tự tối thiểu của một chunk. Các đoạn mồ côi nhỏ hơn ngưỡng này sẽ được gộp vào chunk liền trước nếu cùng Điều/Heading. |
+| `separators` | Danh sách phân cấp | Thứ tự ưu tiên cắt văn bản từ mức cấu trúc lớn (Heading, Chương, Điều) đến đoạn (`\n\n`), dòng (`\n`), câu (`. `), từ (` `). |
+
+### Cấu hình chuẩn trong `config.yaml`:
 
 ```yaml
 chunking:
   chunk_size: 800
   chunk_overlap: 150
+  min_chunk_size: 100
   separators:
-    - "\n\n"
-    - "\n"
+    - 'regex:(?<=\n)(?=(?:Chương|CHƯƠNG)\s+[IVXLCDM\d]+)'
+    - 'regex:(?<=\n)(?=(?:Mục|MỤC)\s+\d+)'
+    - 'regex:(?<=\n)(?=(?:Điều|ĐIỀU)\s+\d+[\.:])'
     - "### "
     - "## "
     - "# "
+    - 'regex:(?<=\n)(?=(?:Khoản\s+\d+[\.:]|\d+\.\s))'
+    - "\n\n"
+    - "\n"
     - ". "
+    - "; "
     - " "
+    - ""
 ```
 
-Có thể truyền tham số trực tiếp; giá trị truyền vào được ưu tiên hơn cấu hình:
+### Khởi tạo tùy biến trong code:
 
 ```python
 from src.chunking import UETChunker
 
-chunker = UETChunker(chunk_size=600, chunk_overlap=100)
+# Ghi đè cấu hình runtime
+chunker = UETChunker(
+    chunk_size=600,
+    chunk_overlap=120,
+    min_chunk_size=80,
+)
 ```
 
-`chunk_overlap` nên nhỏ hơn `chunk_size` để tiến trình chia đoạn tiến triển
-hợp lý. Hãy giữ cùng cấu hình khi tái lập chỉ mục để kích thước và ranh giới
-chunk nhất quán.
+---
 
-## Cách chia văn bản
+## 3. Các cơ chế thuật toán cốt lõi
 
-1. Lấy `doc.content` và loại bỏ khoảng trắng ở hai đầu. Nếu nội dung rỗng,
-   phương thức `chunk()` ghi log cảnh báo và trả về danh sách rỗng.
-2. Nếu nội dung không dài hơn `chunk_size`, tạo một chunk duy nhất.
-3. Với tài liệu dài hơn, `_split_text()` tìm separator đầu tiên có trong văn
-   bản, tách theo separator đó và đệ quy với các separator nhỏ hơn cho những
-   mảnh vẫn quá dài. Separator rỗng là mức cuối để tách thành ký tự; nếu một
-   mảnh vẫn dài hơn giới hạn mà không còn separator nhỏ hơn, nó được cắt theo
-   `chunk_size` với bước tối đa là `chunk_size - chunk_overlap` (tối thiểu một
-   ký tự).
-4. `_merge_splits()` ghép các mảnh liền kề trong giới hạn kích thước, đồng thời
-   giữ lại các mảnh cuối của chunk trước để tạo phần chồng lặp. Khi một mảnh
-   riêng lẻ dài hơn phần overlap, bộ phân đoạn lấy phần đuôi của mảnh đó.
-5. Gắn tiêu đề tài liệu ở đầu mỗi chunk dưới dạng `[tiêu đề]\n` để giữ ngữ cảnh.
+### 3.1. Phân cấp văn bản & Context Breadcrumb Injection
+* **Nhận diện cấu trúc quy chế:** Tự động phát hiện các ranh giới pháp lý và phân cấp Markdown:
+  * **Cấp 1:** Markdown `# ` hoặc `Chương [IVXLCDM\d]+` (Chương I, Chương II...)
+  * **Cấp 2:** Markdown `## ` hoặc `Mục \d+` (Mục 1, Mục 2...)
+  * **Cấp 3:** Markdown `### ` hoặc `Điều \d+[\.:]` (Điều 1., Điều 14:...)
+* **Tiêm đường dẫn phân cấp (Breadcrumbs):** Mỗi chunk được tiêm chuỗi định danh cấu trúc ở đầu:
+  ```text
+  [Quy chế đào tạo UET > Chương II: TỔ CHỨC ĐÀO TẠO > Điều 14. Đăng ký học tập]
+  1. Đầu mỗi học kỳ, sinh viên phải đăng ký học phần qua cổng Portal...
+  ```
+* **Quản lý ngân sách độ dài (Length Budget):** Thuật toán tự động trừ độ dài chuỗi breadcrumb khỏi `chunk_size` để đảm bảo tổng độ dài thực tế của `DataChunk.text` không bị vượt ngưỡng.
 
-`chunk_size` là giới hạn cho phần nội dung được chia; tiêu đề được thêm sau đó,
-nên độ dài cuối cùng của `DataChunk.text` có thể lớn hơn `chunk_size`. Việc
-chia dựa trên số ký tự, do đó không đảm bảo mỗi chunk có cùng số token.
+### 3.2. Cắt đệ quy bảo vệ tiền tố (Regex Lookahead Splitter)
+* Khi chia văn bản theo tiêu đề Markdown hoặc các điều khoản, thuật toán sử dụng Regex lookahead (`(?=...)`).
+* Nhờ đó, tiêu đề (`### `, `Điều 14.`) luôn được giữ nguyên vẹn ở **đầu** của đoạn văn bản tiếp theo, không bị cắt dời vô lý về cuối đoạn trước.
 
-## Nhận diện bảng Markdown
+### 3.3. Bảo vệ ranh giới từ khi gối đầu (Word Boundary Protection)
+* Khi một câu văn đơn lẻ dài hơn `chunk_overlap`, cơ chế fallback cần cắt lấy phần đuôi của đoạn trước.
+* Thuật toán kiểm tra và **lùi về khoảng trắng gần nhất** (`rfind(' ')`) thay vì cắt `slice` cứng theo ký tự.
+* **Ngăn chặn 100%** lỗi cắt đứt giữa từ tiếng Việt (ví dụ: tránh cắt *"khuyến khích"* thành *"hích"*, *"được"* thành *"ược"*), bảo vệ tính toàn vẹn của Tokenizer (`BAAI/bge-m3`) và BM25.
 
-Chunker duyệt từng dòng trong nội dung để tìm bảng Markdown, nên bảng vẫn được nhận ra khi có tiêu đề hoặc đoạn văn đứng trước. Dòng tiêu đề bảng phải bắt đầu bằng dấu `|`, có ít nhất hai ô không rỗng. Phía sau cần có ít nhất một dòng bắt đầu bằng `|` với cùng số ô. Dòng phân cách Markdown như `| --- | --- |` được bỏ qua nếu có.
+### 3.4. Lọc rác & Gộp Chunk mồ côi (`min_chunk_size`)
+* **Lọc bỏ dòng vô nghĩa:** Loại bỏ các dòng chỉ chứa ký tự phân cách hoặc rác cào web (`$/$`, `---`, `***`, khoảng trắng rỗng).
+* **Gộp chunk mồ côi thông minh:**
+  * Nếu phần đuôi của một Điều luật sau khi chia bị dư lại một đoạn ngắn ($< \text{min\_chunk\_size}$), đoạn này sẽ được tự động gộp vào chunk liền trước.
+  * **Nguyên tắc an toàn:** Chỉ gộp khi 2 chunk có **cùng heading/Điều**, và kích thước sau khi gộp không vượt quá $1.3 \times \text{chunk\_size}$. Nếu là một Điều luật mới (khác heading), chunk vẫn được bảo tồn độc lập để không làm mất tiêu đề.
 
-Chunker tiếp tục quét phần văn bản còn lại sau mỗi bảng, vì một tài liệu có thể chứa nhiều bảng xen giữa các đoạn văn. Mỗi đoạn văn được chia theo cách thông thường. Trước khi chunking, mỗi hàng bảng được phẳng hóa thành các cặp `tên cột: giá trị`; tên bảng được chèn vào đầu mỗi chunk dưới dạng `[META: ...]`. Sau đó, cửa sổ trượt gom các hàng đã làm giàu và lặp một số hàng cuối ở chunk kế tiếp để tạo overlap. Hàng dài hơn ngân sách được giữ nguyên trong chunk riêng. Các chunk được ghép theo đúng thứ tự ban đầu. `chunk_size` và `chunk_overlap` tính bằng ký tự, không phải token. Chunk bảng có metadata `data_type: tabular`; nội dung tên bảng và tên cột đã nằm trực tiếp trong `text` để được embedding.
+---
 
-## Dữ liệu đầu ra
+## 4. Xử lý bảng biểu Markdown (Tabular Chunks)
 
-`chunk(doc)` trả về `List[DataChunk]`. Mỗi chunk có:
+Tài liệu học vụ chứa nhiều bảng biểu (khung chương trình, điều kiện tiên quyết, điểm chuẩn, biểu phí):
+1. **Phát hiện bảng:** Tự động nhận diện cấu trúc bảng Markdown (`| Cột 1 | Cột 2 |`), hỗ trợ cả các bảng có ô tiêu đề trống (tự điền `Cột {i}`).
+2. **Trích xuất ngữ cảnh bảng:** Tự động dò ngược tiêu đề gần nhất trước bảng để làm nhãn `[META: Tiêu đề bảng]`.
+3. **Tuyến tính hóa từng hàng (Row-level Serialization):** Chuyển đổi mỗi dòng bảng thành dạng cặp thuộc tính rõ ràng:
+   ```text
+   - Mã ngành: CN1 | Tên ngành: Công nghệ thông tin | Điểm chuẩn: 27.85
+   ```
+4. **Cửa sổ trượt hàng:** Gom các hàng theo ngân sách `chunk_size`, duy trì gối đầu lặp lại một số hàng giữa các chunk bảng liền kề. Chunk bảng được gán `metadata["data_type"] = "tabular"`.
 
-- `chunk_id`: ID do mô hình dữ liệu tạo, mặc định là UUID.
-- `document_id`: ID của `ProcessedData` nguồn.
-- `text`: nội dung chunk, có thể kèm tiêu đề ở đầu.
-- `chunk_index`: vị trí chunk trong tài liệu, bắt đầu từ `0`.
-- `metadata`: metadata ban đầu của tài liệu, được bổ sung hoặc ghi đè bởi:
-  `title`, `document_id`, `chunk_index`, `total_chunks`, `char_count`.
+---
 
-`char_count` là độ dài phần segment trước khi thêm tiền tố tiêu đề. Các khóa
-chuẩn nêu trên được ghi đè nếu metadata đầu vào có cùng tên.
+## 5. Cấu trúc dữ liệu đầu ra (`DataChunk`)
 
-## Sử dụng
+Phương thức `chunk(doc)` trả về `List[DataChunk]`. Mỗi đối tượng gồm:
+
+* `chunk_id`: Mã định danh UUIDv4 duy nhất của chunk.
+* `document_id`: ID của tài liệu `ProcessedData` nguồn.
+* `text`: Nội dung văn bản hoàn chỉnh của chunk (đã kèm header breadcrumbs).
+* `chunk_index`: Vị trí của chunk trong tài liệu (bắt đầu từ `0`).
+* `metadata`: Kế thừa metadata của tài liệu nguồn và bổ sung các trường chuẩn hóa:
+  * `title`: Tiêu đề tài liệu gốc.
+  * `breadcrumb`: Chuỗi đường dẫn phân cấp đầy đủ (ví dụ: `Quy chế UET > Chương I > Điều 1`).
+  * `heading`: Tiêu đề mục trực tiếp chứa chunk (ví dụ: `Điều 1. Phạm vi điều chỉnh`).
+  * `char_count`: Tổng số ký tự thực tế của `chunk.text`.
+  * `data_type`: Loại dữ liệu (`"text"` hoặc `"tabular"`).
+  * `chunk_index`: Vị trí chunk.
+  * `total_chunks`: Tổng số chunk của tài liệu sau khi lọc/gộp.
+
+---
+
+## 6. Hướng dẫn sử dụng
+
+### Phân đoạn một tài liệu:
 
 ```python
 from src.base import ProcessedData
 from src.chunking import UETChunker
 
-document = ProcessedData(
-    id="regulation-2025",
-    title="Quy chế đào tạo",
-    content="Nội dung văn bản đã được làm sạch...",
-    metadata={"unit": "uet", "source": "https://example.edu.vn/regulation"},
+doc = ProcessedData(
+    id="doc_quy_che_2024",
+    title="Quy chế đào tạo Đại học UET 2024",
+    content="""
+Chương I: QUY ĐỊNH CHUNG
+
+Điều 1. Phạm vi điều chỉnh
+Quy chế này quy định về đào tạo đại học chính quy tại Trường Đại học Công nghệ.
+
+Điều 2. Thời gian và kế hoạch đào tạo
+1. Năm học được tổ chức theo học chế tín chỉ.
+2. Mỗi năm học gồm hai học kỳ chính và một học kỳ phụ.
+    """,
+    metadata={"unit": "dao_tao", "year": 2024},
 )
 
 chunker = UETChunker()
-chunks = chunker.chunk(document)
+chunks = chunker.chunk(doc)
 
-for chunk in chunks:
-    print(chunk.chunk_index, chunk.text)
+for c in chunks:
+    print(f"[{c.chunk_index + 1}/{len(chunks)}] Heading: {c.metadata['heading']}")
+    print(f"Breadcrumb: {c.metadata['breadcrumb']}")
+    print(f"Nội dung:\n{c.text}\n{'-'*40}")
 ```
 
-Để xử lý một danh sách, gọi `chunk_batch(docs)`. Ngoài việc trả về toàn bộ
-chunk, phương thức này còn ghi từng dòng JSONL vào
-`data/chunked_data/<khoa>_chunks.jsonl`. Tên nhóm được xác định từ metadata
-`unit`/khoa; nếu không nhận diện được thì dùng `domain` hoặc `other`. File được
-mở ở chế độ nối thêm (`append`), vì vậy gọi lặp lại sẽ tiếp tục ghi vào file
-đang có, không tự xóa dữ liệu cũ. Quy trình lập chỉ mục chính dùng các chunk
-được trả về để chuyển sang các bước tiếp theo.
+### Phân đoạn hàng loạt và lưu trữ theo Khoa (`chunk_batch`):
 
-## Lưu ý khi vận hành
+```python
+# Phân đoạn hàng loạt tài liệu ProcessedData
+all_chunks = chunker.chunk_batch(processed_docs, append=True)
 
-- Đưa vào bộ phân đoạn `ProcessedData` đã được làm sạch; nội dung còn HTML hoặc
-  lỗi trích xuất sẽ được chia nguyên trạng.
-- Điều chỉnh separator theo cấu trúc tài liệu. Separator xuất hiện sớm hơn
-  trong danh sách được ưu tiên; chuỗi rỗng là phương án chia đến từng ký tự.
-- Các chunk có overlap lặp lại một phần nội dung giữa những đoạn liên tiếp;
-  đây là chủ đích nhằm giữ ngữ cảnh, không phải bản ghi trùng ngoài ý muốn.
+# Kết quả tự động phân loại theo khoa/nguồn và lưu tại:
+# data/chunked_data/{faculty}_chunks.jsonl (fit_chunks.jsonl, uet_chunks.jsonl, v.v.)
+```
+
+---
+
+## 7. Kiểm thử đơn vị (Unit Tests)
+
+Bộ kiểm thử tại [`tests/test_chunking.py`](../../tests/test_chunking.py) kiểm tra tự động toàn diện:
+* Đọc và ghi đè tham số cấu hình `config.yaml`.
+* Bảo toàn độ gối đầu overlap và cơ chế không cắt đứt từ ngữ tiếng Việt.
+* Nhận diện cấu trúc phân cấp Chương / Điều và tiêm Context Breadcrumbs.
+* Bóc tách bảng biểu Markdown và tuần tự hóa theo hàng.
+* Lọc bỏ dòng rác (`$/$`, `---`) và gộp chunk mồ côi (`min_chunk_size`).
+
+Chạy kiểm thử:
+```bash
+python -m unittest tests/test_chunking.py
+```

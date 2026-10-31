@@ -15,14 +15,21 @@ paths:
 chunking:
   chunk_size: 800
   chunk_overlap: 150
+  min_chunk_size: 100
   separators:
-    - "\n\n"
-    - "\n"
+    - 'regex:(?<=\n)(?=(?:Chương|CHƯƠNG)\s+[IVXLCDM\d]+)'
+    - 'regex:(?<=\n)(?=(?:Mục|MỤC)\s+\d+)'
+    - 'regex:(?<=\n)(?=(?:Điều|ĐIỀU)\s+\d+[\.:])'
     - "### "
     - "## "
     - "# "
+    - 'regex:(?<=\n)(?=(?:Khoản\s+\d+[\.:]|\d+\.\s))'
+    - "\n\n"
+    - "\n"
     - ". "
+    - "; "
     - " "
+    - ""
 
 embedding:
   # Mô hình embedding chuẩn hóa cho toàn bộ hệ thống UET Chatbot
@@ -36,7 +43,7 @@ retrieval:
   vector_top_k: 100            # Số ứng viên Vector search lấy ra
   candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
   rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
-  final_top_k: 10               # Số đoạn cuối cùng trả về cho LLM (K=5)
+  final_top_k: 5              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
   fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
   rrf_k: 60                    # Hằng số làm mượt RRF
   vector_weight: 0.6           # Trọng số nhánh Vector Search
@@ -44,6 +51,12 @@ retrieval:
   reranker_type: "cross_encoder"        # "auto", "heuristic", "flashrank", "cross_encoder"
   reranker_model: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
+
+  # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
+  enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
+  adjacent_expansion_top_k: 3           # Chỉ mở rộng ngữ cảnh cho Top K chunk điểm cao nhất (Top 3)
+  adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
+  merge_contiguous_chunks: true         # Tự động gộp các chunk nối tiếp trong cùng văn bản thành 1 khối
 
 llm:
   provider: "groq"             # Nhà cung cấp mô hình ngôn ngữ lớn (Groq API)
