@@ -45,7 +45,10 @@ def main():
     parser.add_argument("--eval", "--evaluate", action="store_true", dest="eval", help="Kích hoạt quy trình đánh giá chất lượng hệ thống")
     parser.add_argument("--e2e", action="store_true", help="Đánh giá toàn trình End-to-End RAG")
     parser.add_argument("--retrieval", action="store_true", help="Đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG)")
-    parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, overview, all")
+    parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, handbook1, overview, all")
+    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (ví dụ: data/eval_data/uet_domain_qa/handbook1_qa.json)")
+    parser.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu câu hỏi muốn kiểm thử (mặc định: toàn bộ)")
+    parser.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas và LLM-as-a-Judge thay vì Heuristic")
     parser.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
 
@@ -81,7 +84,10 @@ def main():
         if args.e2e:
             from src.evaluation.evaluator import run_eval_e2e_cli
             run_eval_e2e_cli(
+                dataset_path=args.dataset,
                 domain=args.domain,
+                use_ragas=args.use_ragas,
+                num_samples=args.samples,
                 top_k=eval_top_k,
                 output_path=out_p,
             )
@@ -103,7 +109,9 @@ def main():
         print("  1. Khởi chạy Giao diện WEB:          python main.py --run --web")
         print("  2. Khởi chạy Chatbot trên CLI:       python main.py --run --cli")
         print("  3. Đánh giá toàn trình RAG:          python main.py --eval --e2e")
-        print("     • Đánh giá theo khoa:             python main.py --eval --e2e --domain fit")
+        print("     • Đánh giá theo domain/khoa:      python main.py --eval --e2e --domain handbook1")
+        print("     • Đánh giá file dataset tùy ý:    python main.py --eval --e2e --dataset data/eval_data/uet_domain_qa/handbook1_qa.json")
+        print("     • Thử nghiệm với số mẫu nhỏ:      python main.py --eval --e2e --domain handbook1 --samples 5")
         print("     • Đánh giá với top_k tùy ý:       python main.py --eval --e2e --top_k 10")
         print("     • Lưu kết quả đánh giá:           python main.py --eval --e2e --output eval_e2e.json")
         print("  4. Đánh giá phân hệ truy xuất:       python main.py --eval --retrieval")
@@ -111,13 +119,13 @@ def main():
         print("     • Lưu kết quả retrieval:          python main.py --eval --retrieval --output eval_retrieval.json")
         print("  5. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
         print("  6. Nạp dữ liệu đa chặng (Ingest):    python main.py --ingest --from <stage> --to <stage>")
-        print("\n💡 Ví dụ nạp dữ liệu:")
+        print("\n💡 Quy trình nạp mới dữ liệu toàn diện (2 bước tuần tự):")
+        print("  • Bước 1 (Chunking & ChromaDB):      python main.py --ingest --from processed --to vectordb --clear")
+        print("  • Bước 2 (BM25 Sparse Index):        python main.py --ingest --from chunked --to indexed_data --clear")
+        print("\n📌 Các thao tác đơn chặng:")
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
-        print("  • Từ chunked -> vectordb:            python main.py --ingest --from chunked --to vectordb")
-        print("  • Chạy toàn trình raw -> vectordb:   python main.py --ingest --from raw --to vectordb")
-        print("  • Nạp lại từ đầu (xóa sạch cũ):      python main.py --ingest --from processed --to vectordb --clear\n")
-
+        print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data\n")
 
 
 if __name__ == "__main__":

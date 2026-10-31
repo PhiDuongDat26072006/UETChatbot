@@ -181,9 +181,27 @@ python main.py --ingest --status
 ```
 Lệnh này sẽ in ra số lượng file tại `raw`, số văn bản tại `processed`, số chunks tại `chunked`, số vectors trong `database/vector_db` cùng tiến độ của sổ cái chống trùng lặp.
 
-#### ⚙️ Chạy nạp dữ liệu từ chặng xuất phát đến chặng đích
-Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `chunked` $\rightarrow$ `vectordb`.
+#### ⚙️ Quy trình nạp mới toàn bộ dữ liệu (Khi có dữ liệu mới / cập nhật)
+Khi có dữ liệu mới và cần làm mới lại từ đầu cả Dense Vector DB (ChromaDB) và BM25 Sparse Index, bạn thực hiện chuẩn xác theo **2 bước tuần tự** sau:
 
+- **Bước 1: Cắt chunking, embedding và nạp vào ChromaDB (Làm mới sạch sẽ)**:
+  ```bash
+  python main.py --ingest --from processed --to vectordb --clear
+  ```
+  * **Cờ `--clear`**: Tự động xóa manifest tracking (chặng `chunked`, `vectordb`), dọn sạch các file cũ trong folder `data/chunked_data` và xóa toàn bộ vectors trong ChromaDB.
+  * **Thực thi**: Cắt chunk dữ liệu mới và nhúng vector BGE-M3 nạp vào ChromaDB.
+  *(Nếu muốn chạy từ dữ liệu thô ban đầu thì thay `--from processed` bằng `--from raw`).*
+
+- **Bước 2: Xây dựng chỉ mục từ khóa BM25 (Sparse Index)**:
+  ```bash
+  python main.py --ingest --from chunked --to indexed_data --clear
+  ```
+  * **Cờ `--clear`**: Tự động xóa file `database/bm25_index.pkl` cũ và xóa manifest tracking chặng `indexed_data`.
+  * **Thực thi**: Đọc các chunk vừa tạo từ Bước 1, kiểm tra khớp 100% với ChromaDB và dựng chỉ mục BM25 mới.
+
+---
+
+#### 📌 Các lệnh nạp theo từng chặng lẻ khác
 - **Từ dữ liệu thô `raw` sang dữ liệu sạch `processed`**:
   ```bash
   python main.py --ingest --from raw --to processed
@@ -194,20 +212,9 @@ Hệ thống hỗ trợ 4 mốc: `raw` $\rightarrow$ `processed` $\rightarrow$ `
   python main.py --ingest --from raw --to chunked
   ```
 
-- **Từ dữ liệu sạch `processed` nạp thẳng vào `vectordb`** (tự động đi qua bước chunking):
+- **Tái tạo nhanh file BM25 từ chunk có sẵn (không dùng cờ clear)**:
   ```bash
-  python main.py --ingest --from processed --to vectordb
-  ```
-
-- **Từ các đoạn `chunked` lập chỉ mục từ khóa BM25 sang `indexed_data`** (tạo file `database/bm25_index.pkl` siêu tốc ~25s):
-  ```bash
-  python main.py --ingest --from chunked --to indexed_data --clear
-  ```
-  Cờ `--clear` chỉ xóa file chỉ mục BM25 cũ trước khi tạo lại; không xóa dense vectors trong Vector DB.
-
-- **Chạy toàn bộ quy trình từ đầu đến cuối (`raw` $\rightarrow$ `vectordb`)**:
-  ```bash
-  python main.py --ingest --from raw --to vectordb
+  python main.py --ingest --from chunked --to indexed_data
   ```
 
 ---
