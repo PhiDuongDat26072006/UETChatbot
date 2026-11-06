@@ -364,9 +364,15 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         }
 
     def _run_chunked_to_vectordb(
-        self, batch_size: int = 500
+        self, batch_size: int = 500, clear_existing: bool = False
     ) -> Dict[str, int]:
         """Chuyển đổi dữ liệu từ chunked -> vectordb (nhúng vector và lưu vào ChromaDB)."""
+        if clear_existing:
+            logger.info("⚠️  --clear được bật: Xóa sạch toàn bộ dữ liệu cũ trong ChromaDB và manifest stage 'vectordb'...")
+            self.vector_store.clear()
+            self.manifest.clear_stage("vectordb")
+            self.manifest.save()
+            logger.info("✅ Đã xóa sạch ChromaDB và manifest stage 'vectordb'.")
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         jsonl_files = sorted(chunked_dir.glob("*.jsonl"))
 
@@ -424,7 +430,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self.manifest.save()
         return {"chunks_indexed": total_indexed, "skipped_chunks": skipped_chunks, "total_in_db": self.vector_store.count()}
 
-    def _run_chunked_to_indexed_data(self) -> Dict[str, Any]:
+    def _run_chunked_to_indexed_data(self, clear_existing: bool = False) -> Dict[str, Any]:
         """
         Lập chỉ mục BM25 trực tiếp từ data/chunked_data/*.jsonl và lưu ra database/bm25_index.pkl.
         Được thực hiện bởi phân hệ Lập chỉ mục (src.indexing), tách biệt hoàn toàn khỏi phân hệ Retrieval.
@@ -436,12 +442,14 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         chunks = load_chunks_from_dir(chunked_dir)
 
         out_path = BASE_DIR / "database" / "bm25_index.pkl"
+        if clear_existing and out_path.exists():
+            out_path.unlink()
 
         indexer = UETIndexer(
             vector_store=self.vector_store,
             sparse_path=out_path,
         )
-        result = indexer.index_chunks(chunks)
+        result = indexer.index_chunks(chunks, clear_existing=clear_existing)
 
         # Chỉ cập nhật manifest khi kiểm tra và lưu BM25 thành công.
         for chunk in chunks:
@@ -463,13 +471,23 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         from_stage: str = "raw",
         to_stage: str = "vectordb",
         batch_size: int = 500,
+        clear: bool = False,
+        clear_existing: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
         Tự động điều phối các bước trung gian hợp lệ:
         - Tuyến Vector DB: raw -> processed -> chunked -> vectordb
         - Tuyến Sparse Index: raw -> processed -> chunked -> indexed_data
+
+        Nếu clear=True: xóa toàn bộ dữ liệu cũ (chunked_data, vectordb, BM25 index, manifest)
+        trước khi chạy lại, đảm bảo nạp mới hoàn toàn.
         """
+        if clear_existing is not None:
+            clear = clear or clear_existing
+
+        import shutil
+
         from_stage = from_stage.lower().strip()
         to_stage = to_stage.lower().strip()
 
@@ -479,12 +497,61 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 f"Nhận được: from='{from_stage}', to='{to_stage}'"
             )
 
+        if to_stage == "indexed_data" and from_stage in ["raw", "processed"]:
+            raise ValueError(
+                "Để đảm bảo tính toàn vẹn và đồng bộ ID giữa ChromaDB và BM25, "
+                "vui lòng thực hiện theo 2 bước tuần tự:\n"
+                f"  • Bước 1: python main.py --ingest --from {from_stage} --to vectordb --clear\n"
+                "  • Bước 2: python main.py --ingest --from chunked --to indexed_data --clear"
+            )
+
         stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3}
         if stage_order[from_stage] >= stage_order[to_stage]:
             raise ValueError(
                 f"from_stage '{from_stage}' phải đứng trước to_stage '{to_stage}'. "
                 f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data"
             )
+
+        # ---- XÓA DỮ LIỆU CŨ nếu --clear được bật ----
+        if clear:
+            logger.info("🗑️ [--clear] Bắt đầu xóa dữ liệu cũ trước khi chạy lại...")
+            stages_to_reset = set()
+
+            # 1. Reset processed nếu chạy từ raw
+            if from_stage == "raw":
+                stages_to_reset.add("processed")
+
+            # 2. Xóa các file trong folder chunked_data nếu đi qua chặng processed->chunked
+            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
+                chunked_dir = BASE_DIR / "data" / "chunked_data"
+                if chunked_dir.exists():
+                    shutil.rmtree(chunked_dir)
+                    chunked_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info("✅ Đã dọn sạch các file trong folder data/chunked_data")
+                stages_to_reset.add("chunked")
+
+            # 3. Xóa toàn bộ vectors trong ChromaDB nếu đích là vectordb
+            if to_stage == "vectordb":
+                try:
+                    self.vector_store.clear()
+                    logger.info("✅ Đã xóa toàn bộ vectors trong ChromaDB")
+                except Exception as e:
+                    logger.warning(f"⚠️ Không thể xóa vectordb: {e}")
+                stages_to_reset.add("vectordb")
+
+            # 4. Xóa file BM25 index cũ nếu đích là indexed_data
+            if to_stage == "indexed_data":
+                bm25_path = BASE_DIR / "database" / "bm25_index.pkl"
+                if bm25_path.exists():
+                    bm25_path.unlink()
+                    logger.info("✅ Đã xóa file BM25 index cũ (database/bm25_index.pkl)")
+                stages_to_reset.add("indexed_data")
+
+            # 5. Reset manifest entries cho các chặng tương ứng
+            if stages_to_reset:
+                self.manifest.reset_stages(list(stages_to_reset))
+                logger.info(f"✅ Đã reset manifest tracking cho các chặng: {list(stages_to_reset)}")
+
 
         results: Dict[str, Any] = {
             "from_stage": from_stage,
@@ -494,14 +561,14 @@ class UETIngestionPipeline(BaseIngestionPipeline):
 
         with Timer() as timer:
             # Chặng 1: raw -> processed
-            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb", "indexed_data"]:
+            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: raw -> processed")
                 res_1 = self._run_raw_to_processed()
                 results["transitions"]["raw_to_processed"] = res_1
                 logger.info(f"✔ Hoàn thành raw -> processed: {res_1}")
 
             # Chặng 2: processed -> chunked
-            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb", "indexed_data"]:
+            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: processed -> chunked")
                 res_2 = self._run_processed_to_chunked()
                 results["transitions"]["processed_to_chunked"] = res_2
@@ -510,20 +577,21 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             # Chặng 3a: chunked -> vectordb
             if from_stage in ["raw", "processed", "chunked"] and to_stage == "vectordb":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> vectordb")
-                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size)
+                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size, clear_existing=clear)
                 results["transitions"]["chunked_to_vectordb"] = res_3
                 logger.info(f"✔ Hoàn thành chunked -> vectordb: {res_3}")
 
             # Chặng 3b: chunked -> indexed_data
-            if from_stage in ["raw", "processed", "chunked"] and to_stage == "indexed_data":
+            if from_stage == "chunked" and to_stage == "indexed_data":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> indexed_data (BM25 Sparse Index)")
-                res_4 = self._run_chunked_to_indexed_data()
+                res_4 = self._run_chunked_to_indexed_data(clear_existing=clear)
                 results["transitions"]["chunked_to_indexed_data"] = res_4
                 logger.info(f"✔ Hoàn thành chunked -> indexed_data: {res_4}")
 
         results["latency_seconds"] = round(timer.elapsed, 2)
         logger.info(f"Hoàn thành toàn bộ tiến trình từ '{from_stage}' đến '{to_stage}' trong {results['latency_seconds']}s")
         return results
+
 
     def get_stage_stats(self) -> Dict[str, Any]:
         """Thống kê tổng số lượng dữ liệu hiện có ở từng giai đoạn."""
@@ -699,15 +767,29 @@ def get_retriever() -> UETRetriever:
     )
 
 
-def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
+def run_ingest_cli(
+    from_stage: str = "raw",
+    to_stage: str = "vectordb",
+    clear: bool = False,
+    clear_existing: Optional[bool] = None,
+):
+    if clear_existing is not None:
+        clear = clear or clear_existing
     """Khởi chạy quy trình điều phối và nạp dữ liệu đa chặng với báo cáo kết quả trên terminal."""
     print("\n" + "=" * 65)
+    if clear:
+        print("🗑️  [--clear] Đã bật cờ làm mới: Dữ liệu cũ sẽ bị xóa và nạp lại toàn bộ!")
     print(f"📦 BẮT ĐẦU ĐIỀU PHỐI DỮ LIỆU ĐA CHẶNG: [{from_stage.upper()}] ──> [{to_stage.upper()}]")
     print("=" * 65)
 
     pipeline = get_ingestion_pipeline()
     try:
-        res = pipeline.run_stages(from_stage=from_stage, to_stage=to_stage)
+        res = pipeline.run_stages(
+            from_stage=from_stage,
+            to_stage=to_stage,
+            clear=clear,
+            clear_existing=clear,
+        )
     except Exception as e:
         print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
         return

@@ -145,7 +145,20 @@ class DataManifestTracker:
             "last_updated": self._data.get("last_updated"),
         }
 
+    def clear_stage(self, stage: str) -> None:
+        """Xóa trạng thái của một giai đoạn cụ thể trong tất cả tài liệu đang theo dõi.
+        Dùng khi muốn --clear chỉ một chặng (ví dụ: vectordb) mà không mất trạng thái các chặng trước."""
+        docs = self._data.get("documents", {})
+        cleared = 0
+        for doc_record in docs.values():
+            stages = doc_record.get("stages", {})
+            if stage in stages:
+                del stages[stage]
+                cleared += 1
+        logger.info(f"Đã xóa trạng thái stage '{stage}' khỏi {cleared} tài liệu trong manifest.")
+
     def clear(self) -> None:
+
         """Xóa sạch sổ cái trạng thái theo dõi."""
         self._data = {
             "version": "1.0",
@@ -158,3 +171,27 @@ class DataManifestTracker:
                 logger.info(f"Đã xóa file manifest '{self.manifest_path}'.")
             except Exception as e:
                 logger.warning(f"Không thể xóa file manifest ({e}).")
+
+    def reset_stages(self, stages: list[str]) -> None:
+        """
+        Xóa bản ghi trạng thái của các chặng được chỉ định để cho phép xử lý lại.
+        Ví dụ: reset_stages(["chunked", "vectordb", "indexed_data"])
+        """
+        docs = self._data.get("documents", {})
+        stages_set = set(stages)
+        to_delete = []
+
+        for doc_id, doc_info in docs.items():
+            stage_dict = doc_info.get("stages", {})
+            for s in stages_set:
+                stage_dict.pop(s, None)
+            # Nếu tài liệu không còn chặng nào và không phải là bản ghi raw/processed gốc
+            if not stage_dict and "processed" not in stages_set:
+                to_delete.append(doc_id)
+
+        for doc_id in to_delete:
+            docs.pop(doc_id, None)
+
+        self.save()
+        logger.info(f"Đã reset manifest cho các chặng: {list(stages_set)} (dọn dẹp {len(to_delete)} mục).")
+
