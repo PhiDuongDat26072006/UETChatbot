@@ -23,13 +23,17 @@ flowchart TD
 
     S2 --> CAND["~100 Candidate Chunks (RRF Scoring & Deduplication)"]
 
-    CAND --> S3["Giai đoạn 3: Reranking (reranker.py)"]
+    CAND --> S3["Giai đoạn 3: Maximal Marginal Relevance (mmr.py)"]
 
-    S3 --> RANKED["20 Ranked Chunks (Cross-Attention Scoring)"]
+    S3 --> DIVERSE["40 Diverse Chunks (Relevance & Diversity Optimization)"]
 
-    RANKED --> S4["Giai đoạn 4: Top-K Selection (retriever.py)"]
+    DIVERSE --> S4["Giai đoạn 4: Reranking (reranker.py)"]
 
-    S4 --> OUT["List[RetrievedContext] (K=5 Chunks)"]
+    S4 --> RANKED["20 Ranked Chunks (Cross-Attention Scoring)"]
+
+    RANKED --> S5["Giai đoạn 5: Top-K Selection (retriever.py)"]
+
+    S5 --> OUT["List[RetrievedContext] (K=5 Chunks)"]
 ```
 
 ### Bảng biến thiên số lượng dữ liệu qua từng giai đoạn:
@@ -37,8 +41,9 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **Giai đoạn 1** | Dual-Branch Search | 1 `UserQuery` | 100 BM25 chunks + 100 Vector chunks |
 | **Giai đoạn 2** | Hybrid Fusion (RRF) | 200 chunks (từ 2 nhánh) | ~100 Candidate chunks (đã khử trùng lặp) |
-| **Giai đoạn 3** | Reranker | ~100 Candidate chunks | 20 Ranked chunks |
-| **Giai đoạn 4** | Top-K Selection | 20 Ranked chunks | $K$ Chunks (mặc định $K = 5$) |
+| **Giai đoạn 3** | Maximal Marginal Relevance (MMR) | ~100 Candidate chunks | 40 Diverse chunks (loại bỏ redundancy) |
+| **Giai đoạn 4** | Reranker | 40 Diverse chunks | 20 Ranked chunks |
+| **Giai đoạn 5** | Top-K Selection | 20 Ranked chunks | $K$ Chunks (mặc định $K = 5$) |
 
 ---
 
@@ -90,9 +95,22 @@ Hợp nhất hai tập kết quả (100 BM25 + 100 Vector) bằng thuật toán 
 
 ---
 
-### 2.3. Giai đoạn 3: Reranking (`src/retrieval/reranker.py`)
+### 2.3. Giai đoạn 3: Maximal Marginal Relevance (`src/retrieval/mmr.py`)
 
-Thực hiện đánh giá tương quan ngữ nghĩa sâu trực tiếp giữa cặp $(Query, Passage)$ cho ~100 candidate chunks để chọn lọc xuống 20 ranked chunks:
+Thực hiện đa dạng hóa ngữ cảnh, lọc từ ~100 candidate chunks xuống còn 40 diverse chunks trước khi chuyển cho Reranker:
+- **Công thức MMR:**
+  $$D^* = \arg\max_{D_i \in R \setminus S} \left[ \lambda \cdot \text{Sim}_1(D_i, Q) - (1 - \lambda) \cdot \max_{D_j \in S} \text{Sim}_2(D_i, D_j) \right]$$
+  - $\lambda = 0.6$: Hệ số điều tiết giữa độ tương quan với câu hỏi và độ mới/đa dạng thông tin.
+  - $\text{Sim}_1(D_i, Q) = \cos(\mathbf{e}_{D_i}, \mathbf{e}_Q)$.
+  - $\text{Sim}_2(D_i, D_j) = \cos(\mathbf{e}_{D_i}, \mathbf{e}_{D_j})$.
+- **Tối ưu hóa:** Lấy vector trực tiếp từ ChromaDB cache (2-3ms), tính toán ma trận vectorized bằng NumPy ($< 1\text{ms}$).
+- **Đầu ra:** 40 diverse candidate chunks (loại bỏ redundancy, giữ các khía cạnh thông tin khác nhau).
+
+---
+
+### 2.4. Giai đoạn 4: Reranking (`src/retrieval/reranker.py`)
+
+Thực hiện đánh giá tương quan ngữ nghĩa sâu trực tiếp giữa cặp $(Query, Passage)$ cho 40 candidate chunks để chọn lọc xuống 20 ranked chunks:
 
 #### Cơ chế đa Backend (`RerankerFactory`):
 1. **`FlashRankReranker`:**
@@ -113,9 +131,9 @@ Thực hiện đánh giá tương quan ngữ nghĩa sâu trực tiếp giữa c�
 
 ---
 
-### 2.4. Giai đoạn 4: Top-K Selection (`src/retrieval/retriever.py`)
+### 2.5. Giai đoạn 5: Top-K Selection (`src/retrieval/retriever.py`)
 
-Từ 20 ranked chunks của Giai đoạn 3, hệ thống hoàn tất quy trình:
+Từ 20 ranked chunks của Giai đoạn 4, hệ thống hoàn tất quy trình:
 1. **Lọc ngưỡng (`score_threshold`):** Loại bỏ các chunk có điểm thấp hơn ngưỡng quy định (nếu được cấu hình). Nếu tất cả các chunk đều dưới ngưỡng, giữ lại tối thiểu 1 chunk tốt nhất để bảo toàn ngữ cảnh.
 2. **Cắt Top-K:** Lấy đúng $K$ đoạn đầu tiên (mặc định $K = 5$).
 3. **Chuẩn hóa đối tượng đầu ra:**

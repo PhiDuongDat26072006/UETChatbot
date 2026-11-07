@@ -239,15 +239,148 @@ class CrossEncoderReranker(BaseReranker):
             return self._fallback.rerank(query, candidates, top_n=top_n)
 
 
+class JinaONNXReranker(BaseReranker):
+    """
+    Reranker sử dụng Jina Reranker V2 Multilingual phiên bản ONNX Runtime.
+    Tối ưu hóa đa ngôn ngữ (tiếng Việt xuất sắc), hỗ trợ context dài tới 1024 tokens,
+    chạy trực tiếp trên ONNX Runtime CPU với tốc độ cao và tiêu tốn ít bộ nhớ.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "jinaai/jina-reranker-v2-base-multilingual",
+        onnx_filename: str = "onnx/model.onnx",
+        max_length: int = 1024,
+    ):
+        if "/" not in model_name and not Path(model_name).exists():
+            repo_id = f"jinaai/{model_name}"
+        else:
+            repo_id = model_name
+
+        self.model_name = repo_id
+        self.onnx_filename = onnx_filename
+        self.max_length = max_length
+        self._session = None
+        self._tokenizer = None
+        self._fallback = HeuristicReranker()
+
+        try:
+            import onnxruntime as ort
+            from transformers import AutoTokenizer
+            from huggingface_hub import hf_hub_download
+
+            logger.info(f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}'...")
+
+            if Path(onnx_filename).is_file():
+                onnx_path = str(Path(onnx_filename).resolve())
+            elif Path(repo_id).is_file():
+                onnx_path = str(Path(repo_id).resolve())
+            else:
+                rel_filename = onnx_filename if onnx_filename.startswith("onnx/") else f"onnx/{onnx_filename}"
+                onnx_path = hf_hub_download(repo_id=repo_id, filename=rel_filename)
+
+            self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
+
+            sess_options = ort.SessionOptions()
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+            self._session = ort.InferenceSession(
+                onnx_path,
+                sess_options=sess_options,
+                providers=["CPUExecutionProvider"],
+            )
+            logger.info(f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}'.")
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
+            self._session = None
+            self._tokenizer = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._session is None or self._tokenizer is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import numpy as np
+
+            batch_size = 32
+            all_prob_scores: List[float] = []
+
+            for i in range(0, len(candidates), batch_size):
+                batch_cands = candidates[i : i + batch_size]
+                sentence_pairs = [[query, c.text] for c in batch_cands]
+                inputs = self._tokenizer(
+                    sentence_pairs,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                    return_tensors="np",
+                )
+
+                ort_inputs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"],
+                }
+
+                outputs = self._session.run(None, ort_inputs)
+                raw_logits = outputs[0].squeeze(-1)
+                if raw_logits.ndim == 0:
+                    raw_logits = np.array([raw_logits.item()])
+                prob_scores = 1.0 / (1.0 + np.exp(-raw_logits.astype(np.float64)))
+                all_prob_scores.extend(prob_scores.tolist())
+
+            ranked = list(zip(candidates, all_prob_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = f"jina_onnx_{self.model_name}"
+                meta["rerank_score"] = round(float(score), 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(float(score), 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+            logger.info(f"Jina ONNX Reranker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi chạy Jina ONNX Reranker: {err}. Sử dụng heuristic fallback.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
 class RerankerFactory:
     """Factory khởi tạo Reranker phù hợp nhất theo cấu hình và thư viện hiện có."""
 
     @staticmethod
-    def create(reranker_type: str = "auto", model_name: Optional[str] = None) -> BaseReranker:
+    def create(
+        reranker_type: str = "auto",
+        model_name: Optional[str] = None,
+        onnx_filename: Optional[str] = None,
+        **kwargs,
+    ) -> BaseReranker:
         rtype = reranker_type.lower()
+        model_str = (model_name or "").lower()
 
         if rtype == "heuristic":
             return HeuristicReranker()
+
+        # Ưu tiên Jina ONNX nếu được chỉ định hoặc model_name chứa 'jina'
+        if rtype in ("onnx", "jina", "jina_onnx") or "jina" in model_str:
+            return JinaONNXReranker(
+                model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
+                onnx_filename=onnx_filename or "onnx/model.onnx",
+            )
 
         if rtype == "flashrank":
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
@@ -255,7 +388,16 @@ class RerankerFactory:
         if rtype == "cross_encoder":
             return CrossEncoderReranker(model_name=model_name or "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
 
-        # Chế độ "auto": Tự động phát hiện và chọn backend an toàn nhất
+        # Chế độ "auto": Tự động phát hiện backend an toàn nhất
+        try:
+            import onnxruntime  # noqa: F401
+            return JinaONNXReranker(
+                model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
+                onnx_filename=onnx_filename or "onnx/model.onnx",
+            )
+        except Exception:
+            pass
+
         try:
             import flashrank  # noqa: F401
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
