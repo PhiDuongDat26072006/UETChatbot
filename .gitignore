@@ -57,3 +57,8 @@ AGENTS.md
 uv.lock
 pyproject.toml
 .python-version
+# 11. Local Model Weights
+weights/
+*.onnx
+*.safetensors
+*.bin

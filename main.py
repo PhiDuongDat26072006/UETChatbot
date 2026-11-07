@@ -45,6 +45,8 @@ def main():
     parser.add_argument("--eval", "--evaluate", action="store_true", dest="eval", help="Kích hoạt quy trình đánh giá chất lượng hệ thống")
     parser.add_argument("--e2e", action="store_true", help="Đánh giá toàn trình End-to-End RAG")
     parser.add_argument("--retrieval", action="store_true", help="Đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG)")
+    parser.add_argument("--level", type=str, choices=["doc", "chunk", "both"], default="both", help="Cấp độ đánh giá retrieval: doc, chunk, hoặc both (mặc định: both)")
+    parser.add_argument("--mode", type=str, choices=["live", "mock"], default="live", help="Chế độ đánh giá retrieval: 'live' (chạy retriever thật) hoặc 'mock' (kiểm thử nhanh với ground-truth)")
     parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, handbook1, overview, all")
     parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (ví dụ: data/eval_data/uet_domain_qa/handbook1_qa.json)")
     parser.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu câu hỏi muốn kiểm thử (mặc định: toàn bộ)")
@@ -94,7 +96,7 @@ def main():
         else:
             # Mặc định khi chạy python main.py --eval hoặc --eval --retrieval: Đánh giá phân hệ truy xuất với K từ config.yaml
             from src.evaluation.evaluate_retrieval import run_eval_retrieval_cli
-            run_eval_retrieval_cli(top_k=eval_top_k, output=out_p)
+            run_eval_retrieval_cli(top_k=eval_top_k, output=out_p, level=args.level, mode=args.mode)
 
     elif args.ingest:
         if args.status:
@@ -115,6 +117,9 @@ def main():
         print("     • Đánh giá với top_k tùy ý:       python main.py --eval --e2e --top_k 10")
         print("     • Lưu kết quả đánh giá:           python main.py --eval --e2e --output eval_e2e.json")
         print("  4. Đánh giá phân hệ truy xuất:       python main.py --eval --retrieval")
+        print("     • Đánh giá song song (mặc định):  python main.py --eval --retrieval --level both")
+        print("     • Đánh giá mức Đoạn cắt (Chunk):  python main.py --eval --retrieval --level chunk")
+        print("     • Đánh giá mức Tài liệu (Doc):    python main.py --eval --retrieval --level doc")
         print("     • Đánh giá với top_k tùy ý:       python main.py --eval --retrieval --top_k 10")
         print("     • Lưu kết quả retrieval:          python main.py --eval --retrieval --output eval_retrieval.json")
         print("  5. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
