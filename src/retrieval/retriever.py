@@ -29,6 +29,7 @@ from src.base import (
 )
 from src.indexing.sparse import BM25Index
 from src.retrieval.hybrid import HybridSearcher
+from src.retrieval.mmr import MaximalMarginalRelevance
 from src.retrieval.reranker import BaseReranker, RerankerFactory
 from src.utils.helpers import get_logger, load_yaml_config
 
@@ -75,6 +76,11 @@ class UETRetriever:
         self.vector_weight: float = retrieval_cfg.get("vector_weight", 0.6)
         self.default_score_threshold: Optional[float] = retrieval_cfg.get("score_threshold", None)
 
+        # Cấu hình Maximal Marginal Relevance (MMR)
+        self.enable_mmr: bool = retrieval_cfg.get("enable_mmr", True)
+        self.mmr_lambda: float = retrieval_cfg.get("mmr_lambda", 0.6)
+        self.mmr_top_n: int = retrieval_cfg.get("mmr_top_n", 40)
+
         # Chỉ sử dụng BM25Index từ src.indexing.sparse.
         # Cho phép dependency injection khi kiểm thử, không xây dựng index trong Retriever.
         self.bm25_index = bm25_index if bm25_index is not None else BM25Index()
@@ -82,7 +88,12 @@ class UETRetriever:
         # Khởi tạo Reranker
         reranker_type = retrieval_cfg.get("reranker_type", "auto")
         reranker_model = retrieval_cfg.get("reranker_model", None)
-        self.reranker = reranker or RerankerFactory.create(reranker_type=reranker_type, model_name=reranker_model)
+        onnx_filename = retrieval_cfg.get("onnx_filename", None)
+        self.reranker = reranker or RerankerFactory.create(
+            reranker_type=reranker_type,
+            model_name=reranker_model,
+            onnx_filename=onnx_filename,
+        )
 
         # Chỉ nạp artifact khi không được inject index (ví dụ unit test).
         if bm25_index is None:
@@ -178,17 +189,86 @@ class UETRetriever:
             return []
 
         # =====================================================================
+        # BƯỚC 2.5: MAXIMAL MARGINAL RELEVANCE (MMR) -> ĐA DẠNG HÓA ỨNG VIÊN
+        # =====================================================================
+        rerank_candidates = candidate_chunks
+        if self.enable_mmr and len(candidate_chunks) > self.mmr_top_n:
+            try:
+                # 1. Thu thập vector của truy vấn (đã có từ Bước 1.2 hoặc nhúng mới)
+                q_vec: Optional[List[float]] = None
+                if "query_vector" in locals() and query_vector and getattr(query_vector, "vector", None):
+                    q_vec = query_vector.vector
+                else:
+                    q_vec = self.embedding_model.embed_query(query).vector
+
+                # 2. Lấy vector của các candidate chunks trực tiếp từ VectorStore đã lưu sẵn
+                chunk_ids = [c.chunk_id for c in candidate_chunks]
+                embeddings_map: Dict[str, List[float]] = {}
+                if hasattr(self.vector_store, "get_embeddings_by_ids"):
+                    embeddings_map = self.vector_store.get_embeddings_by_ids(chunk_ids)
+
+                # 3. Kiểm tra các chunk thiếu vector -> Fallback & BẮT BUỘC GHI LOG RÕ RÀNG
+                missing_chunks = [c for c in candidate_chunks if c.chunk_id not in embeddings_map]
+                if missing_chunks:
+                    logger.warning(
+                        "[MMR Fallback] Phát hiện %d/%d chunks không có sẵn vector trong VectorStore. "
+                        "Đang tự động nhúng bổ sung bằng embedding_model... (Danh sách Chunk IDs thiếu: %s)",
+                        len(missing_chunks),
+                        len(candidate_chunks),
+                        [c.chunk_id for c in missing_chunks[:10]] + (["..."] if len(missing_chunks) > 10 else []),
+                    )
+                    try:
+                        missing_texts = [c.text for c in missing_chunks]
+                        generated_embs = self.embedding_model.embed_texts(missing_texts)
+                        for c, emb in zip(missing_chunks, generated_embs):
+                            embeddings_map[c.chunk_id] = emb
+                    except Exception as emb_err:
+                        logger.error(f"[MMR Fallback] Lỗi khi tạo vector bổ sung: {emb_err}")
+
+                # 4. Chuẩn bị danh sách vectors đồng bộ với thứ tự của candidate_chunks
+                candidate_vectors: List[List[float]] = []
+                valid_candidates: List[RetrievedContext] = []
+                for c in candidate_chunks:
+                    if c.chunk_id in embeddings_map:
+                        candidate_vectors.append(embeddings_map[c.chunk_id])
+                        valid_candidates.append(c)
+
+                if q_vec and candidate_vectors and len(valid_candidates) >= self.mmr_top_n:
+                    rerank_candidates = MaximalMarginalRelevance.select(
+                        query_vector=q_vec,
+                        candidates=valid_candidates,
+                        candidate_vectors=candidate_vectors,
+                        lambda_mult=self.mmr_lambda,
+                        top_n=self.mmr_top_n,
+                    )
+                    logger.info(
+                        "Đã áp dụng MMR: từ %d candidates -> chọn lọc %d diverse candidates (lambda=%.2f) đưa vào Reranker.",
+                        len(candidate_chunks),
+                        len(rerank_candidates),
+                        self.mmr_lambda,
+                    )
+                else:
+                    logger.info(
+                        "Không đủ vector hợp lệ (%d/%d), giữ nguyên danh sách gốc cho Reranker.",
+                        len(candidate_vectors),
+                        self.mmr_top_n,
+                    )
+            except Exception as mmr_err:
+                logger.warning(f"Lỗi khi chạy MMR ({mmr_err}). Fallback sử dụng danh sách gốc từ Hybrid Search.")
+                rerank_candidates = candidate_chunks
+
+        # =====================================================================
         # BƯỚC 3: RERANKER -> 20 RANKED CHUNKS
         # =====================================================================
         try:
             ranked_chunks = self.reranker.rerank(
                 query=query_text,
-                candidates=candidate_chunks,
+                candidates=rerank_candidates,
                 top_n=self.rerank_top_n,
             )
         except Exception as e:
             logger.warning(f"Lỗi khi chạy Reranker ({e}). Sử dụng thứ tự từ Hybrid Search.")
-            ranked_chunks = candidate_chunks[:self.rerank_top_n]
+            ranked_chunks = rerank_candidates[:self.rerank_top_n]
 
         # =====================================================================
         # BƯỚC 4: TOP-K SELECTION -> K CHUNKS (MẶC ĐỊNH 5)
@@ -215,6 +295,7 @@ class UETRetriever:
 
         logger.info(
             f"Hoàn thành Retrieval: từ {len(candidate_chunks)} candidates -> "
+            f"{len(rerank_candidates)} sau MMR -> "
             f"{len(ranked_chunks)} reranked -> chọn ra {len(final_contexts)} chunks cuối cùng."
         )
         return final_contexts
@@ -288,12 +369,43 @@ if __name__ == "__main__":
 
     # Khởi tạo UETRetriever
     store = DummyStore()
-    # Inject mock BM25. Retriever KHÔNG tự build/chỉnh sửa index trong production.
-    mock_bm25 = BM25Index(chunks=store.mock_chunks, workers=1)
+    
+    class DummyBM25:
+        def __init__(self, chunks):
+            self.chunks = chunks
+
+        def search(self, query: str, top_k: int = 5):
+            return [
+                RetrievedContext(
+                    chunk_id=c.chunk_id,
+                    text=c.text,
+                    similarity_score=round(10.0 - (i * 0.5), 2),
+                    rank=i + 1,
+                    metadata=c.metadata,
+                )
+                for i, c in enumerate(self.chunks[:top_k])
+            ]
+
+    # Inject mock BM25 và cấu hình MMR để kiểm thử
+    mock_bm25 = DummyBM25(chunks=store.mock_chunks)
+    test_cfg = {
+        "retrieval": {
+            "bm25_top_k": 3,
+            "vector_top_k": 3,
+            "candidate_pool_size": 3,
+            "enable_mmr": True,
+            "mmr_lambda": 0.6,
+            "mmr_top_n": 2,  # Rút từ 3 candidates xuống 2 qua MMR
+            "rerank_top_n": 2,
+            "final_top_k": 2,
+            "reranker_type": "heuristic",
+        }
+    }
     retriever = UETRetriever(
         embedding_model=DummyEmbedder(),
         vector_store=store,
         bm25_index=mock_bm25,
+        config=test_cfg,
     )
 
     # Thử nghiệm câu hỏi
