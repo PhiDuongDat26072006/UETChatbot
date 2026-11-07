@@ -17,6 +17,28 @@ from src.indexing.chunks import normalize_chunks
 
 from concurrent.futures import ProcessPoolExecutor
 from rank_bm25 import BM25Plus
+
+# Patch underthesea CRF model loader on Windows when path contains non-ASCII characters
+try:
+    import tempfile, shutil
+    import underthesea.models.fast_crf_sequence_tagger as tagger_mod
+    _orig_crf_load = tagger_mod.FastCRFSequenceTagger.load
+    def _safe_crf_load(self, base_path):
+        try:
+            return _orig_crf_load(self, base_path)
+        except Exception:
+            tmp_base = os.path.join(tempfile.gettempdir(), "underthesea_models")
+            os.makedirs(tmp_base, exist_ok=True)
+            for fname in [self.path_model, self.path_features, self.path_dictionary]:
+                src_f = os.path.join(base_path, fname)
+                dst_f = os.path.join(tmp_base, fname)
+                if os.path.exists(src_f) and (not os.path.exists(dst_f) or os.path.getsize(dst_f) != os.path.getsize(src_f)):
+                    shutil.copyfile(src_f, dst_f)
+            return _orig_crf_load(self, tmp_base)
+    tagger_mod.FastCRFSequenceTagger.load = _safe_crf_load
+except Exception:
+    pass
+
 from underthesea import word_tokenize
 
 # Mixed ASCII letters/digits are identifiers, never Vietnamese word segments.

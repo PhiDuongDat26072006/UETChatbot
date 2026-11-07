@@ -35,7 +35,7 @@ embedding:
   # Mô hình embedding chuẩn hóa cho toàn bộ hệ thống UET Chatbot
   # BAAI/bge-m3 (1024 chiều, chạy cục bộ offline qua sentence-transformers)
   provider: "bge-m3"
-  model_name: "BAAI/bge-m3"
+  model_name: "weights/bge-m3"
   dimension: 1024
 
 retrieval:
@@ -48,9 +48,15 @@ retrieval:
   rrf_k: 60                    # Hằng số làm mượt RRF
   vector_weight: 0.6           # Trọng số nhánh Vector Search
   bm25_weight: 0.4             # Trọng số nhánh BM25 Search
-  reranker_type: "cross_encoder"        # "auto", "heuristic", "flashrank", "cross_encoder"
-  reranker_model: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+  reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx"
+  reranker_model: "weights/jina-reranker-v2-base-multilingual"
+  onnx_filename: "weights/jina-reranker-v2-base-multilingual/onnx/model.onnx"
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
+
+  # Cấu hình Maximal Marginal Relevance (MMR) đa dạng hóa ngữ cảnh trước Reranker
+  enable_mmr: true                      # Bật/tắt tầng đa dạng hóa MMR trước Reranker
+  mmr_lambda: 0.6                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
+  mmr_top_n: 40                         # Số lượng ứng viên đa dạng giữ lại sau MMR để chuyển tiếp cho Reranker
 
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề

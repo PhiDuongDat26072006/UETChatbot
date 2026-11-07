@@ -319,6 +319,14 @@ class BaseVectorStore(ABC):
         """Xóa sạch dữ liệu trong vector database để lập chỉ mục lại."""
         pass
 
+    def get_embeddings_by_ids(self, chunk_ids: List[str]) -> Dict[str, List[float]]:
+        """
+        Lấy trực tiếp vector embedding đã lưu trong database theo danh sách chunk_id nếu hỗ trợ.
+        :param chunk_ids: Danh sách các ID cần lấy vector
+        :return: Dict ánh xạ chunk_id -> vector (list float)
+        """
+        return {}
+
 
 class BasePromptAugmenter(ABC):
     """

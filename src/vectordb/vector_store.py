@@ -316,6 +316,31 @@ class ChromaVectorStore(BaseVectorStore):
                 )
         return chunks
 
+    def get_embeddings_by_ids(self, chunk_ids: List[str]) -> Dict[str, List[float]]:
+        """
+        Lấy trực tiếp vector embedding đã lưu trong ChromaDB theo danh sách chunk_id.
+        :param chunk_ids: Danh sách các chunk_id cần trích xuất vector
+        :return: Dict ánh xạ chunk_id -> vector (list float)
+        """
+        if not chunk_ids or self.count() == 0:
+            return {}
+
+        embeddings_map: Dict[str, List[float]] = {}
+        batch_size = 500  # Tránh vượt giới hạn SQLite/Chroma parameter limit
+        for i in range(0, len(chunk_ids), batch_size):
+            batch_ids = chunk_ids[i : i + batch_size]
+            try:
+                data = self.collection.get(ids=batch_ids, include=["embeddings"])
+                ids = data.get("ids", [])
+                embs = data.get("embeddings", [])
+                if embs is not None and len(embs) > 0:
+                    for cid, emb in zip(ids, embs):
+                        if emb is not None:
+                            embeddings_map[cid] = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+            except Exception as e:
+                logger.warning(f"Lỗi khi trích xuất embeddings theo IDs từ ChromaDB: {e}")
+        return embeddings_map
+
     def delete(self, chunk_ids: List[str]) -> None:
         """Remove obsolete chunks without replacing the collection."""
         for start in range(0, len(chunk_ids), 500):
