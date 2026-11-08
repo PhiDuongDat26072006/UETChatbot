@@ -673,18 +673,19 @@ class UETRAGPipeline(BaseRAGPipeline):
             vector_store=self.vector_store,
         )
 
-    def query(self, query: UserQuery, top_k: int = 5) -> Response:
+    def query(self, query: UserQuery, top_k: Optional[int] = None) -> Response:
         """
         Thực thi quy trình trả lời câu hỏi:
         1. Gọi UETRetriever: BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K
         2. Ghép ngữ cảnh vào Prompt (AugmentedPrompt) theo chuẩn BaseRAGPipeline
         3. Gọi LLM sinh câu trả lời
         """
+        k = top_k if top_k is not None else getattr(self.retriever, "default_top_k", 10)
         with Timer() as timer:
             # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever
             contexts = self.retriever.retrieve(
                 query=query,
-                top_k=top_k,
+                top_k=k,
                 filters=query.filters,
             )
 
@@ -695,13 +696,14 @@ class UETRAGPipeline(BaseRAGPipeline):
         response.latency_seconds = round(timer.elapsed, 3)
         return response
 
-    def query_stream(self, query: UserQuery, top_k: int = 5) -> Generator[str, None, None]:
+    def query_stream(self, query: UserQuery, top_k: Optional[int] = None) -> Generator[str, None, None]:
         """
         Sinh phản hồi dạng luồng (streaming) cho giao diện Web/Chatbot.
         """
+        k = top_k if top_k is not None else getattr(self.retriever, "default_top_k", 10)
         contexts = self.retriever.retrieve(
             query=query,
-            top_k=top_k,
+            top_k=k,
             filters=query.filters,
         )
         augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
