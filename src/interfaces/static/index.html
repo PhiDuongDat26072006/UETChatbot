@@ -1,95 +1,64 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-theme="dark">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UET Chatbot - Trợ Lý Tư Vấn Quy Chế Đào Tạo (VNU-UET)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UET AI Assistant - Trợ Lý Học Vụ Sinh Viên (Telegram Fleet Edition)</title>
     <meta name="description"
-        content="Hệ thống Chatbot RAG thông minh tra cứu quy chế đào tạo, học vụ, học bổng trường Đại học Công nghệ - ĐHQGHN">
+        content="Hệ thống Chatbot RAG AI tra cứu quy chế đào tạo, học vụ, học bổng và thủ tục sinh viên Trường Đại học Công nghệ – ĐHQGHN">
+    <meta name="theme-color" content="#0875C9">
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230875C9'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' stroke='%23ffffff' stroke-width='1.5'/%3E%3C/svg%3E">
+
+    <!-- Pre-render Theme & Wallpaper to avoid FOUT -->
+    <script>
+        (function () {
+            try {
+                var storedTheme = localStorage.getItem("uet_ai_theme_mode");
+                var theme = storedTheme || "light";
+                document.documentElement.setAttribute("data-theme", theme);
+                var storedWallpaper = localStorage.getItem("uet_ai_chat_wallpaper");
+                var wallpaper = storedWallpaper;
+                if (!wallpaper || wallpaper === "telegram-green" || wallpaper === "plain") {
+                    wallpaper = "telegram-blue";
+                    try { localStorage.setItem("uet_ai_chat_wallpaper", "telegram-blue"); } catch (e) { }
+                }
+                document.documentElement.setAttribute("data-wallpaper", wallpaper);
+            } catch (e) { }
+        })();
+    </script>
+
+    <!-- Google Fonts: Be Vietnam Pro, Inter, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css?v=20261028_fix">
+
+    <!-- KaTeX for LaTeX Math Formula Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+    <!-- Telegram Clean & Harmonious UI for UET (V5 Tables & Layout) -->
+    <link rel="stylesheet" href="/static/style.css?v=v5_table2">
 </head>
 
 <body>
-    <div class="app-container" id="app-container">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="brand">
-                    <div class="brand-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                        </svg>
-                    </div>
-                    <div class="brand-text">
-                        <h2>UET Chatbot</h2>
-                        <span class="badge">RAG Modular</span>
-                    </div>
-                </div>
-                <button class="btn-new-chat" id="btn-new-chat" title="Tạo cuộc trò chuyện mới">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    <span>Cuộc trò chuyện mới</span>
-                </button>
-            </div>
+    <!-- Overlay Backdrop khi mở Sidebar trên Mobile -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
-            <div class="sidebar-section">
-                <div class="section-title">Chủ Đề Tra Cứu Phổ Biến</div>
-                <div class="topic-list">
-                    <button class="topic-btn"
-                        data-query="Điều kiện để nhận học bổng khuyến khích học tập loại Xuất sắc là gì?">
-                        <span class="topic-icon">🏆</span>
-                        <span class="topic-label">Học bổng khuyến khích</span>
-                    </button>
-                    <button class="topic-btn" data-query="Sinh viên bị cảnh báo học tập khi nào và xử lý ra sao?">
-                        <span class="topic-icon">⚠️</span>
-                        <span class="topic-label">Cảnh báo học tập</span>
-                    </button>
-                    <button class="topic-btn"
-                        data-query="Quy định đăng ký học phần, rút bớt học phần và học cải thiện điểm thế nào?">
-                        <span class="topic-icon">📚</span>
-                        <span class="topic-label">Đăng ký học phần</span>
-                    </button>
-                    <button class="topic-btn" data-query="Điều kiện để được xét công nhận tốt nghiệp đại học tại UET?">
-                        <span class="topic-icon">🎓</span>
-                        <span class="topic-label">Xét tốt nghiệp ra trường</span>
-                    </button>
-                    <button class="topic-btn"
-                        data-query="Quy định đánh giá điểm rèn luyện sinh viên theo các khung điểm?">
-                        <span class="topic-icon">⭐</span>
-                        <span class="topic-label">Điểm rèn luyện</span>
-                    </button>
-                </div>
-            </div>
-
-            <div class="sidebar-footer">
-                <div class="system-status" id="system-status">
-                    <div class="status-indicator online"></div>
-                    <div class="status-info">
-                        <span class="status-text">Hệ thống sẵn sàng</span>
-                        <span class="db-stats" id="db-stats">RAG Pipeline: Active</span>
-                    </div>
-                </div>
-                <div class="team-credit">
-                    <span>Trường ĐH Công Nghệ - ĐHQGHN</span>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Chat Area -->
-        <main class="chat-main">
-            <!-- Header -->
-            <header class="chat-header">
-                <div class="header-left">
-                    <button class="btn-toggle-sidebar" id="btn-toggle-sidebar" title="Đóng/Mở thanh điều hướng">
+    <div class="telegram-app" id="app-container">
+        <!-- =============================================================== -->
+        <!-- PHẦN 1: SIDEBAR BÊN TRÁI (TELEGRAM CONVERSATIONS & PROFILE)     -->
+        <!-- =============================================================== -->
+        <aside class="telegram-sidebar" id="sidebar">
+            <!-- Sidebar Header: UET Brand & Actions -->
+            <div class="sidebar-top-header">
+                <div class="uet-brand-box">
+                    <!-- Nút Hamburger đóng/mở nhanh thanh bên -->
+                    <button class="btn-sidebar-action btn-sidebar-menu" id="btn-sidebar-hamburger"
+                        title="Thu gọn thanh bên (Ctrl+B)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -97,110 +66,552 @@
                             <line x1="3" y1="18" x2="21" y2="18"></line>
                         </svg>
                     </button>
-                    <div class="header-title">
-                        <h1>Tư Vấn Quy Chế Đào Tạo UET</h1>
-                        <p class="header-subtitle">Hỏi đáp quy chế, học vụ & chính sách sinh viên dựa trên tài liệu
-                            chính thức</p>
+                    <div class="uet-logo-emblem" title="Trường Đại học Công nghệ – ĐHQGHN">
+                        <!-- UET Emblem Vector Icon -->
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <div class="uet-brand-text">
+                        <h1 class="brand-name">UET AI</h1>
+                        <span class="brand-sub">Assistant v4.0</span>
                     </div>
                 </div>
-                <div class="header-right">
-                    <div class="badge-tag" id="model-badge">Mô hình: ...</div>
-                </div>
-            </header>
 
-            <!-- Chat Messages Container -->
-            <div class="chat-messages" id="chat-messages">
-                <!-- Welcome Screen (Hiển thị khi chưa có tin nhắn) -->
-                <div class="welcome-screen" id="welcome-screen">
-                    <div class="welcome-badge">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                <div class="sidebar-header-actions">
+                    <!-- Nút Dark Mode -->
+                    <button class="btn-sidebar-action btn-theme" id="btn-theme-toggle" title="Chuyển chế độ Sáng / Tối">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </button>
+                    <!-- Nút Tạo cuộc trò chuyện mới -->
+                    <button class="btn-sidebar-action btn-compose" id="btn-new-chat" title="Tạo cuộc trò chuyện mới">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Thanh tìm kiếm cuộc trò chuyện -->
+            <div class="sidebar-search-box">
+                <div class="search-input-wrapper">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="input-search-chats" class="search-input" placeholder="Tìm kiếm hội thoại..."
+                        autocomplete="off">
+                    <button class="btn-clear-search" id="btn-clear-search" title="Xóa tìm kiếm">✕</button>
+                </div>
+            </div>
+
+            <!-- Danh sách hội thoại phân nhóm (Hôm nay, Hôm qua, Trước đó, Đã ghim) -->
+            <div class="chat-list-wrapper" id="chat-list-container">
+                <!-- Rendered dynamically by js/app.js -->
+            </div>
+
+            <!-- Footer: Tài khoản sinh viên -->
+            <div class="sidebar-student-footer">
+                <div class="student-profile-left">
+                    <div class="telegram-avatar student-avatar">
+                        <span>SV</span>
+                    </div>
+                    <div class="student-profile-info">
+                        <div class="student-name">Sinh viên UET</div>
+                        <div class="student-meta">K68 • Công nghệ thông tin</div>
+                    </div>
+                </div>
+                <div class="student-profile-right">
+                    <button class="btn-student-settings" id="btn-open-settings" title="Cài đặt hệ thống & mô hình">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
                             <path
-                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
                             </path>
                         </svg>
-                        <span>Cơ sở tri thức chuẩn UET</span>
-                    </div>
-                    <h2 class="welcome-title">Xin chào! Bạn cần tìm hiểu thông tin gì về quy chế UET?</h2>
-                    <p class="welcome-desc">
-                        Hệ thống sử dụng kỹ thuật RAG (Retrieval-Augmented Generation) để tra cứu chính xác từ các văn
-                        bản quyết định, sổ tay sinh viên và quy định đào tạo của Trường Đại học Công nghệ.
-                    </p>
-
-                    <div class="prompt-cards-grid">
-                        <div class="prompt-card"
-                            data-query="Điều kiện để sinh viên nhận học bổng khuyến khích học tập loại Giỏi và Xuất sắc?">
-                            <div class="card-icon">🎯</div>
-                            <h3>Tiêu chuẩn xét học bổng</h3>
-                            <p>Điểm GPA và điểm rèn luyện tối thiểu theo kỳ học</p>
-                        </div>
-                        <div class="prompt-card"
-                            data-query="Khi nào sinh viên bị buộc thôi học hoặc tạm dừng tiến độ học tập?">
-                            <div class="card-icon">🛑</div>
-                            <h3>Buộc thôi học & Bảo lưu</h3>
-                            <p>Quy định về thời hạn, điều kiện tạm dừng và kỷ luật</p>
-                        </div>
-                        <div class="prompt-card"
-                            data-query="Quy trình phúc khảo bài thi kết thúc học phần và thời hạn nộp đơn?">
-                            <div class="card-icon">📝</div>
-                            <h3>Thi cử & Phúc khảo</h3>
-                            <p>Thời gian khiếu nại điểm thi, thủ tục xin hoãn thi</p>
-                        </div>
-                        <div class="prompt-card"
-                            data-query="Chuẩn đầu ra ngoại ngữ và công nghệ thông tin đối với sinh viên chính quy?">
-                            <div class="card-icon">🌐</div>
-                            <h3>Chuẩn đầu ra ngoại ngữ</h3>
-                            <p>Bảng quy đổi chứng chỉ VSTEP, IELTS, TOEFL</p>
-                        </div>
-                    </div>
+                    </button>
                 </div>
             </div>
+        </aside>
 
-            <!-- Input Box -->
-            <div class="chat-input-area">
-                <form class="input-form" id="chat-form" onsubmit="event.preventDefault(); return false;" action="javascript:void(0);">
-                    <div class="input-container">
-                        <textarea id="query-input" rows="1"
-                            placeholder="Nhập câu hỏi về quy chế đào tạo, điểm số, học bổng UET..."
-                            autocomplete="off"></textarea>
-                        <button type="submit" id="btn-submit" class="btn-send" title="Gửi câu hỏi" disabled>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <!-- =============================================================== -->
+        <!-- PHẦN 2: KHU VỰC CHAT CHÍNH (HEADER, CHAT WINDOW & INPUT)      -->
+        <!-- =============================================================== -->
+        <main class="telegram-main" id="chat-main-area">
+            <!-- KHUNG 2: KHU VỰC CHAT & LỊCH SỬ TIN NHẮN (BO TRÒN TÁCH BIỆT QUA RÃNH) -->
+            <div class="telegram-chat-pane" id="chat-pane">
+                <!-- HÌNH NỀN DOODLE ICONS CUTE & MÀU PASTEL CHUẨN TELEGRAM -->
+                <div class="chat-wallpaper-layer" id="chat-wallpaper">
+                    <div class="wallpaper-gradient-bg"></div>
+                    <div class="wallpaper-doodle-pattern"></div>
+                </div>
+
+                <!-- PHẦN 5: CHAT HEADER -->
+                <header class="telegram-header" id="chat-header">
+                    <div class="header-left-col">
+                        <!-- Nút Hamburger 3 gạch: hoạt động trên cả Desktop và Mobile -->
+                        <button class="btn-header-icon btn-header-hamburger" id="btn-header-hamburger"
+                            title="Thu gọn / Mở rộng thanh bên (Ctrl+B)">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
-                                <line x1="22" y1="2" x2="11" y2="13"></line>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                <line x1="3" y1="12" x2="21" y2="12"></line>
+                                <line x1="3" y1="6" x2="21" y2="6"></line>
+                                <line x1="3" y1="18" x2="21" y2="18"></line>
                             </svg>
                         </button>
+
+                        <div class="telegram-avatar bot-avatar-header">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                            </svg>
+                        </div>
+
+                        <div class="chat-header-info">
+                            <div class="chat-title-row">
+                                <h2 class="chat-header-title" id="header-chat-title">UET AI Assistant</h2>
+                            </div>
+                            <div class="chat-header-status" id="header-chat-status">
+                                <span class="offline-indicator"></span> đang kết nối...
+                            </div>
+                        </div>
                     </div>
-                </form>
-                <div class="input-footer-note">
-                    Câu trả lời được trích xuất và tổng hợp tự động từ các văn bản đào tạo chính thức của Trường Đại học
-                    Công nghệ (VNU-UET).
+
+                    <div class="header-right-col">
+                        <!-- Nút tìm kiếm trong tin nhắn -->
+                        <button class="btn-header-icon" id="btn-header-search"
+                            title="Tìm kiếm trong cuộc trò chuyện (Ctrl+F)">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </button>
+
+                        <!-- Nút Cài đặt & Thông tin mô hình -->
+                        <button class="btn-header-icon" id="btn-header-settings" title="Cài đặt & Mô hình AI">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                            </svg>
+                        </button>
+
+                        <!-- Menu 3 chấm cuộc trò chuyện -->
+                        <div class="header-menu-container">
+                            <button class="btn-header-icon" id="btn-header-menu" title="Tùy chọn cuộc trò chuyện">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <circle cx="12" cy="12" r="1.5"></circle>
+                                    <circle cx="12" cy="5" r="1.5"></circle>
+                                    <circle cx="12" cy="19" r="1.5"></circle>
+                                </svg>
+                            </button>
+                            <div class="header-dropdown-menu" id="header-dropdown-menu">
+                                <button class="header-dropdown-item" id="header-opt-pin">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <line x1="12" y1="17" x2="12" y2="22"></line>
+                                        <path
+                                            d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z">
+                                        </path>
+                                    </svg>
+                                    <span id="header-opt-pin-text">Ghim hội thoại</span>
+                                </button>
+                                <button class="header-dropdown-item" id="header-opt-rename">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                    <span>Đổi tên hội thoại</span>
+                                </button>
+                                <button class="header-dropdown-item" id="header-opt-clear">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                                    </svg>
+                                    <span>Xóa toàn bộ tin nhắn</span>
+                                </button>
+                                <button class="header-dropdown-item text-danger" id="header-opt-delete">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path
+                                            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                        </path>
+                                    </svg>
+                                    <span>Xóa cuộc trò chuyện</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Thanh tìm kiếm trong nội dung cuộc trò chuyện -->
+                <div class="in-chat-search-bar" id="in-chat-search-bar">
+                    <div class="in-chat-search-inner">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="in-chat-search-input" placeholder="Tìm kiếm từ khóa trong tin nhắn..."
+                            autocomplete="off">
+                        <span class="search-count-badge" id="in-chat-search-count">0/0</span>
+                        <button class="btn-search-nav" id="btn-search-prev"
+                            title="Kết quả trước (Shift+Enter hoặc ‹)">▲</button>
+                        <button class="btn-search-nav" id="btn-search-next"
+                            title="Kết quả tiếp theo (Enter hoặc ›)">▼</button>
+                        <button class="btn-close-in-chat" id="btn-close-in-chat-search"
+                            title="Đóng tìm kiếm (Esc)">✕</button>
+                    </div>
                 </div>
-            </div>
+
+                <!-- Drag & Drop Overlay Zone -->
+                <div class="drag-drop-overlay" id="drag-drop-overlay">
+                    <div class="drag-drop-modal">
+                        <div class="drag-drop-icon">📁</div>
+                        <div class="drag-drop-title">Thả tài liệu vào đây để đính kèm</div>
+                        <div class="drag-drop-subtitle">Hỗ trợ các định dạng .PDF, .DOCX, .TXT</div>
+                    </div>
+                </div>
+
+                <!-- PHẦN 2: CHAT WINDOW -->
+                <div class="telegram-chat-window" id="chat-window">
+                    <div class="telegram-messages-feed" id="messages-container">
+                        <!-- PHẦN 4: WELCOME SCREEN -->
+                        <div class="telegram-welcome-screen" id="welcome-screen">
+                            <div class="welcome-emblem-wrap">
+                                <div class="welcome-emblem">
+                                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <h2 class="welcome-headline">Xin chào, mình là UET AI Assistant</h2>
+                            <p class="welcome-desc">
+                                Trợ lý thông minh hỗ trợ sinh viên Trường Đại học Công nghệ – ĐHQGHN.
+                            </p>
+
+                            <!-- 6 Thẻ chức năng -->
+                            <div class="welcome-suggestions-grid">
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Quy định đăng ký học phần, rút bớt học phần và học cải thiện điểm thế nào?">
+                                    <div class="card-icon">📚</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">1. Đăng ký học phần</div>
+                                        <div class="card-subtitle">Quy định rút bớt, đăng ký muộn & cải thiện điểm</div>
+                                    </div>
+                                </button>
+
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Điều kiện để sinh viên K67, K68 ngành Trí tuệ nhân tạo được làm khóa luận tốt nghiệp bảo vệ sớm?">
+                                    <div class="card-icon">🎓</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">2. Chương trình đào tạo</div>
+                                        <div class="card-subtitle">Điều kiện làm khóa luận & tiến trình đào tạo tích cực
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Sinh viên vắng thi có lý do chính đáng hoặc hoãn thi cần làm những thủ tục gì?">
+                                    <div class="card-icon">📅</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">3. Lịch học và lịch thi</div>
+                                        <div class="card-subtitle">Thủ tục hoãn thi, vắng thi & lịch thi bù học kỳ</div>
+                                    </div>
+                                </button>
+
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Khi nào sinh viên bị cảnh báo học tập và trường hợp nào bị hạ bậc tốt nghiệp?">
+                                    <div class="card-icon">⚖️</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">4. Quy chế sinh viên</div>
+                                        <div class="card-subtitle">Cảnh báo học tập, buộc thôi học & xếp loại tốt nghiệp
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Điều kiện để nhận học bổng khuyến khích học tập loại Giỏi và Xuất sắc tại UET là gì?">
+                                    <div class="card-icon">🏆</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">5. Học phí và học bổng</div>
+                                        <div class="card-subtitle">Thang điểm GPA, điểm rèn luyện & miễn giảm học phí
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button type="button" class="telegram-welcome-card"
+                                    data-query="Phòng Đào tạo (105-E3) và Phòng Công tác sinh viên (107-G2) tiếp nhận những thủ tục nào?">
+                                    <div class="card-icon">🏢</div>
+                                    <div class="card-text-col">
+                                        <div class="card-title">6. Thông tin phòng ban</div>
+                                        <div class="card-subtitle">Địa chỉ liên hệ, phòng ban & mẫu đơn hành chính UET
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nút cuộn xuống tin nhắn mới nhất (Telegram Floating Button) -->
+                    <button class="btn-scroll-bottom" id="btn-scroll-bottom" title="Cuộn xuống cuối">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                        <span class="unread-scroll-dot" id="unread-scroll-dot" style="display: none;"></span>
+                    </button>
+                </div>
+
+                <!-- PHẦN NHẬP CÂU HỎI (NẰM TRONG KHUNG CHAT PHÍA DƯỚI) -->
+                <footer class="telegram-input-pane telegram-input-dock" id="input-pane">
+                    <!-- Khu vực hiển thị tệp đã đính kèm trước khi gửi -->
+                    <div class="attachment-preview-area" id="attachment-preview-area"></div>
+
+                    <!-- Input tệp ẩn -->
+                    <input type="file" id="file-attachment-input" accept=".pdf,.docx,.doc,.txt" multiple
+                        style="display: none;">
+
+                    <!-- Form nhập câu hỏi phong cách Claude Card cao ráo -->
+                    <form class="telegram-input-form claude-composer" id="chat-form">
+                        <!-- Emoji Picker Popover -->
+                        <div class="telegram-emoji-picker" id="emoji-picker"></div>
+
+                        <!-- Hàng trên: Vùng nhập câu hỏi -->
+                        <div class="composer-textarea-row">
+                            <textarea id="input-message" class="telegram-textarea" rows="1"
+                                placeholder="Nhập câu hỏi quy chế học vụ UET..." autocomplete="off"></textarea>
+                        </div>
+
+                        <!-- Hàng dưới: Thanh công cụ thao tác -->
+                        <div class="composer-toolbar-row">
+                            <!-- Nút Đính kèm tài liệu bên trái -->
+                            <div class="composer-toolbar-left">
+                                <button type="button" class="btn-composer-tool btn-attach" id="btn-attach"
+                                    title="Đính kèm tài liệu (.pdf, .docx, .txt)">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path
+                                            d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48">
+                                        </path>
+                                    </svg>
+                                    <span class="tool-label">Đính kèm</span>
+                                </button>
+                            </div>
+
+                            <!-- Các nút bên phải: Emoji + Nút gửi -->
+                            <div class="composer-toolbar-right">
+                                <button type="button" class="btn-composer-tool btn-emoji" id="btn-emoji"
+                                    title="Chèn biểu tượng cảm xúc">
+                                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                                        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                                        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                                    </svg>
+                                </button>
+
+                                <button type="submit" class="btn-telegram-send btn-composer-submit" id="btn-send"
+                                    disabled title="Gửi câu hỏi (Enter)">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Gợi ý phím tắt & nhãn hệ thống phía dưới card -->
+                    <div class="composer-footer-hints">
+                        <div class="hint-left">
+                            <span>Trợ lý RAG UET</span>
+                        </div>
+                        <div class="hint-right">
+                            <span>Shift + Enter để xuống dòng • Enter để gửi</span>
+                        </div>
+                    </div>
+                </footer>
+            </div> <!-- /telegram-chat-pane (Bao trùm toàn bộ Header + Chat Window + Input) -->
         </main>
     </div>
 
-    <!-- Modal Xem Chi Tiết Trích Đoạn Nguồn -->
-    <div class="modal-overlay" id="source-modal">
-        <div class="modal-card">
-            <div class="modal-header">
-                <div class="modal-title-group">
-                    <span class="modal-tag">Nguồn Trích Dẫn Dẫn Chứng</span>
-                    <h3 id="modal-source-title">Tên tài liệu văn bản</h3>
+    <!-- =============================================================== -->
+    <!-- CONTEXT MENU KHI CLICK PHẢI / 3 CHẤM TRÊN HỘI THOẠI             -->
+    <!-- =============================================================== -->
+    <div class="telegram-context-menu" id="chat-context-menu">
+        <button class="context-menu-item" id="ctx-opt-pin">
+            <span class="ctx-icon">📌</span>
+            <span id="ctx-pin-label">Ghim hội thoại</span>
+        </button>
+        <button class="context-menu-item" id="ctx-opt-rename">
+            <span class="ctx-icon">✏️</span>
+            <span>Đổi tên</span>
+        </button>
+        <div class="context-menu-divider"></div>
+        <button class="context-menu-item text-danger" id="ctx-opt-delete">
+            <span class="ctx-icon">🗑️</span>
+            <span>Xóa hội thoại</span>
+        </button>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- MODAL CÀI ĐẶT & THÔNG TIN MÔ HÌNH AI                          -->
+    <!-- =============================================================== -->
+    <div class="telegram-modal-backdrop" id="settings-modal">
+        <div class="telegram-modal-card">
+            <div class="modal-card-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-badge-icon">⚙️</span>
+                    <h3 class="modal-card-title">Cài đặt & Thông tin hệ thống</h3>
                 </div>
-                <button class="btn-close-modal" id="btn-close-modal">&times;</button>
+                <button class="btn-modal-close" id="btn-close-settings-modal" title="Đóng">✕</button>
             </div>
-            <div class="modal-body" id="modal-source-content">
-                <!-- Nội dung đoạn trích -->
+            <div class="modal-card-body">
+                <div class="settings-section">
+                    <h4 class="settings-sec-title">Mô hình AI & Trực tuyến</h4>
+                    <div class="settings-row">
+                        <span class="settings-label">Mô hình hiện tại:</span>
+                        <span class="settings-val-badge" id="settings-model-name">Đang tải...</span>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Trạng thái RAG Service:</span>
+                        <span class="settings-val-badge" id="settings-rag-status">Kiểm tra...</span>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4 class="settings-sec-title">Giao diện người dùng</h4>
+                    <div class="settings-row">
+                        <span class="settings-label">Chế độ hiển thị:</span>
+                        <div class="settings-theme-selector">
+                            <button class="btn-theme-choice" data-theme="light">☀️ Sáng</button>
+                            <button class="btn-theme-choice" data-theme="dark">🌙 Tối</button>
+                        </div>
+                    </div>
+                    <div class="settings-row" style="margin-top: 12px; align-items: flex-start;">
+                        <span class="settings-label" style="padding-top: 6px;">Hình nền trò chuyện:</span>
+                        <div class="settings-wallpaper-selector">
+                            <button class="btn-wallpaper-choice active" data-wallpaper="telegram-blue"
+                                title="Hình nền Telegram Doodle UET AI độc quyền">✨ UET AI Doodle</button>
+                            <button class="btn-wallpaper-choice" data-wallpaper="plain"
+                                title="Nền trơn sạch sẽ (#F1F6FC)">⚪ Tối giản (#F1F6FC)</button>
+                            <button class="btn-wallpaper-choice" data-wallpaper="dark-night" title="Starry Night">🌌
+                                Starry Night</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4 class="settings-sec-title">Dữ liệu cục bộ</h4>
+                    <div class="settings-row">
+                        <span class="settings-label">Lịch sử trò chuyện:</span>
+                        <button class="btn-secondary-action text-danger" id="btn-clear-all-chats">Xóa tất cả hội
+                            thoại</button>
+                    </div>
+                </div>
             </div>
-            <div class="modal-footer">
-                <div class="modal-meta" id="modal-source-meta">Điểm Cross-Encoder: 0.000</div>
-                <button class="btn-modal-done" id="btn-modal-done">Đóng</button>
+            <div class="modal-card-footer">
+                <button class="btn-modal-primary" id="btn-settings-done">Hoàn tất</button>
             </div>
         </div>
     </div>
 
-    <script src="/static/app.js?v=20261028_fix"></script>
+    <!-- =============================================================== -->
+    <!-- MODAL XEM CHI TIẾT ĐOẠN TRÍCH VĂN BẢN QUY CHẾ                 -->
+    <!-- =============================================================== -->
+    <div class="telegram-modal-backdrop" id="source-modal">
+        <div class="telegram-modal-card">
+            <div class="modal-card-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-badge-icon">📄</span>
+                    <h3 class="modal-card-title" id="modal-source-title">Văn bản quy chế đào tạo UET</h3>
+                </div>
+                <button class="btn-modal-close" id="btn-close-modal" title="Đóng">✕</button>
+            </div>
+            <div class="modal-card-body">
+                <div class="modal-meta-row" id="modal-source-meta"></div>
+                <div class="modal-text-content" id="modal-source-content"></div>
+            </div>
+            <div class="modal-card-footer">
+                <button class="btn-modal-primary" id="btn-modal-done">Đã hiểu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- MODAL ĐỔI TÊN HỘI THOẠI (TELEGRAM POPUP)                       -->
+    <!-- =============================================================== -->
+    <div class="telegram-modal-backdrop" id="rename-modal">
+        <div class="telegram-modal-card modal-compact">
+            <div class="modal-card-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-badge-icon">✏️</span>
+                    <h3 class="modal-card-title">Đổi tên cuộc trò chuyện</h3>
+                </div>
+                <button class="btn-modal-close" id="btn-close-rename-modal" title="Đóng">✕</button>
+            </div>
+            <div class="modal-card-body">
+                <div class="modal-input-group">
+                    <label for="input-rename-chat" class="modal-input-label">Tiêu đề cuộc trò chuyện</label>
+                    <input type="text" id="input-rename-chat" class="modal-text-input" placeholder="Nhập tên mới..."
+                        maxlength="60" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-card-footer modal-footer-actions">
+                <button class="btn-modal-secondary" id="btn-cancel-rename">Hủy</button>
+                <button class="btn-modal-primary" id="btn-confirm-rename">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- MODAL XÁC NHẬN HÀNH ĐỘNG (XÓA TIN NHẮN / XÓA HỘI THOẠI)       -->
+    <!-- =============================================================== -->
+    <div class="telegram-modal-backdrop" id="confirm-modal">
+        <div class="telegram-modal-card modal-compact">
+            <div class="modal-card-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-badge-icon" id="confirm-modal-icon">⚠️</span>
+                    <h3 class="modal-card-title" id="confirm-modal-title">Xác nhận</h3>
+                </div>
+                <button class="btn-modal-close" id="btn-close-confirm-modal" title="Đóng">✕</button>
+            </div>
+            <div class="modal-card-body">
+                <p class="confirm-modal-message" id="confirm-modal-message">Bạn có chắc chắn muốn thực hiện thao tác
+                    này?</p>
+            </div>
+            <div class="modal-card-footer modal-footer-actions">
+                <button class="btn-modal-secondary" id="btn-cancel-confirm">Hủy bỏ</button>
+                <button class="btn-modal-danger" id="btn-proceed-confirm">Tiếp tục</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container Toast thông báo -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- JavaScript Module (Telegram Fleet Edition) -->
+    <script type="module" src="/static/js/app.js?v=v5_table2"></script>
 </body>
 
 </html>

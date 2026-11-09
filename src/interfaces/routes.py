@@ -100,6 +100,11 @@ def create_app():
             )
         return {"message": "UET Chatbot API is running. index.html not found."}
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        from fastapi.responses import Response
+        return Response(status_code=204)
+
     @app.get("/api/health")
     def health_check() -> Dict[str, Any]:
         """Kiểm tra trạng thái máy chủ và mô hình LLM hiện tại."""
@@ -125,7 +130,7 @@ def create_app():
                 query_text=request.query,
                 session_id=request.session_id,
             )
-            retrieval_top_k = request.top_k if request.top_k is not None else getattr(pipeline.retriever, "default_top_k", 5)
+            retrieval_top_k = request.top_k if request.top_k is not None else getattr(pipeline.retriever, "default_top_k", 10)
             response = pipeline.query(user_query, top_k=retrieval_top_k)
 
         sources_data = []
