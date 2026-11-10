@@ -5,25 +5,11 @@ version: 2
 # SEEDS
 # ==============================================================================
 seeds:
-  # --- CORE SCOPE (Đang cào trọng tâm CTĐT, ngoại ngữ và quy định) ---
+  # --- CORE SCOPE (Đang cào trọng tâm CTĐT, ngoại ngữ và quy chế trên uet.edu.vn / uet.vnu.edu.vn) ---
   - https://uet.edu.vn/dao-tao/
   - https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
-  - https://uet-test.uet.edu.vn/wp-content/uploads/2026/01/2.Huong-dan-danh-gia-DRL.pdf
-  - https://2489013871.e.cdneverest.net/uet.edu.vn/2026/08/Quy-dinh-Hoc-bong-KKHT-UET-2026.pdf
-  - https://2679558515.e.cdneverest.net/uet.edu.vn/2023/03/1011.pdf
-  - https://cdnportal.vnu.edu.vn/data/upload/vanban/2018/11/01/Quy-che-32-ngay-05-1-2017-Quy-che-Cong-tac-sinh-vien-tai-Dai-hoc-Quoc-gia-Ha-Noi.PDF
   - https://uet.vnu.edu.vn/wp-content/uploads/2022/12/Quy-ch%E1%BA%BF-%C4%90T%C4%90H-3626.pdf
-  - https://handbook.uet.vnu.edu.vn/uploads/Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20.pdf
-  - https://handbook.uet.vnu.edu.vn/uploads/Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1.pdf
-  - https://2679558515.e.cdneverest.net/uet.edu.vn/2026/09/dinh-muc-hoc-phi-nam-hoc-2026-2027_tb-nguoi-hoc.pdf
   - https://uet.vnu.edu.vn/wp-content/uploads/2021/03/Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final.pdf
-  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-nop-hoc-phi
-  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-he-thong
-  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phu-huynh
-  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-dich-vu-ho-tro-tai-khoan
-  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phieu-khao-sat-phan-hoi-dich-vu
-  - https://tuoitrecongnghe.uet.vnu.edu.vn/sv5t
-  - https://uet.vnu.edu.vn/offline/thong-bao-mo-hinh-gvcn-2026-2027.pdf
 
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
   # - https://uet.vnu.edu.vn/
@@ -42,39 +28,18 @@ scope:
   hosts:
     - uet.edu.vn
     - uet.vnu.edu.vn
-    - uet-test.uet.edu.vn
-    - 2489013871.e.cdneverest.net
-    - 2679558515.e.cdneverest.net
-    - cdnportal.vnu.edu.vn
-    - handbook.uet.vnu.edu.vn
-    - studenthub.uet.edu.vn
-    - tuoitrecongnghe.uet.vnu.edu.vn
 
   path_prefixes:
     - /
 
-  # --- CORE SCOPE: Whitelist chỉ nhận CTĐT, Ngoại ngữ, StudentHub, SV5T và PDF chỉ định ---
+  # --- CORE SCOPE: Whitelist chỉ nhận CTĐT, Ngoại ngữ và PDF chỉ định trên uet.edu.vn / uet.vnu.edu.vn ---
   include_patterns:
     - ^/dao-tao/?$
     - ^/chuong-trinh-dao-tao
     - ^/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/?$
-    - ^/huong-dan/huong-dan-nop-hoc-phi/?$
-    - ^/huong-dan/huong-dan-he-thong/?$
-    - ^/huong-dan/huong-dan-su-dung-phu-huynh/?$
-    - ^/huong-dan/huong-dan-su-dung-dich-vu-ho-tro-tai-khoan/?$
-    - ^/huong-dan/huong-dan-su-dung-phieu-khao-sat-phan-hoi-dich-vu/?$
-    - ^/sv5t/?$
     # Chỉ nhận ĐÚNG các file PDF đã chỉ định cụ thể, TUYỆT ĐỐI không nhận các file PDF khác:
-    - 2\.Huong-dan-danh-gia-DRL\.pdf$
-    - Quy-dinh-Hoc-bong-KKHT-UET-2026\.pdf$
-    - 1011\.pdf$
-    - Quy-che-32-ngay-05-1-2017-Quy-che-Cong-tac-sinh-vien-tai-Dai-hoc-Quoc-gia-Ha-Noi\.PDF$
     - Quy-chế-ĐTĐH-3626\.pdf$
-    - Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20\.pdf$
-    - Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1\.pdf$
-    - dinh-muc-hoc-phi-nam-hoc-2026-2027_tb-nguoi-hoc\.pdf$
     - Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final\.pdf$
-    - thong-bao-mo-hinh-gvcn-2026-2027\.pdf$
 
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
   # exclude_prefixes:

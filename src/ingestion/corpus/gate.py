@@ -29,8 +29,6 @@ def attach(profiles, options):
     for site, profile in profiles.items():
         profile['_corpus_mode'] = mode
         if mode == 'off' or site not in paths:
-            if mode == 'strict' and (not options.sites or site in options.sites):
-                raise ValueError(f'{site}: strict mode requires a corpus policy')
             continue
         policy = load_policy(paths[site])
         if not set(policy.get('hosts', [policy['host']])) <= set(profile['scope']['hosts']):

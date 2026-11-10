@@ -3,13 +3,6 @@ host: uet.vnu.edu.vn
 hosts:
   - uet.edu.vn
   - uet.vnu.edu.vn
-  - uet-test.uet.edu.vn
-  - 2489013871.e.cdneverest.net
-  - 2679558515.e.cdneverest.net
-  - cdnportal.vnu.edu.vn
-  - handbook.uet.vnu.edu.vn
-  - studenthub.uet.edu.vn
-  - tuoitrecongnghe.uet.vnu.edu.vn
 old_notice_through: 2024
 overrides:
   https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/:
@@ -17,86 +10,16 @@ overrides:
     priority: 100
     category: ngoai_ngu
     reason: Nguồn chuẩn đầu ra ngoại ngữ do người dùng chỉ định ưu tiên
-  https://cdnportal.vnu.edu.vn/data/upload/vanban/2018/11/01/Quy-che-32-ngay-05-1-2017-Quy-che-Cong-tac-sinh-vien-tai-Dai-hoc-Quoc-gia-Ha-Noi.PDF:
-    decision: include
-    priority: 100
-    category: quy_che
-    reason: Quy chế công tác sinh viên tại ĐHQGHN (Quyết định 32)
   https://uet.vnu.edu.vn/wp-content/uploads/2022/12/Quy-ch%E1%BA%BF-%C4%90T%C4%90H-3626.pdf:
     decision: include
     priority: 100
     category: quy_che
     reason: Quy chế đào tạo đại học tại ĐHQGHN (Quyết định 3626)
-  https://handbook.uet.vnu.edu.vn/uploads/Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20.pdf:
-    decision: include
-    priority: 100
-    category: khen_thuong
-    reason: Quy định công tác thi đua khen thưởng đối với sinh viên tại Trường ĐHCN 2023
-  https://handbook.uet.vnu.edu.vn/uploads/Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1.pdf:
-    decision: include
-    priority: 100
-    category: khen_thuong
-    reason: Điều chỉnh quy định khen thưởng tại Trường ĐHCN 2025
-  https://2679558515.e.cdneverest.net/uet.edu.vn/2026/09/dinh-muc-hoc-phi-nam-hoc-2026-2027_tb-nguoi-hoc.pdf:
-    decision: include
-    priority: 100
-    category: hoc_phi
-    reason: Định mức học phí năm học 2026-2027
   https://uet.vnu.edu.vn/wp-content/uploads/2021/03/Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final.pdf:
     decision: include
     priority: 100
     category: hoc_phi
     reason: Quy định về việc nộp học phí tại Trường ĐHCN 2021
-  https://studenthub.uet.edu.vn/huong-dan/huong-dan-nop-hoc-phi:
-    decision: include
-    priority: 95
-    category: thu_tuc_hoc_tap
-    reason: Hướng dẫn nộp học phí trên cổng StudentHub
-  https://studenthub.uet.edu.vn/huong-dan/huong-dan-he-thong:
-    decision: include
-    priority: 95
-    category: thu_tuc_hoc_tap
-    reason: Hướng dẫn sử dụng hệ thống StudentHub
-  https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phu-huynh:
-    decision: include
-    priority: 95
-    category: thu_tuc_hoc_tap
-    reason: Hướng dẫn sử dụng StudentHub cho phụ huynh
-  https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-dich-vu-ho-tro-tai-khoan:
-    decision: include
-    priority: 95
-    category: thu_tuc_hoc_tap
-    reason: Hướng dẫn sử dụng dịch vụ hỗ trợ tài khoản StudentHub
-  https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phieu-khao-sat-phan-hoi-dich-vu:
-    decision: include
-    priority: 95
-    category: thu_tuc_hoc_tap
-    reason: Hướng dẫn sử dụng phiếu khảo sát phản hồi dịch vụ StudentHub
-  https://tuoitrecongnghe.uet.vnu.edu.vn/sv5t:
-    decision: include
-    priority: 95
-    category: phong_trao_sinh_vien
-    reason: Tiêu chuẩn và thông tin xét danh hiệu Sinh viên 5 tốt các cấp
-  https://uet-test.uet.edu.vn/wp-content/uploads/2026/01/2.Huong-dan-danh-gia-DRL.pdf:
-    decision: include
-    priority: 100
-    category: quy_che
-    reason: Hướng dẫn đánh giá điểm rèn luyện sinh viên UET
-  https://2489013871.e.cdneverest.net/uet.edu.vn/2026/08/Quy-dinh-Hoc-bong-KKHT-UET-2026.pdf:
-    decision: include
-    priority: 100
-    category: hoc_bong
-    reason: Quy định xét cấp học bổng khuyến khích học tập UET 2026
-  https://2679558515.e.cdneverest.net/uet.edu.vn/2023/03/1011.pdf:
-    decision: include
-    priority: 100
-    category: ngoai_ngu
-    reason: Hướng dẫn 1011 về chuẩn đầu ra ngoại ngữ ĐHQGHN
-  https://uet.vnu.edu.vn/offline/thong-bao-mo-hinh-gvcn-2026-2027.pdf:
-    decision: include
-    priority: 100
-    category: thu_tuc_hoc_tap
-    reason: Thông báo triển khai mô hình Giáo viên chủ nhiệm mới và hướng dẫn quy trình hỗ trợ sinh viên 2026-2027
 rules:
 - id: fee_operations
   decision: exclude

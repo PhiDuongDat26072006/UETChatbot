@@ -1,67 +1,102 @@
 site: HANDBOOK
 version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
 seeds:
-- https://handbook.uet.vnu.edu.vn/
+  # --- CORE SCOPE (Quy định khen thưởng trên handbook.uet.vnu.edu.vn) ---
+  - https://handbook.uet.vnu.edu.vn/uploads/Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20.pdf
+  - https://handbook.uet.vnu.edu.vn/uploads/Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1.pdf
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn trang Sổ tay sinh viên) ---
+  # - https://handbook.uet.vnu.edu.vn/
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
 scope:
   hosts:
-  - handbook.uet.vnu.edu.vn
+    - handbook.uet.vnu.edu.vn
+
   path_prefixes:
-  - /
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận đúng các file PDF quy định khen thưởng đã chỉ định ---
+  include_patterns:
+    - Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20\.pdf$
+    - Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1\.pdf$
+
   exclude_prefixes:
-  - /wp-admin
-  - /wp-login.php
-  - /feed
+    - /wp-admin
+    - /wp-login.php
+    - /feed
+
   listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /thu-vien-anh
-  - /bai-viet
+    - /
+    - /tin-tuc
+    - /thong-bao
+    - /dao-tao
+    - /nghien-cuu
+    - /sinh-vien
+    - /hop-tac
+    - /tuyen-sinh
+    - /thu-vien-anh
+    - /bai-viet
+
   listing_patterns:
-  - ^/(category|tag|author|page)(/|$)
+    - ^/(category|tag|author|page)(/|$)
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
 discovery:
   link_selectors:
-  - header a[href]
-  - main a[href]
-  - footer a[href]
-  - nav a[href]
-  - article a[href]
-  - .container a[href]
-  - '#content a[href]'
-  - a[href]
+    - header a[href]
+    - main a[href]
+    - footer a[href]
+    - nav a[href]
+    - article a[href]
+    - .container a[href]
+    - '#content a[href]'
+    - a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
 extraction:
   content_selectors:
-  - main
-  - main.flex-1
-  - article
-  - .entry-content
-  - .post-content
-  - .page-content
+    - main
+    - main.flex-1
+    - article
+    - .entry-content
+    - .post-content
+    - .page-content
+
   title_selectors:
-  - h1
-  - h2
-  - title
-  - h1.entry-title
+    - h1
+    - h2
+    - title
+    - h1.entry-title
+
   date_selectors:
-  - meta[property="article:published_time"]
-  - time[datetime]
-  - time
-  - .entry-date
+    - meta[property="article:published_time"]
+    - time[datetime]
+    - time
+    - .entry-date
+
   remove_selectors:
-  - header
-  - footer
-  - nav
-  - .sidebar
-  - .related-news
-  - .gallery-section
+    - header
+    - footer
+    - nav
+    - .sidebar
+    - .related-news
+    - .gallery-section
+
 quality:
   min_chars: 100
   max_link_density: 0.65
+
 policy:
   published_after: null
   time_sensitive_patterns: []

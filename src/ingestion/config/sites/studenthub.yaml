@@ -1,0 +1,82 @@
+site: STUDENTHUB
+version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
+seeds:
+  # --- CORE SCOPE (Hướng dẫn sử dụng cổng thông tin người học StudentHub) ---
+  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-nop-hoc-phi
+  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-he-thong
+  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phu-huynh
+  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-dich-vu-ho-tro-tai-khoan
+  - https://studenthub.uet.edu.vn/huong-dan/huong-dan-su-dung-phieu-khao-sat-phan-hoi-dich-vu
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
+scope:
+  hosts:
+    - studenthub.uet.edu.vn
+
+  path_prefixes:
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận đúng 5 trang hướng dẫn được chỉ định ---
+  include_patterns:
+    - ^/huong-dan/huong-dan-nop-hoc-phi/?$
+    - ^/huong-dan/huong-dan-he-thong/?$
+    - ^/huong-dan/huong-dan-su-dung-phu-huynh/?$
+    - ^/huong-dan/huong-dan-su-dung-dich-vu-ho-tro-tai-khoan/?$
+    - ^/huong-dan/huong-dan-su-dung-phieu-khao-sat-phan-hoi-dich-vu/?$
+
+  exclude_prefixes:
+    - /login
+    - /api
+
+  listing_exact:
+    - /
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
+discovery:
+  link_selectors:
+    - .entry-content a[href]
+    - article a[href]
+    - main a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
+extraction:
+  content_selectors:
+    - .entry-content
+    - article.entry-content
+    - article
+    - main
+
+  title_selectors:
+    - h1.entry-title
+    - h1
+    - title
+
+  date_selectors:
+    - meta[property="article:published_time"]
+    - time[datetime]
+
+  remove_selectors:
+    - header
+    - footer
+    - nav
+    - aside
+
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review
+

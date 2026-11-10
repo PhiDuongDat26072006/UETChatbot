@@ -1,0 +1,78 @@
+site: OTHER
+version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
+seeds:
+  # --- CORE SCOPE (Các link văn bản PDF từ CDN, cổng VNU, host test và tài liệu offline) ---
+  - https://uet-test.uet.edu.vn/wp-content/uploads/2026/01/2.Huong-dan-danh-gia-DRL.pdf
+  - https://2489013871.e.cdneverest.net/uet.edu.vn/2026/08/Quy-dinh-Hoc-bong-KKHT-UET-2026.pdf
+  - https://2679558515.e.cdneverest.net/uet.edu.vn/2023/03/1011.pdf
+  - https://2679558515.e.cdneverest.net/uet.edu.vn/2026/09/dinh-muc-hoc-phi-nam-hoc-2026-2027_tb-nguoi-hoc.pdf
+  - https://cdnportal.vnu.edu.vn/data/upload/vanban/2018/11/01/Quy-che-32-ngay-05-1-2017-Quy-che-Cong-tac-sinh-vien-tai-Dai-hoc-Quoc-gia-Ha-Noi.PDF
+  - https://uet.vnu.edu.vn/offline/thong-bao-mo-hinh-gvcn-2026-2027.pdf
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
+scope:
+  hosts:
+    - 2489013871.e.cdneverest.net
+    - 2679558515.e.cdneverest.net
+    - cdnportal.vnu.edu.vn
+    - uet-test.uet.edu.vn
+    - uet.vnu.edu.vn
+
+  path_prefixes:
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận đúng các file PDF đã chỉ định ---
+  include_patterns:
+    - 2\.Huong-dan-danh-gia-DRL\.pdf$
+    - Quy-dinh-Hoc-bong-KKHT-UET-2026\.pdf$
+    - 1011\.pdf$
+    - dinh-muc-hoc-phi-nam-hoc-2026-2027_tb-nguoi-hoc\.pdf$
+    - Quy-che-32-ngay-05-1-2017-Quy-che-Cong-tac-sinh-vien-tai-Dai-hoc-Quoc-gia-Ha-Noi\.PDF$
+    - ^/offline/thong-bao-mo-hinh-gvcn-2026-2027\.pdf$
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
+discovery:
+  link_selectors:
+    - a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
+extraction:
+  content_selectors:
+    - .entry-content
+    - article
+    - main
+
+  title_selectors:
+    - h1.entry-title
+    - h1
+    - title
+
+  date_selectors:
+    - meta[property="article:published_time"]
+    - time[datetime]
+
+  remove_selectors:
+    - header
+    - footer
+    - nav
+    - aside
+
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review
+

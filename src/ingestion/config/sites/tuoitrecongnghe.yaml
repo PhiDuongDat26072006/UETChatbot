@@ -1,0 +1,75 @@
+site: TUOITRECONGNGHE
+version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
+seeds:
+  # --- CORE SCOPE (Chỉ lấy thông tin tiêu chuẩn Sinh viên 5 tốt các cấp) ---
+  - https://tuoitrecongnghe.uet.vnu.edu.vn/sv5t
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
+scope:
+  hosts:
+    - tuoitrecongnghe.uet.vnu.edu.vn
+
+  path_prefixes:
+    - /
+
+  # --- CORE SCOPE: Chỉ giữ duy nhất endpoint /sv5t, các endpoint khác trên host này là rác ---
+  include_patterns:
+    - ^/sv5t/?$
+
+  exclude_prefixes:
+    - /contest
+    - /about-us
+    - /dashboard
+    - /login
+
+  listing_exact:
+    - /
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
+discovery:
+  link_selectors:
+    - .entry-content a[href]
+    - '#content a[href]'
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
+extraction:
+  content_selectors:
+    - .entry-content
+    - article.entry-content
+    - article
+    - main
+
+  title_selectors:
+    - h1.entry-title
+    - h1
+    - title
+
+  date_selectors:
+    - meta[property="article:published_time"]
+    - time[datetime]
+
+  remove_selectors:
+    - header
+    - footer
+    - nav
+    - aside
+
+quality:
+  min_chars: 100
+  max_link_density: 0.65
+
+policy:
+  published_after: null
+  time_sensitive_patterns: []
+  unknown_date: review
+
