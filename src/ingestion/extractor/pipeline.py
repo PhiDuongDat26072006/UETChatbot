@@ -21,14 +21,52 @@ def processing_key(raw_record, profile):
 def process_raw(raw, profile, raw_path=None):
     is_pdf = raw.metadata.get("resource_type") == "pdf" or str(raw.source_uri).lower().endswith(".pdf")
     if is_pdf and raw_path and raw_path.exists():
-        from .document.pdf_native import extract_pdf
+        from .document.pdf_native import extract_pdf, scan_pdf
         pdf_res = extract_pdf(raw_path)
+        pages = pdf_res["metadata"].get("pages", [])
+        ocr_pages = [
+            p["page_number"]
+            for p in pages
+            if p.get("metadata", {}).get("quality", {}).get("status") == "OCR_REQUIRED"
+        ]
+        extraction_method = pdf_res["metadata"]["extraction_method"]
+        if ocr_pages:
+            try:
+                from .document.pdf_gemini import refine_pdf, _resolve_api_key
+                if _resolve_api_key():
+                    out_dir = raw_path.parent / "ocr"
+                    manifest_path = out_dir / "ocr_manifest.json"
+                    if not manifest_path.is_file():
+                        scan_info = scan_pdf(raw_path, out_dir)
+                        manifest_path = Path(scan_info["manifest"])
+                    m_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    pending = [
+                        p["page_number"]
+                        for p in m_data.get("pages", [])
+                        if p.get("status") != "DONE"
+                    ]
+                    if pending or not (out_dir / "refined.json").is_file():
+                        refine_pdf(
+                            manifest_path,
+                            model="gemini-3.5-flash",
+                            pages=pending or ocr_pages,
+                            rpm=30,
+                            retries=6,
+                        )
+                    refined_file = out_dir / "refined.json"
+                    if refined_file.is_file():
+                        pdf_res = json.loads(refined_file.read_text(encoding="utf-8"))
+                        extraction_method = pdf_res["metadata"].get(
+                            "extraction_method", "native_selective_gemini"
+                        )
+            except Exception:
+                pass
         content = pdf_res["content"]
         title = raw.title or pdf_res.get("title") or raw.source_uri
         quality = {
-            "status": "NATIVE_OK",
+            "status": "accepted",
             "page_count": pdf_res["metadata"]["page_count"],
-            "extraction_method": "pymupdf",
+            "extraction_method": extraction_method,
             "reasons": [],
         }
         metadata = {

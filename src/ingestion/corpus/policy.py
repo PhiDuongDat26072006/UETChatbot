@@ -76,24 +76,31 @@ def classify(row, policy):
     prefixes = policy.get('prefetch', {}).get('exclude_prefixes', [])
     if any(path.rstrip('/') == p.rstrip('/') or path.startswith(p.rstrip('/') + '/') for p in prefixes):
         return verdict('exclude','prefetch_prefix_guard','navigation','URL thuộc nhóm chặn trước HTTP')
-    if re.search(r'^/(en|cdu-en|tag|author|feed|wp-admin|wp-json)(/|$)|^/~', path):
-        return verdict('exclude','non_corpus_path','navigation','Trang hệ thống, lưu trữ, tiếng Anh hoặc cá nhân')
+    if re.search(r'^/(en|cdu-en|tag|author|feed|wp-admin|wp-json|login)(/|$|[’”"\'])|^/~', path):
+        return verdict('exclude','non_corpus_path','navigation','Trang hệ thống, đăng nhập, lưu trữ, tiếng Anh hoặc cá nhân')
+    host_allowed = policy.get('host_Allowed_only', {})
+    if parts.hostname in host_allowed:
+        allowed_paths = {p.rstrip('/').lower() or '/' for p in host_allowed[parts.hostname]}
+        if (path.rstrip('/') or '/') not in allowed_paths:
+            return verdict('exclude','host_endpoint_excluded','outside_scope',
+                           f'Endpoint trên {parts.hostname} ngoài danh sách chỉ định bị loại bỏ (rác/test)')
     if meta.get('decision') == 'listing' or re.search(r'^/category/|/page/\d+/?$',path) or path in {'/','/dao-tao/','/chuong-trinh-dao-tao/'}:
         return verdict('exclude','navigation_only','navigation','Chỉ dùng khám phá link; không phải bài chi tiết')
-    if meta.get('decision') in {'rejected','alias'}:
-        return verdict('exclude','crawl_ineligible','crawl','URL bị từ chối hoặc là alias ở bước crawl')
-    if meta.get('resource_type') in {'pdf','office','asset'} or meta.get('decision')=='deferred':
-        return verdict('review','deferred_resource','attachment','Tài nguyên cần xử lý riêng trước khi đưa vào corpus',30)
-    title = row.get('title') or meta.get('title') or ''
+    if meta.get('decision') == 'alias':
+        return verdict('exclude','crawl_alias','crawl','URL trùng lặp (redirect alias) ở bước crawl')
+    is_core_accepted = meta.get('decision') == 'accepted'
+    if (meta.get('resource_type') in {'pdf','office','asset'} and not is_core_accepted) or meta.get('decision')=='deferred':
+        return verdict('review','deferred_resource','attachment','Tài nguyên chưa nằm trong danh sách chỉ định; chờ xem xét',30)
+    title = row.get('title') or meta.get('title') or meta.get('link_text') or ''
     texts = (normalize(title), normalize(path))
     for rule in policy['rules']:
         if not any(p.search(text) for p in rule['_regex'] for text in texts):
             continue
         decision, reason = rule['decision'], rule['reason']
         years = []
-        if decision == 'include' and not title.strip():
+        if decision == 'include' and (not is_core_accepted or not (row.get('title') or meta.get('title') or '').strip()):
             decision = 'review'
-            reason = 'URL phù hợp nhưng thiếu tiêu đề; cần xác minh trang đã tải'
+            reason = 'URL phù hợp chủ đề nhưng chưa nằm trong danh sách core hoặc chưa tải; chờ xem xét'
         if decision == 'temporal':
             # Also catches concatenated dates such as 92020; does not interpret -2 as year.
             years = sorted({int(y) for y in re.findall(r'(?:19|20)\d{2}', title+' '+path)})
@@ -103,4 +110,4 @@ def classify(row, policy):
                 decision = 'review'  # Recent publication does not prove an open deadline.
         return verdict(decision, rule['id'],rule['category'],reason,rule.get('priority',0),
                        detected_years=years, evidence='title_and_url')
-    return verdict('review','unclassified','khac','Chưa có quy tắc đủ chắc; chưa chọn để embedding',20)
+    return verdict('review','unclassified','khac','Chưa nằm trong danh sách chắc chắn oke hay chắc chắn loại; chờ xem xét',20)

@@ -64,6 +64,27 @@ class HTMLFetcher:
         raise RuntimeError(f"Failed to fetch {url}")
 
     def _get(self, url, allowed, headers):
+        from pathlib import Path
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(url)
+        if parts.path.startswith("/offline/"):
+            rel_name = parts.path.split("/offline/", 1)[1].strip("/")
+            repo_root = Path(__file__).resolve().parents[3]
+            local_path = repo_root / "data" / "offline_docs" / rel_name
+            if local_path.is_file():
+                body = local_path.read_bytes()
+                is_pdf = local_path.suffix.lower() == ".pdf" or body.startswith(b"%PDF-")
+                return {
+                    "requested_url": url,
+                    "final_url": url,
+                    "status_code": 200,
+                    "headers": {
+                        "content-type": "application/pdf" if is_pdf else "text/html; charset=utf-8"
+                    },
+                    "body": body,
+                    "encoding": "binary" if is_pdf else "utf-8",
+                }
         current = url
         for _ in range(6):
             if not allowed(current):
@@ -132,7 +153,12 @@ class HTMLFetcher:
                         body,
                         known_definite_encodings=[declared] if declared else [],
                         is_html=True,
-                    ).original_encoding
-                    info.update(body=body, encoding=encoding or "utf-8")
+                    ).original_encoding or "utf-8"
+                    from .spa import maybe_hydrate_spa
+
+                    body, encoding = maybe_hydrate_spa(
+                        current, body, encoding, self.session(), self.timeout
+                    )
+                    info.update(body=body, encoding=encoding)
                     return info
         raise ValueError("Too many redirects")

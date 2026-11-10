@@ -72,7 +72,7 @@ class StreamingExtractor:
         existing = self.storage.records("processed", self.site).get(sid)
         if self.options.retry_failed and state.get("status") != "failed":
             return None
-        if not self.options.reprocess and state.get("key") == key:
+        if not self.options.reprocess:
             if existing and existing["raw_data_id"] == row["id"] and state.get("status") in {"completed", "review"}:
                 self.counts["processed_skipped"] += 1
                 return None

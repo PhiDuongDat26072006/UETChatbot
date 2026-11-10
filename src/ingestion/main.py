@@ -97,8 +97,8 @@ def build_parser():
         command.add_argument("--sites", nargs="+", type=str.upper)
         command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
         command.add_argument("--profile-dir", type=Path)
-    ingest.add_argument("--corpus-mode", choices=["off", "balanced", "strict"], default="balanced",
-                        help="balanced: include+review; strict: include only; off: previous behavior")
+    ingest.add_argument("--corpus-mode", choices=["off", "balanced", "strict"], default="strict",
+                        help="strict (default): include only; balanced: include+review; off: previous behavior")
     ingest.add_argument("--corpus-config", type=Path, help="Per-site corpus registry YAML")
     corpus = commands.add_parser("filter", help="Rank UET source links; do not modify ingestion data")
     corpus.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)

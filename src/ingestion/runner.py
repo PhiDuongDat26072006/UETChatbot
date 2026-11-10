@@ -7,8 +7,9 @@ from uuid import uuid4
 from src.base import DataSource
 from .config.profiles import load_profiles
 from .crawler.engine import crawl
-from .crawler.policy import evaluate, reconcile_sources
-from .crawler.parser import metadata as extract_metadata
+from .crawler.policy import evaluate, reconcile_sources, resource_type
+from .crawler.parser import metadata as extract_metadata, parse_page
+from .identity import source_id
 from .downloader.http import HTMLFetcher
 from .downloader.service import download_source
 from .storage import Storage, writer_lock, write_json, now
@@ -227,12 +228,55 @@ def run_ingestion_serial(
                                     site, source.source_id, "raw", status="completed"
                                 )
                             else:
-                                meta = extract_metadata(
-                                    page["body"].decode(
-                                        page["encoding"], errors="replace"
-                                    ),
-                                    profile,
+                                is_pdf = (
+                                    source.metadata.get("resource_type") == "pdf"
+                                    or page.get("encoding") == "binary"
+                                    or page["final_url"].lower().endswith(".pdf")
                                 )
+                                if is_pdf:
+                                    from pathlib import PurePosixPath
+                                    from urllib.parse import unquote, urlsplit
+
+                                    clean_name = (
+                                        PurePosixPath(unquote(urlsplit(page["final_url"]).path))
+                                        .stem.replace("-", " ")
+                                        .replace(".", " ")
+                                        .strip()
+                                    )
+                                    meta = {"title": clean_name, "resource_type": "pdf"}
+                                else:
+                                    meta, links = parse_page(
+                                        page["body"].decode(
+                                            page["encoding"], errors="replace"
+                                        ),
+                                        page["final_url"],
+                                        profile,
+                                    )
+                                    for link in links:
+                                        target = link["url"]
+                                        kind = resource_type(target)
+                                        if kind == "asset":
+                                            continue
+                                        verdict, why = evaluate(target, profile)
+                                        sid = source_id(target)
+                                        if sid not in storage.records("sources", site):
+                                            storage.save_source(
+                                                DataSource(
+                                                    source_id=sid,
+                                                    source_type="web",
+                                                    uri=target,
+                                                    metadata={
+                                                        "site": site,
+                                                        "faculty": site,
+                                                        "resource_type": kind,
+                                                        "discovered_from": source.uri,
+                                                        "link_text": link["link_text"],
+                                                        "crawl_depth": source.metadata.get("crawl_depth", 0) + 1,
+                                                        "decision": verdict,
+                                                        "decision_reason": why,
+                                                    },
+                                                )
+                                            )
                                 decision, reason = evaluate(
                                     page["final_url"], profile, meta
                                 )

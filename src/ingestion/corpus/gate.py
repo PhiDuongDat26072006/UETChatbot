@@ -24,7 +24,7 @@ def policy_paths(config=None):
 
 
 def attach(profiles, options):
-    mode = getattr(options, 'corpus_mode', 'balanced')
+    mode = getattr(options, 'corpus_mode', 'strict')
     paths = policy_paths(getattr(options, 'corpus_config', None)) if mode != 'off' else {}
     for site, profile in profiles.items():
         profile['_corpus_mode'] = mode
@@ -93,15 +93,43 @@ def priority(url, profile, metadata=None):
 
 
 def reconcile(storage, site, profile):
-    if not profile.get('_corpus_policy'):
-        return 0
-    policy = profile['_corpus_policy']
-    seeds = [url for url, rule in policy['overrides'].items() if rule['decision'] == 'include']
+    from src.base import DataSource
+    from ..identity import normalize_site_url, source_id
+    from ..crawler.policy import evaluate, resource_type
+
+    policy = profile.get('_corpus_policy')
+    seeds = (
+        [url for url, rule in policy['overrides'].items() if rule['decision'] == 'include']
+        if policy else []
+    )
     profile['_manual_seeds'] = list(dict.fromkeys(seeds + profile.get('_manual_seeds', [])))
+    rows = storage.records('sources', site)
     changed = 0
-    for row in storage.records('sources', site).values():
-        before = row['metadata'].get('corpus')
-        changed += before != annotate(row, profile)
+    for raw_url in profile.get('_manual_seeds', []) + profile.get('seeds', []):
+        url = normalize_site_url(raw_url, profile)
+        sid = source_id(url)
+        if sid not in rows:
+            decision, reason = evaluate(url, profile)
+            src = DataSource(
+                source_id=sid,
+                source_type='web',
+                uri=url,
+                metadata={
+                    'site': site,
+                    'faculty': site,
+                    'resource_type': resource_type(url),
+                    'crawl_depth': 0,
+                    'discovered_from': None,
+                    'decision': decision,
+                    'decision_reason': reason,
+                },
+            )
+            rows[sid] = src.model_dump(mode='json')
+            changed += 1
+    if policy:
+        for row in rows.values():
+            before = row['metadata'].get('corpus')
+            changed += before != annotate(row, profile)
     if changed:
         storage.flush('sources', site)
     return changed

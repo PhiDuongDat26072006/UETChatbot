@@ -56,3 +56,5 @@ AGENTS.md
 uv.lock
 pyproject.toml
 .python-version
+
+weights/
