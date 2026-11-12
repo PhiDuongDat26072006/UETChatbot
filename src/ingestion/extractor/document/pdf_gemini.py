@@ -22,7 +22,7 @@ PROMPT = (
 
 
 def _resolve_api_key():
-    for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEYS"):
+    for var in ("OCR_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEYS"):
         val = os.environ.get(var, "").strip().strip("'\"")
         if val:
             for item in val.replace(";", "\n").replace(",", "\n").splitlines():
@@ -32,10 +32,12 @@ def _resolve_api_key():
     env_file = Path(__file__).resolve().parents[4] / ".env"
     if env_file.is_file():
         for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-            s = line.strip().lstrip("#").strip()
-            for prefix in ("GEMINI_API_KEY=", "GOOGLE_API_KEY=", "GEMINI_API_KEYS="):
-                if s.startswith(prefix):
-                    k = s.split("=", 1)[1].strip().strip("'\"")
+            line = line.strip()
+            if line.startswith("#"):
+                continue
+            for prefix in ("OCR_GEMINI_API_KEY=", "GEMINI_API_KEY=", "GOOGLE_API_KEY=", "GEMINI_API_KEYS="):
+                if line.startswith(prefix):
+                    k = line.split("=", 1)[1].strip().strip("'\"")
                     if k and not k.startswith("AIzaSy..."):
                         return k
     return None
