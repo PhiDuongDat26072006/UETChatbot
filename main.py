@@ -43,12 +43,13 @@ def main():
 
     # Nhóm tham số Đánh giá chất lượng (Evaluation) - Rút gọn theo chuẩn
     parser.add_argument("--eval", "--evaluate", action="store_true", dest="eval", help="Kích hoạt quy trình đánh giá chất lượng hệ thống")
+    parser.add_argument("--all", action="store_true", help="Chạy đánh giá toàn diện cả Retrieval và End-to-End trên tập benchmark")
     parser.add_argument("--e2e", action="store_true", help="Đánh giá toàn trình End-to-End RAG")
     parser.add_argument("--retrieval", action="store_true", help="Đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG)")
     parser.add_argument("--level", type=str, choices=["doc", "chunk", "both"], default="both", help="Cấp độ đánh giá retrieval: doc, chunk, hoặc both (mặc định: both)")
     parser.add_argument("--mode", type=str, choices=["live", "mock"], default="live", help="Chế độ đánh giá retrieval: 'live' (chạy retriever thật) hoặc 'mock' (kiểm thử nhanh với ground-truth)")
-    parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, handbook1, overview, all")
-    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (ví dụ: data/eval_data/uet_domain_qa/handbook1_qa.json)")
+    parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, tuyensinh, overview, all")
+    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (mặc định: data/eval_data/uet_rag_eval_100/e2e_eval_100.json)")
     parser.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu câu hỏi muốn kiểm thử (mặc định: toàn bộ)")
     parser.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas và LLM-as-a-Judge thay vì Heuristic")
     parser.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
@@ -82,11 +83,45 @@ def main():
         configured_k = cfg.get("retrieval", {}).get("final_top_k", 10)
         eval_top_k = args.top_k if args.top_k is not None else configured_k
         out_p = Path(args.output) if args.output else None
+        eval_dataset_target = args.dataset or cfg.get("paths", {}).get("eval_dataset_file")
 
-        if args.e2e:
+        if getattr(args, "all", False):
+            print("\n" + "=" * 75)
+            print("🌟 KHỞI CHẠY ĐÁNH GIÁ TOÀN DIỆN CẢ RETRIEVAL VÀ END-TO-END RAG")
+            print("=" * 75)
+            from src.evaluation.evaluate_retrieval import run_eval_retrieval_cli
+            from src.evaluation.evaluator import run_eval_e2e_cli
+
+            ret_out = Path(args.output).with_name(f"{Path(args.output).stem}_retrieval.json") if args.output else None
+            e2e_out = Path(args.output).with_name(f"{Path(args.output).stem}_e2e.json") if args.output else None
+
+            print("\n[CHẶNG 1/2] ĐÁNH GIÁ PHÂN HỆ RETRIEVAL (DOC & CHUNK DUAL-LEVEL)")
+            run_eval_retrieval_cli(
+                eval_dir=eval_dataset_target,
+                top_k=eval_top_k,
+                output=ret_out,
+                level=args.level,
+                mode=args.mode,
+                domain=args.domain,
+            )
+
+            print("\n[CHẶNG 2/2] ĐÁNH GIÁ PHÂN HỆ END-TO-END GENERATION")
+            run_eval_e2e_cli(
+                dataset_path=eval_dataset_target,
+                domain=args.domain,
+                use_ragas=args.use_ragas,
+                num_samples=args.samples,
+                top_k=eval_top_k,
+                output_path=e2e_out,
+            )
+            print("\n" + "=" * 75)
+            print("✅ ĐÃ HOÀN TẤT ĐÁNH GIÁ TOÀN DIỆN CẢ 2 PHÂN HỆ!")
+            print("=" * 75 + "\n")
+
+        elif args.e2e:
             from src.evaluation.evaluator import run_eval_e2e_cli
             run_eval_e2e_cli(
-                dataset_path=args.dataset,
+                dataset_path=eval_dataset_target,
                 domain=args.domain,
                 use_ragas=args.use_ragas,
                 num_samples=args.samples,
@@ -96,7 +131,14 @@ def main():
         else:
             # Mặc định khi chạy python main.py --eval hoặc --eval --retrieval: Đánh giá phân hệ truy xuất với K từ config.yaml
             from src.evaluation.evaluate_retrieval import run_eval_retrieval_cli
-            run_eval_retrieval_cli(top_k=eval_top_k, output=out_p, level=args.level, mode=args.mode)
+            run_eval_retrieval_cli(
+                eval_dir=eval_dataset_target,
+                top_k=eval_top_k,
+                output=out_p,
+                level=args.level,
+                mode=args.mode,
+                domain=args.domain,
+            )
 
     elif args.ingest:
         if args.status:
@@ -110,20 +152,23 @@ def main():
         print("📌 CÁC LỆNH CHÍNH ĐỂ SỬ DỤNG HỆ THỐNG:")
         print("  1. Khởi chạy Giao diện WEB:          python main.py --run --web")
         print("  2. Khởi chạy Chatbot trên CLI:       python main.py --run --cli")
-        print("  3. Đánh giá toàn trình RAG:          python main.py --eval --e2e")
-        print("     • Đánh giá theo domain/khoa:      python main.py --eval --e2e --domain handbook1")
-        print("     • Đánh giá file dataset tùy ý:    python main.py --eval --e2e --dataset data/eval_data/uet_domain_qa/handbook1_qa.json")
-        print("     • Thử nghiệm với số mẫu nhỏ:      python main.py --eval --e2e --domain handbook1 --samples 5")
+        print("  3. Đánh giá toàn diện cả 2 chặng:    python main.py --eval --all")
+        print("     • Đánh giá toàn diện mock nhanh:  python main.py --eval --all --mode mock")
+        print("     • Đánh giá toàn diện theo domain: python main.py --eval --all --domain FET")
+        print("  4. Đánh giá toàn trình RAG (E2E):    python main.py --eval --e2e")
+        print("     • Đánh giá theo domain/khoa:      python main.py --eval --e2e --domain FET")
+        print("     • Thử nghiệm với số mẫu nhỏ:      python main.py --eval --e2e --samples 5")
         print("     • Đánh giá với top_k tùy ý:       python main.py --eval --e2e --top_k 10")
         print("     • Lưu kết quả đánh giá:           python main.py --eval --e2e --output eval_e2e.json")
-        print("  4. Đánh giá phân hệ truy xuất:       python main.py --eval --retrieval")
+        print("  5. Đánh giá phân hệ truy xuất:       python main.py --eval --retrieval")
         print("     • Đánh giá song song (mặc định):  python main.py --eval --retrieval --level both")
         print("     • Đánh giá mức Đoạn cắt (Chunk):  python main.py --eval --retrieval --level chunk")
         print("     • Đánh giá mức Tài liệu (Doc):    python main.py --eval --retrieval --level doc")
-        print("     • Đánh giá với top_k tùy ý:       python main.py --eval --retrieval --top_k 10")
+        print("     • Đánh giá nhanh mock mode:       python main.py --eval --retrieval --mode mock")
+        print("     • Lọc theo domain/khoa:           python main.py --eval --retrieval --domain FET")
         print("     • Lưu kết quả retrieval:          python main.py --eval --retrieval --output eval_retrieval.json")
-        print("  5. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
-        print("  6. Nạp dữ liệu đa chặng (Ingest):    python main.py --ingest --from <stage> --to <stage>")
+        print("  6. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
+        print("  7. Nạp dữ liệu đa chặng (Ingest):    python main.py --ingest --from <stage> --to <stage>")
         print("\n💡 Quy trình nạp mới dữ liệu toàn diện (2 bước tuần tự):")
         print("  • Bước 1 (Chunking & ChromaDB):      python main.py --ingest --from processed --to vectordb --clear")
         print("  • Bước 2 (BM25 Sparse Index):        python main.py --ingest --from chunked --to indexed_data --clear")
@@ -131,7 +176,7 @@ def main():
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
         print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data\n")
-
+        print(" 8. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
 
 if __name__ == "__main__":
     main()

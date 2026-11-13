@@ -100,6 +100,32 @@ class TestUETIngestionPipelineStages(unittest.TestCase):
         self.assertIn("vectordb", stats["stages"])
         self.assertIn("manifest_tracking", stats)
 
+    def test_lazy_loading_avoids_embedder_when_unused(self):
+        """UETEmbedder chỉ được khởi tạo khi thực sự truy cập embedding_model."""
+        from unittest.mock import MagicMock, patch
+        import src.pipeline as pipeline_module
+
+        mock_store = MagicMock()
+        mock_store.count.return_value = 0
+        mock_store.embedding_model = None
+        mock_embedder = MagicMock()
+
+        with patch.object(pipeline_module, "UETEmbedder", return_value=mock_embedder) as embedder_cls, \
+             patch.object(pipeline_module, "UETVectorStore", return_value=mock_store) as store_cls:
+            pipeline = pipeline_module.UETIngestionPipeline(manifest=self.tracker)
+            embedder_cls.assert_not_called()
+            store_cls.assert_not_called()
+
+            pipeline.get_stage_stats()
+            store_cls.assert_called_once()
+            embedder_cls.assert_not_called()
+
+            # Truy cập embedding_model mới kích hoạt khởi tạo và đồng bộ sang vector_store
+            emb = pipeline.embedding_model
+            self.assertIs(emb, mock_embedder)
+            embedder_cls.assert_called_once()
+            self.assertIs(mock_store.embedding_model, mock_embedder)
+
 
 if __name__ == "__main__":
     unittest.main()

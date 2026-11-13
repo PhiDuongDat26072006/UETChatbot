@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UET RAG - Ground Truth Reviewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    code,
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+  <!-- TOP HEADER -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-10">
+    <div class="flex items-center space-x-3">
+      <div
+        class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+        UET
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900 leading-tight">Ground Truth Reviewer</h1>
+        <p class="text-xs text-slate-500">Công cụ kiểm tra & gán nhãn Ground Truth (data/eval_data)</p>
+      </div>
+    </div>
+
+    <!-- Live Stats -->
+    <div
+      class="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium">
+      <span class="text-slate-500">Tổng: <strong id="stat-total" class="text-slate-800">0</strong></span>
+      <span class="text-slate-300">|</span>
+      <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Đúng: <strong
+          id="stat-dung">0</strong></span>
+      <span class="text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Sai: <strong
+          id="stat-sai">0</strong></span>
+      <span class="text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Thiếu: <strong
+          id="stat-thieu">0</strong></span>
+      <span class="text-slate-600 bg-slate-200 px-2 py-0.5 rounded">None: <strong id="stat-none">0</strong></span>
+      <span class="text-slate-300">|</span>
+      <span class="text-indigo-600">Tiến độ: <strong id="stat-progress">0%</strong></span>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center space-x-2">
+      <button onclick="exportExcel()"
+        class="inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5L19 7.5V19a2 2 0 01-2 2z"></path>
+        </svg>
+        Xuất Excel (.xlsx)
+      </button>
+      <button onclick="exportJSON()"
+        class="inline-flex items-center px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-sm transition">
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+        </svg>
+        Lưu JSON
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER (SPLIT PANE) -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT SIDEBAR: Question list & filter -->
+    <aside class="w-64 md:w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+      <!-- Search & Filters -->
+      <div class="p-3 border-b border-slate-200 space-y-2">
+        <div class="relative">
+          <input id="search-input" type="text" placeholder="Tìm theo ID, câu hỏi, ground truth..."
+            class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+            oninput="handleSearch()">
+          <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+        </div>
+
+        <div class="flex flex-wrap gap-1 text-[11px]">
+          <button onclick="setFilter('all')" id="btn-filter-all"
+            class="filter-btn px-2 py-1 rounded bg-indigo-100 text-indigo-700 font-semibold">Tất cả (<span
+              id="count-all">0</span>)</button>
+          <button onclick="setFilter('none')" id="btn-filter-none"
+            class="filter-btn px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200">Chưa gán (<span
+              id="count-none">0</span>)</button>
+          <button onclick="setFilter('đúng')" id="btn-filter-dung"
+            class="filter-btn px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700">Đúng
+            (<span id="count-dung">0</span>)</button>
+          <button onclick="setFilter('sai')" id="btn-filter-sai"
+            class="filter-btn px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-700">Sai
+            (<span id="count-sai">0</span>)</button>
+          <button onclick="setFilter('thiếu')" id="btn-filter-thieu"
+            class="filter-btn px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700">Thiếu
+            (<span id="count-thieu">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Scrollable List -->
+      <div id="question-list" class="flex-1 overflow-y-auto divide-y divide-slate-100">
+        <!-- Questions rendered here by JS -->
+      </div>
+    </aside>
+
+    <!-- RIGHT MAIN PANEL: Detail & Labeling -->
+    <main class="flex-1 flex flex-col overflow-y-auto bg-slate-100">
+
+      <!-- Sticky Navigation Toolbar -->
+      <div
+        class="sticky top-0 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-2.5 z-10 shadow-sm flex flex-wrap items-center justify-between gap-3">
+
+        <!-- Prev / Next & Position -->
+        <div class="flex items-center space-x-2">
+          <button onclick="prevQuestion()"
+            class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center">
+            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Trước (←)
+          </button>
+          <span id="nav-counter" class="text-xs font-bold text-slate-700 px-2 py-1 bg-slate-100 rounded">
+            Câu 1 / 100
+          </span>
+          <button onclick="nextQuestion()"
+            class="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition shadow-sm flex items-center">
+            Sau (→)
+            <svg class="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </button>
+
+          <label class="flex items-center text-xs text-slate-600 ml-4 cursor-pointer select-none">
+            <input type="checkbox" id="auto-advance" checked
+              class="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 mr-1.5">
+            Tự động nhảy câu sau khi gán nhãn
+          </label>
+
+          <!-- Save status indicator -->
+          <div id="save-indicator"
+            class="text-xs font-medium text-emerald-600 flex items-center opacity-0 transition-opacity duration-300 ml-3">
+            <svg class="w-4 h-4 mr-1 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span id="save-msg">Đã lưu</span>
+          </div>
+        </div>
+
+        <!-- Shortcuts help -->
+        <div class="text-[11px] text-slate-600 flex items-center space-x-2">
+          <span class="font-semibold text-slate-600">Phím tắt:</span>
+          <kbd
+            class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono text-[10px]">1</kbd>
+          Đúng
+          <kbd
+            class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono text-[10px]">2</kbd>
+          Sai
+          <kbd
+            class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono text-[10px]">3</kbd>
+          Thiếu
+          <kbd
+            class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-slate-700 font-mono text-[10px]">0</kbd>
+          None
+        </div>
+      </div>
+
+      <!-- Review Content Container -->
+      <div class="p-6 space-y-6 max-w-6xl mx-auto w-full">
+
+        <!-- Query & Metadata Box -->
+        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span id="detail-id"
+                class="px-2.5 py-1 bg-slate-900 text-white text-xs font-mono font-bold rounded">eval_001</span>
+              <span id="detail-category"
+                class="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded border border-indigo-200">CATEGORY</span>
+              <span id="detail-unit"
+                class="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded border border-slate-200">UNIT</span>
+              <span id="detail-type"
+                class="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded border border-slate-200">TYPE</span>
+            </div>
+            <div id="detail-badge"
+              class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600">
+              Chưa gán nhãn
+            </div>
+          </div>
+
+          <div>
+            <h2 class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Nội dung câu hỏi:</h2>
+            <div id="detail-query"
+              class="text-base font-semibold text-slate-900 leading-relaxed bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+              <!-- Query text -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Ground Truth Box -->
+        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-2">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center">
+              <svg class="w-4 h-4 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              Ground Truth
+            </h2>
+            <button onclick="copyGroundTruth()"
+              class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center">
+              <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z">
+                </path>
+              </svg>
+              Copy
+            </button>
+          </div>
+          <div id="detail-ground-truth"
+            class="text-sm text-slate-800 leading-relaxed bg-emerald-50/50 p-4 rounded-lg border border-emerald-200 whitespace-pre-wrap">
+            <!-- Ground truth text -->
+          </div>
+        </div>
+
+        <!-- Chunks Level 2 (Trực tiếp / Trọng yếu) -->
+        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 class="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-600 mr-2"></span>
+              ID & Nội dung Chunk Mức độ 2 (Trả lời trực tiếp / Trọng yếu)
+            </h2>
+            <span id="count-lvl2" class="px-2 py-0.5 text-xs font-bold bg-indigo-100 text-indigo-700 rounded-full">0
+              chunk</span>
+          </div>
+          <div id="chunks-lvl2-container" class="space-y-4">
+            <!-- Chunks Level 2 items -->
+          </div>
+        </div>
+
+        <!-- Chunks Level 1 (Bổ trợ / Ngữ cảnh) -->
+        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h2 class="text-xs font-bold text-sky-900 uppercase tracking-wider flex items-center">
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 mr-2"></span>
+              ID & Nội dung Chunk Mức độ 1 (Bổ trợ / Ngữ cảnh liên quan)
+            </h2>
+            <span id="count-lvl1" class="px-2 py-0.5 text-xs font-bold bg-sky-100 text-sky-700 rounded-full">0
+              chunk</span>
+          </div>
+          <div id="chunks-lvl1-container" class="space-y-4">
+            <!-- Chunks Level 1 items -->
+          </div>
+        </div>
+
+        <!-- Note / Comment Box (Đã chuyển xuống cuối trang) -->
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm">
+          <label class="block text-xs font-bold text-amber-900 uppercase tracking-wider mb-1.5 flex items-center">
+            <svg class="w-4 h-4 mr-1 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+              </path>
+            </svg>
+            Ghi chú kiểm tra (Tùy chọn - lý do sai/thiếu hoặc thông tin cần bổ sung)
+          </label>
+          <textarea id="note-input" rows="2"
+            placeholder="Nhập ghi chú tại đây nếu câu trả lời bị sai, thiếu hoặc cần điều chỉnh..."
+            class="w-full text-xs p-2.5 bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+            oninput="handleNoteChange()"></textarea>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- SCRIPT -->
+  <script>
+    let allData = [];
+    let filteredData = [];
+    let currentIndex = 0;
+    let currentFilter = 'all';
+    let saveTimeout = null;
+
+    // Load data from backend
+    async function loadData() {
+      try {
+        const res = await fetch('/api/data');
+        const json = await res.json();
+        allData = json.items || [];
+        updateStats(json.stats);
+        applyFilterAndSearch();
+        if (allData.length > 0) {
+          selectQuestion(0);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải dữ liệu:', err);
+        alert('Không thể kết nối đến máy chủ: ' + err.message);
+      }
+    }
+
+    function updateStats(stats) {
+      document.getElementById('stat-total').innerText = stats.total;
+      document.getElementById('stat-dung').innerText = stats.dung;
+      document.getElementById('stat-sai').innerText = stats.sai;
+      document.getElementById('stat-thieu').innerText = stats.thieu;
+      document.getElementById('stat-none').innerText = stats.none;
+      document.getElementById('stat-progress').innerText = stats.progress + '%';
+
+      document.getElementById('count-all').innerText = stats.total;
+      document.getElementById('count-dung').innerText = stats.dung;
+      document.getElementById('count-sai').innerText = stats.sai;
+      document.getElementById('count-thieu').innerText = stats.thieu;
+      document.getElementById('count-none').innerText = stats.none;
+    }
+
+    function applyFilterAndSearch() {
+      const q = (document.getElementById('search-input').value || '').toLowerCase().trim();
+
+      filteredData = allData.filter(item => {
+        // Filter by label
+        if (currentFilter !== 'all') {
+          const l = (item.label || 'none').toLowerCase();
+          if (l !== currentFilter) return false;
+        }
+        // Filter by search query
+        if (q) {
+          const matchId = (item.id || '').toLowerCase().includes(q);
+          const matchQuery = (item.query || '').toLowerCase().includes(q);
+          const matchGt = (item.ground_truth || '').toLowerCase().includes(q);
+          const matchNote = (item.note || '').toLowerCase().includes(q);
+          if (!matchId && !matchQuery && !matchGt && !matchNote) return false;
+        }
+        return true;
+      });
+
+      renderQuestionList();
+
+      if (filteredData.length > 0) {
+        if (currentIndex >= filteredData.length) {
+          currentIndex = 0;
+        }
+        renderDetail(filteredData[currentIndex]);
+      } else {
+        renderEmptyDetail();
+      }
+    }
+
+    function renderQuestionList() {
+      const container = document.getElementById('question-list');
+      container.innerHTML = '';
+
+      if (filteredData.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">Không tìm thấy câu hỏi phù hợp.</div>';
+        return;
+      }
+
+      filteredData.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = `px-3 py-2 cursor-pointer transition flex items-center justify-between space-x-2 text-xs ${idx === currentIndex ? 'bg-indigo-50/80 border-l-4 border-indigo-600 font-semibold' : 'hover:bg-slate-50 border-l-4 border-transparent'
+          }`;
+        div.onclick = () => selectQuestion(idx);
+
+        const label = item.label || 'none';
+        let badgeClass = 'bg-slate-100 text-slate-500 border border-slate-200';
+        let labelText = 'none';
+
+        if (label === 'đúng') {
+          badgeClass = 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-300';
+          labelText = 'Đúng';
+        } else if (label === 'sai') {
+          badgeClass = 'bg-rose-100 text-rose-800 font-bold border border-rose-300';
+          labelText = 'Sai';
+        } else if (label === 'thiếu') {
+          badgeClass = 'bg-amber-100 text-amber-800 font-bold border border-amber-300';
+          labelText = 'Thiếu';
+        }
+
+        div.innerHTML = `
+          <div class="flex items-center space-x-2 min-w-0">
+            <span class="font-mono font-bold text-slate-800 text-xs">${item.id}</span>
+            <span class="text-[10px] text-slate-400 truncate max-w-[80px]">${item.unit || ''}</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] flex-shrink-0 ${badgeClass}">${labelText}</span>
+        `;
+
+        container.appendChild(div);
+      });
+    }
+
+    function selectQuestion(idx) {
+      if (idx < 0 || idx >= filteredData.length) return;
+      currentIndex = idx;
+      renderQuestionList();
+      renderDetail(filteredData[currentIndex]);
+      // Scroll active item into view
+      const activeEl = document.getElementById('question-list').children[idx];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function prevQuestion() {
+      if (currentIndex > 0) {
+        selectQuestion(currentIndex - 1);
+      }
+    }
+
+    function nextQuestion() {
+      if (currentIndex < filteredData.length - 1) {
+        selectQuestion(currentIndex + 1);
+      }
+    }
+
+    function renderDetail(item) {
+      document.getElementById('nav-counter').innerText = `Câu ${currentIndex + 1} / ${filteredData.length}`;
+      document.getElementById('detail-id').innerText = item.id;
+      document.getElementById('detail-category').innerText = item.category || 'N/A';
+      document.getElementById('detail-unit').innerText = item.unit || 'N/A';
+      document.getElementById('detail-type').innerText = item.type || 'N/A';
+      document.getElementById('detail-query').innerText = item.query || '';
+      document.getElementById('detail-ground-truth').innerText = item.ground_truth || '';
+      document.getElementById('note-input').value = item.note || '';
+
+      // Update Label Buttons
+      const label = item.label || 'none';
+      updateLabelButtonStyles(label);
+
+      // Render Chunks Level 2
+      const lvl2Container = document.getElementById('chunks-lvl2-container');
+      const lvl2Chunks = item.level_2_chunks || [];
+      document.getElementById('count-lvl2').innerText = `${lvl2Chunks.length} chunk`;
+      lvl2Container.innerHTML = '';
+
+      if (lvl2Chunks.length === 0) {
+        lvl2Container.innerHTML = `
+          <div class="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-center text-xs text-slate-400">
+            Không có chunk mức độ 2 cho câu hỏi này (ví dụ: câu hỏi ngoài phạm vi Out-of-domain).
+          </div>
+        `;
+      } else {
+        lvl2Chunks.forEach((c, idx) => {
+          lvl2Container.appendChild(createChunkCard(c, idx + 1, 'lvl2'));
+        });
+      }
+
+      // Render Chunks Level 1
+      const lvl1Container = document.getElementById('chunks-lvl1-container');
+      const lvl1Chunks = item.level_1_chunks || [];
+      document.getElementById('count-lvl1').innerText = `${lvl1Chunks.length} chunk`;
+      lvl1Container.innerHTML = '';
+
+      if (lvl1Chunks.length === 0) {
+        lvl1Container.innerHTML = `
+          <div class="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-center text-xs text-slate-400">
+            Không có chunk mức độ 1 cho câu hỏi này.
+          </div>
+        `;
+      } else {
+        lvl1Chunks.forEach((c, idx) => {
+          lvl1Container.appendChild(createChunkCard(c, idx + 1, 'lvl1'));
+        });
+      }
+    }
+
+    function createChunkCard(chunk, num, levelType) {
+      const card = document.createElement('div');
+      card.className = "border border-slate-200 rounded-lg bg-slate-50 p-4 space-y-2.5 text-xs";
+
+      const meta = chunk.metadata || {};
+      const title = meta.title || meta.heading || 'Không có tiêu đề';
+      const breadcrumb = meta.breadcrumb || '';
+      const url = meta.source_uri || meta.final_url || '';
+
+      card.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+          <div class="flex items-center space-x-2">
+            <span class="px-2 py-0.5 bg-slate-800 text-white font-mono font-bold rounded text-[11px]">[#${num}]</span>
+            <span class="font-mono text-slate-600 font-semibold text-[11px] select-all">${chunk.chunk_id}</span>
+            <button onclick="navigator.clipboard.writeText('${chunk.chunk_id}')" title="Copy Chunk ID" class="text-slate-400 hover:text-slate-600">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+            </button>
+          </div>
+          <div class="text-[11px] text-slate-500">
+            ${url ? `<a href="${url}" target="_blank" class="text-indigo-600 hover:underline flex items-center inline-block">Nguồn gốc ↗</a>` : ''}
+          </div>
+        </div>
+
+        ${(title || breadcrumb) ? `
+          <div class="text-[11px] text-slate-600 font-medium">
+            <span class="text-slate-400">Tài liệu:</span> ${breadcrumb ? `<span class="text-slate-500">${breadcrumb} › </span>` : ''} <strong class="text-slate-800">${title}</strong>
+          </div>
+        ` : ''}
+
+        <div class="bg-white p-3.5 rounded border border-slate-200 text-slate-800 leading-relaxed whitespace-pre-wrap select-text max-h-96 overflow-y-auto">
+          ${escapeHtml(chunk.text || '')}
+        </div>
+      `;
+
+      return card;
+    }
+
+    function renderEmptyDetail() {
+      document.getElementById('nav-counter').innerText = '0 / 0';
+      document.getElementById('detail-id').innerText = '---';
+      document.getElementById('detail-category').innerText = '---';
+      document.getElementById('detail-unit').innerText = '---';
+      document.getElementById('detail-type').innerText = '---';
+      document.getElementById('detail-query').innerText = 'Không có câu hỏi nào trong danh sách lọc.';
+      document.getElementById('detail-ground-truth').innerText = '';
+      document.getElementById('chunks-lvl2-container').innerHTML = '';
+      document.getElementById('chunks-lvl1-container').innerHTML = '';
+      updateLabelButtonStyles('none');
+    }
+
+    function updateLabelButtonStyles(label) {
+      const badge = document.getElementById('detail-badge');
+      if (!badge) return;
+
+      if (label === 'đúng') {
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300";
+        badge.innerText = "✓ Đúng";
+      } else if (label === 'sai') {
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300";
+        badge.innerText = "✗ Sai";
+      } else if (label === 'thiếu') {
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300";
+        badge.innerText = "⚠ Thiếu thông tin";
+      } else {
+        badge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200";
+        badge.innerText = "Chưa gán nhãn";
+      }
+    }
+
+    async function applyLabel(label) {
+      if (filteredData.length === 0 || currentIndex >= filteredData.length) return;
+      const currentItem = filteredData[currentIndex];
+      currentItem.label = label;
+
+      updateLabelButtonStyles(label);
+      renderQuestionList();
+
+      showSaveIndicator('Đang lưu...');
+
+      try {
+        const res = await fetch('/api/save_label', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: currentItem.id,
+            label: label,
+            note: currentItem.note || ''
+          })
+        });
+        const json = await res.json();
+        if (json.success) {
+          updateStats(json.stats);
+          showSaveIndicator('✓ Đã lưu nhãn: ' + label);
+
+          // Auto advance if checked
+          const autoAdvance = document.getElementById('auto-advance').checked;
+          if (autoAdvance && currentIndex < filteredData.length - 1) {
+            setTimeout(() => {
+              nextQuestion();
+            }, 250);
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi lưu nhãn:', err);
+        showSaveIndicator('Lỗi lưu: ' + err.message);
+      }
+    }
+
+    function handleNoteChange() {
+      if (filteredData.length === 0 || currentIndex >= filteredData.length) return;
+      const currentItem = filteredData[currentIndex];
+      const val = document.getElementById('note-input').value;
+      currentItem.note = val;
+
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(async () => {
+        showSaveIndicator('Đang lưu ghi chú...');
+        try {
+          const res = await fetch('/api/save_label', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: currentItem.id,
+              label: currentItem.label || 'none',
+              note: val
+            })
+          });
+          const json = await res.json();
+          if (json.success) {
+            showSaveIndicator('✓ Đã lưu ghi chú');
+          }
+        } catch (err) {
+          showSaveIndicator('Lỗi khi lưu ghi chú');
+        }
+      }, 500);
+    }
+
+    function showSaveIndicator(msg) {
+      const el = document.getElementById('save-indicator');
+      const text = document.getElementById('save-msg');
+      text.innerText = msg;
+      el.classList.remove('opacity-0');
+      setTimeout(() => {
+        el.classList.add('opacity-0');
+      }, 2000);
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.className = "filter-btn px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200";
+      });
+
+      const activeMap = {
+        'all': 'btn-filter-all',
+        'none': 'btn-filter-none',
+        'đúng': 'btn-filter-dung',
+        'sai': 'btn-filter-sai',
+        'thiếu': 'btn-filter-thieu'
+      };
+      const activeEl = document.getElementById(activeMap[filter]);
+      if (activeEl) {
+        activeEl.className = "filter-btn px-2 py-1 rounded bg-indigo-600 text-white font-semibold shadow-sm";
+      }
+
+      applyFilterAndSearch();
+    }
+
+    function handleSearch() {
+      applyFilterAndSearch();
+    }
+
+    function copyGroundTruth() {
+      const gt = document.getElementById('detail-ground-truth').innerText;
+      navigator.clipboard.writeText(gt);
+      showSaveIndicator('✓ Đã copy Ground Truth');
+    }
+
+    function exportExcel() {
+      window.open('/api/export_excel', '_blank');
+    }
+
+    async function exportJSON() {
+      try {
+        const res = await fetch('/api/export_json', { method: 'POST' });
+        const json = await res.json();
+        alert(json.message);
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      // Don't trigger shortcuts if focus is in input or textarea
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        return;
+      }
+
+      if (e.key === '1') {
+        applyLabel('đúng');
+      } else if (e.key === '2') {
+        applyLabel('sai');
+      } else if (e.key === '3') {
+        applyLabel('thiếu');
+      } else if (e.key === '0' || e.key === '4') {
+        applyLabel('none');
+      } else if (e.key === 'ArrowLeft' || e.key === '[') {
+        prevQuestion();
+      } else if (e.key === 'ArrowRight' || e.key === ']') {
+        nextQuestion();
+      }
+    });
+
+    // Start
+    loadData();
+  </script>
+</body>
+
+</html>
