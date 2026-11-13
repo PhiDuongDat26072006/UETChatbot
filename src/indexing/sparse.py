@@ -1,14 +1,22 @@
 """Persistent Vietnamese BM25 index. Only load trusted local pickle artifacts."""
+import heapq
 import os
 import pickle
 import re
+import sys
 import tempfile
 import time
 import unicodedata
 from pathlib import Path
 from collections import defaultdict
+from typing import Optional
 from src.utils.helpers import get_logger
-import heapq
+
+# Giới hạn thread của BLAS/OMP trước khi nạp numpy/scipy/underthesea
+# để tránh tràn bộ nhớ ảo khi chạy đa tiến trình trên Windows.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 logger = get_logger("indexing.sparse")
 
@@ -67,10 +75,31 @@ def _segment(text: str) -> list[str]:
     ] if text.strip() else []
 
 
+def _resolve_workers(workers: Optional[int], num_docs: int) -> int:
+    """Chọn số worker an toàn theo RAM khả dụng để tránh đơ máy / MemoryError trên Windows."""
+    if num_docs < 500:
+        return 1
+
+    if workers is not None:
+        if workers < 1:
+            raise ValueError("workers must be positive")
+        return workers
+
+    max_cap = min(6, os.cpu_count() or 1)
+    try:
+        import psutil
+        avail_bytes = psutil.virtual_memory().available
+        # Mỗi worker process nạp underthesea tốn ~520-700 MB; giữ tối thiểu 1.5 GB cho OS & main process.
+        safe_workers = int((avail_bytes - 1_500_000_000) // 700_000_000)
+        return max(1, min(max_cap, safe_workers))
+    except Exception:
+        return 1 if sys.platform.startswith("win") else max(1, min(4, max_cap))
+
+
 class BM25Index:
     """Keep chunk order aligned with BM25 statistics and persist without re-tokenizing."""
 
-    def __init__(self, chunks=(), workers=6):
+    def __init__(self, chunks=(), workers: Optional[int] = None):
         self.chunks = normalize_chunks(chunks)
 
         # Retriever may need an empty index before a persisted artifact exists.
@@ -83,13 +112,15 @@ class BM25Index:
             return
 
         texts = [chunk.text for chunk in self.chunks]
+        active_workers = _resolve_workers(workers, len(texts))
+        logger.info(f"Đang tách từ BM25 cho {len(texts)} chunks (workers={active_workers})...")
 
         started = time.perf_counter()
         # 1. Tokenize corpus
-        if workers == 1:
+        if active_workers == 1:
             self.tokens = [tokenize(text) for text in texts]
         else:
-            with ProcessPoolExecutor(max_workers=workers) as executor:
+            with ProcessPoolExecutor(max_workers=active_workers) as executor:
                 self.tokens = list(
                     executor.map(
                         tokenize,

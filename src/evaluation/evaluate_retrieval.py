@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
@@ -56,12 +57,21 @@ class RetrievalEvaluator:
 
     def __init__(self, eval_data_dir: Optional[str | Path] = None):
         """
-        :param eval_data_dir: Thư mục chứa retrieval_eval_queries.json, retrieval_eval_qrels.json,
-                              và retrieval_eval_qrels_chunk.json.
-                              Mặc định: data/eval_data/retrieval_eval_data/
+        :param eval_data_dir: Thư mục chứa tập đánh giá (uet_rag_eval_100 hoặc retrieval_eval_data).
+                              Hỗ trợ định dạng thống nhất (e2e_eval_100.json) hoặc bộ 3 file cũ.
         """
         if eval_data_dir is None:
-            self.eval_data_dir = PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"
+            cfg = load_yaml_config()
+            cfg_file = cfg.get("paths", {}).get("eval_dataset_file")
+            if cfg_file:
+                target_path = PROJECT_ROOT / cfg_file if not Path(cfg_file).is_absolute() else Path(cfg_file)
+                self.eval_data_dir = target_path
+            else:
+                default_new = PROJECT_ROOT / "data" / "eval_data" / "uet_rag_eval_100"
+                if default_new.exists():
+                    self.eval_data_dir = default_new
+                else:
+                    self.eval_data_dir = PROJECT_ROOT / "data" / "eval_data" / "e2e_eval_100_annotated.json"
         else:
             self.eval_data_dir = Path(eval_data_dir)
 
@@ -71,14 +81,107 @@ class RetrievalEvaluator:
         self.qrels: Dict[str, Dict[str, int]] = {}  # alias backwards compatibility
         self._load_data()
 
+    def filter_by_domain(self, domain: Optional[str] = None):
+        """Lọc danh sách queries theo khoa/đơn vị (unit/domain)."""
+        if not domain or domain.lower().strip() == "all":
+            return
+        dom = domain.upper().strip()
+        matched = [q for q in self.queries if q.get("unit", "").upper() == dom]
+        if not matched:
+            matched = [q for q in self.queries if dom in q.get("unit", "").upper()]
+        if matched:
+            self.queries = matched
+            logger.info(f"Đã lọc danh sách queries theo domain '{dom}': còn {len(self.queries)} câu hỏi.")
+        else:
+            logger.warning(f"Không tìm thấy query nào thuộc domain '{dom}'. Giữ nguyên danh sách gốc.")
+
     def _load_data(self):
-        """Tải queries, qrels doc và qrels chunk từ file JSON."""
+        """Tải queries, qrels doc và qrels chunk từ tập dữ liệu unified hoặc các file JSON chuẩn."""
+        # 1. Kiểm tra trường hợp file thống nhất (Unified Dataset: e2e_eval_100.json/.jsonl)
+        unified_file = None
+        if self.eval_data_dir.is_file():
+            unified_file = self.eval_data_dir
+            self.eval_data_dir = self.eval_data_dir.parent
+        else:
+            for candidate in ["e2e_eval_100_annotated.json", "e2e_eval_100.json", "e2e_eval_100.jsonl"]:
+                candidate_path = self.eval_data_dir / candidate
+                if candidate_path.exists():
+                    unified_file = candidate_path
+                    break
+
+        if unified_file is not None:
+            items = []
+            if unified_file.suffix == ".jsonl":
+                with open(unified_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            items.append(json.loads(line))
+            else:
+                with open(unified_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    items = data if isinstance(data, list) else [data]
+
+            self.queries = []
+            self.qrels_doc = {}
+            self.qrels_chunk = {}
+
+            for item in items:
+                qid = str(item.get("id") or item.get("query_id"))
+                qtext = item.get("query") or item.get("query_text", "")
+                qtype = item.get("type") or item.get("query_type", "factoid")
+                qtypes = item.get("query_types") or [qtype]
+                unit = item.get("unit", "")
+                category = item.get("category", "")
+
+                # Doc relevance
+                target_docs = item.get("target_document_ids") or []
+                if isinstance(target_docs, list):
+                    self.qrels_doc[qid] = {did: 2 for did in target_docs}
+                elif isinstance(target_docs, dict):
+                    self.qrels_doc[qid] = {str(k): int(v) for k, v in target_docs.items()}
+                else:
+                    self.qrels_doc[qid] = {}
+
+                # Chunk relevance
+                target_chunks = item.get("target_chunk_ids") or {}
+                if isinstance(target_chunks, list):
+                    self.qrels_chunk[qid] = {cid: 2 for cid in target_chunks}
+                elif isinstance(target_chunks, dict):
+                    self.qrels_chunk[qid] = {str(k): int(v) for k, v in target_chunks.items()}
+                else:
+                    self.qrels_chunk[qid] = {}
+
+                self.queries.append({
+                    "query_id": qid,
+                    "query_text": qtext,
+                    "query_types": qtypes,
+                    "type": qtype,
+                    "unit": unit,
+                    "category": category,
+                    "expected_unit": unit,
+                    "expected_category": category,
+                    "ground_truth": item.get("ground_truth"),
+                    "highly_relevant_doc_ids": [did for did, g in self.qrels_doc[qid].items() if g >= 2],
+                    "relevant_doc_ids": [did for did, g in self.qrels_doc[qid].items() if g == 1],
+                    "highly_relevant_chunk_ids": [cid for cid, g in self.qrels_chunk[qid].items() if g >= 2],
+                    "relevant_chunk_ids": [cid for cid, g in self.qrels_chunk[qid].items() if g == 1],
+                })
+
+            self.qrels = self.qrels_doc
+            logger.info(
+                f"Đã tải {len(self.queries)} queries, {len(self.qrels_doc)} qrels doc và "
+                f"{len(self.qrels_chunk)} qrels chunk từ unified dataset: {unified_file.name}"
+            )
+            return
+
+        # 2. Fallback: Đọc 3 file JSON theo định dạng cũ
         queries_path = self.eval_data_dir / "retrieval_eval_queries.json"
         qrels_doc_path = self.eval_data_dir / "retrieval_eval_qrels.json"
         qrels_chunk_path = self.eval_data_dir / "retrieval_eval_qrels_chunk.json"
 
         if not queries_path.exists():
-            raise FileNotFoundError(f"Không tìm thấy file queries: {queries_path}")
+            raise FileNotFoundError(f"Không tìm thấy file queries hoặc unified dataset tại: {self.eval_data_dir}")
         if not qrels_doc_path.exists():
             raise FileNotFoundError(f"Không tìm thấy file qrels doc: {qrels_doc_path}")
 
@@ -245,10 +348,41 @@ class RetrievalEvaluator:
                 r for q, r in zip(self.queries, per_query_results)
                 if qt in (q.get("query_types") or ([q.get("query_type")] if q.get("query_type") else []))
             ]
-            type_metrics[qt] = {"count": len(qt_results)}
-            for key in metric_keys:
-                vals = [r[key] for r in qt_results if key in r]
-                type_metrics[qt][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
+            if qt_results:
+                type_metrics[qt] = {"count": len(qt_results)}
+                for key in metric_keys:
+                    vals = [r[key] for r in qt_results if key in r]
+                    type_metrics[qt][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
+
+        # Phân tích theo Unit (Khoa/Đơn vị)
+        unit_metrics: Dict[str, Dict[str, Any]] = {}
+        units_present = []
+        for q in self.queries:
+            u = q.get("unit")
+            if u and u not in units_present:
+                units_present.append(u)
+        for u in units_present:
+            u_results = [r for q, r in zip(self.queries, per_query_results) if q.get("unit") == u]
+            if u_results:
+                unit_metrics[u] = {"count": len(u_results)}
+                for key in metric_keys:
+                    vals = [r[key] for r in u_results if key in r]
+                    unit_metrics[u][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
+
+        # Phân tích theo Category (Lĩnh vực)
+        cat_metrics: Dict[str, Dict[str, Any]] = {}
+        cats_present = []
+        for q in self.queries:
+            c = q.get("category")
+            if c and c not in cats_present:
+                cats_present.append(c)
+        for c in cats_present:
+            c_results = [r for q, r in zip(self.queries, per_query_results) if q.get("category") == c]
+            if c_results:
+                cat_metrics[c] = {"count": len(c_results)}
+                for key in metric_keys:
+                    vals = [r[key] for r in c_results if key in r]
+                    cat_metrics[c][f"mean_{key}"] = round(sum(vals) / len(vals), 4) if vals else 0.0
 
         return {
             "summary": {
@@ -261,6 +395,8 @@ class RetrievalEvaluator:
             "aggregated_metrics": aggregated,
             "by_difficulty": difficulty_metrics,
             "by_query_type": type_metrics,
+            "by_unit": unit_metrics,
+            "by_category": cat_metrics,
             "per_query_results": per_query_results,
         }
 
@@ -289,7 +425,12 @@ class RetrievalEvaluator:
         chunk_retrieval_results: Dict[str, List[str]] = {}
         query_top_k = max(top_k * 4, 30) if dedup_documents else top_k
 
-        cache_file = self.eval_data_dir / f".retrieval_cache_multilevel_top{top_k}.json"
+        reranker_name = "default"
+        if hasattr(retriever, "reranker") and retriever.reranker is not None:
+            reranker_name = getattr(retriever.reranker, "model_name", retriever.reranker.__class__.__name__)
+            reranker_name = re.sub(r"[^\w\-]", "_", str(reranker_name))
+
+        cache_file = self.eval_data_dir / f".retrieval_cache_{reranker_name}_top{top_k}.json"
         cached: Dict[str, Dict[str, List[str]]] = {}
         if cache_file.exists():
             try:
@@ -435,17 +576,38 @@ def print_query_type_matrix(eval_result_dict: Dict[str, Any], target_k: int, ord
     by_type = eval_result_dict.get("by_query_type", {})
     matrix_types = [t for t in ordered_types if t in by_type]
     if not matrix_types:
+        matrix_types = list(by_type.keys())
+    if not matrix_types:
         return
+    _print_breakdown_table(by_type, matrix_types, target_k, title, col_w=17)
 
-    col_w = 17
-    line_len = 14 + len(matrix_types) * col_w
+
+def print_unit_matrix(eval_result_dict: Dict[str, Any], target_k: int, title: str = "MA TRẬN ĐÁNH GIÁ THEO KHOA/ĐƠN VỊ (UNIT)"):
+    """In ma trận chi tiết các chỉ số theo từng đơn vị/khoa (Unit Matrix)."""
+    by_unit = eval_result_dict.get("by_unit", {})
+    if not by_unit or len(by_unit) <= 1:
+        return
+    _print_breakdown_table(by_unit, list(by_unit.keys()), target_k, title, col_w=16)
+
+
+def print_category_matrix(eval_result_dict: Dict[str, Any], target_k: int, title: str = "MA TRẬN ĐÁNH GIÁ THEO LĨNH VỰC (CATEGORY)"):
+    """In ma trận chi tiết các chỉ số theo từng lĩnh vực (Category Matrix)."""
+    by_cat = eval_result_dict.get("by_category", {})
+    if not by_cat or len(by_cat) <= 1:
+        return
+    _print_breakdown_table(by_cat, list(by_cat.keys()), target_k, title, col_w=20)
+
+
+def _print_breakdown_table(group_data: Dict[str, Any], keys: List[str], target_k: int, title: str, col_w: int = 17):
+    """Hàm in bảng ma trận tổng quát."""
+    line_len = 14 + len(keys) * col_w
     sep = "=" * line_len
 
     print("\n" + sep)
     print(f"📊 {title} @ K={target_k}")
     print(sep)
 
-    col_headers = [f"{t}({by_type[t].get('count', 0)})" for t in matrix_types]
+    col_headers = [f"{k}({group_data[k].get('count', 0)})" for k in keys]
     header_line = f"{'':<14}" + "".join([f"{ch:<{col_w}}" for ch in col_headers])
     print(header_line)
     print("-" * line_len)
@@ -453,8 +615,8 @@ def print_query_type_matrix(eval_result_dict: Dict[str, Any], target_k: int, ord
     # Precision & Recall
     for metric_label, metric_key in [("Precision", "precision"), ("Recall", "recall")]:
         row_str = f"{metric_label:<14}"
-        for t in matrix_types:
-            val = by_type[t].get(f"mean_{metric_key}@{target_k}", 0.0)
+        for k in keys:
+            val = group_data[k].get(f"mean_{metric_key}@{target_k}", 0.0)
             row_str += f"{val:<{col_w}.4f}"
         print(row_str)
 
@@ -462,8 +624,8 @@ def print_query_type_matrix(eval_result_dict: Dict[str, Any], target_k: int, ord
     # MRR & MAP
     for metric_label, metric_key in [("MRR", "mean_mrr"), ("MAP", "mean_map")]:
         row_str = f"{metric_label:<14}"
-        for t in matrix_types:
-            val = by_type[t].get(metric_key, 0.0)
+        for k in keys:
+            val = group_data[k].get(metric_key, 0.0)
             row_str += f"{val:<{col_w}.4f}"
         print(row_str)
 
@@ -471,8 +633,8 @@ def print_query_type_matrix(eval_result_dict: Dict[str, Any], target_k: int, ord
     # NDCG & Hit Rate
     for metric_label, metric_key in [("NDCG", "ndcg"), ("Hit Rate", "hit_rate")]:
         row_str = f"{metric_label:<14}"
-        for t in matrix_types:
-            val = by_type[t].get(f"mean_{metric_key}@{target_k}", 0.0)
+        for k in keys:
+            val = group_data[k].get(f"mean_{metric_key}@{target_k}", 0.0)
             row_str += f"{val:<{col_w}.4f}"
         print(row_str)
 
@@ -487,11 +649,13 @@ def run_eval_retrieval_cli(
     output: Optional[Union[str, Path]] = None,
     level: str = "both",
     mode: str = "live",
+    domain: Optional[str] = None,
 ):
     """
     Chạy đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG) và hiển thị trên CLI.
     Hỗ trợ level = "doc", "chunk", hoặc "both".
     Hỗ trợ mode = "live" (chạy thật) hoặc "mock" (chạy nhanh với ground-truth).
+    Hỗ trợ domain = Lọc theo khoa/đơn vị (unit/domain).
     """
     cfg = load_yaml_config()
     target_k = top_k if top_k is not None else cfg.get("retrieval", {}).get("final_top_k", 5)
@@ -500,11 +664,26 @@ def run_eval_retrieval_cli(
         k_values = [target_k]
 
     if eval_dir is None:
-        eval_dir = PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"
+        cfg_file = cfg.get("paths", {}).get("eval_dataset_file")
+        if cfg_file:
+            eval_dir = PROJECT_ROOT / cfg_file if not Path(cfg_file).is_absolute() else Path(cfg_file)
+        else:
+            default_new = PROJECT_ROOT / "data" / "eval_data" / "uet_rag_eval_100"
+            if default_new.exists():
+                eval_dir = default_new
+            else:
+                eval_dir = PROJECT_ROOT / "data" / "eval_data" / "e2e_eval_100_annotated.json"
     else:
         eval_dir = Path(eval_dir)
 
-    if not (eval_dir / "retrieval_eval_queries.json").exists():
+    has_data = (
+        eval_dir.is_file()
+        or (eval_dir / "e2e_eval_100_annotated.json").exists()
+        or (eval_dir / "e2e_eval_100.json").exists()
+        or (eval_dir / "e2e_eval_100.jsonl").exists()
+        or (eval_dir / "retrieval_eval_queries.json").exists()
+    )
+    if not has_data:
         print(f"❌ Không tìm thấy dữ liệu đánh giá tại: {eval_dir}")
         return
 
@@ -514,14 +693,20 @@ def run_eval_retrieval_cli(
         "both": "SONG SONG CẢ TÀI LIỆU VÀ ĐOẠN CẮT (DOC & CHUNK DUAL-LEVEL)",
     }.get(level, level.upper())
 
+    label_type = "Tập dữ liệu:" if eval_dir.is_file() else "Thư mục đánh giá:"
     print("\n" + "=" * 65)
     print("🔬 ĐANG CHẠY ĐÁNH GIÁ PHÂN HỆ TRUY XUẤT (RETRIEVAL EVALUATION)")
-    print(f"• Chế độ (Mode):      {mode.upper()}")
+    print(f"• {label_type:<21} {eval_dir.name}")
+    print(f"• Chế độ (Mode):       {mode.upper()}")
     print(f"• Cấu hình K đánh giá: K={target_k} (Lấy từ config.yaml: retrieval.final_top_k)")
-    print(f"• Cấp độ đánh giá:    {level_display}")
+    print(f"• Cấp độ đánh giá:     {level_display}")
+    if domain:
+        print(f"• Lọc Domain/Unit:     {domain.upper()}")
     print("=" * 65)
 
     evaluator = RetrievalEvaluator(eval_data_dir=eval_dir)
+    if domain:
+        evaluator.filter_by_domain(domain)
 
     if mode == "mock":
         mock_doc_results = {}
@@ -563,8 +748,14 @@ def run_eval_retrieval_cli(
         except Exception:
             pass
 
+    reranker_label = ""
+    if mode != "mock":
+        r_type = cfg.get("retrieval", {}).get("reranker_type", "")
+        if r_type:
+            reranker_label = f" với reranker={r_type}"
+
     print("\n" + "=" * 65)
-    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL (TOP-K = {target_k})")
+    print(f"📈 BÁO CÁO KẾT QUẢ PHÂN HỆ RETRIEVAL{reranker_label} (TOP-K = {target_k})")
     print("=" * 65)
     summary = eval_result.get("summary", {})
     print(f"Tổng số queries đánh giá: {summary.get('in_domain_queries', 0)} in-domain queries")
@@ -583,6 +774,12 @@ def run_eval_retrieval_cli(
         print_query_type_matrix(
             chunk_res, target_k, ordered_types, "MA TRẬN ĐÁNH GIÁ THEO DẠNG CÂU HỎI - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
         )
+        print_unit_matrix(
+            chunk_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO KHOA/ĐƠN VỊ (UNIT) - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
+        )
+        print_category_matrix(
+            chunk_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO LĨNH VỰC (CATEGORY) - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
+        )
     elif level == "chunk":
         chunk_res = eval_result
         print_metrics_table(chunk_res, k_values, "🎯 ĐÁNH GIÁ MỨC ĐOẠN CẮT (CHUNK-LEVEL)")
@@ -590,12 +787,24 @@ def run_eval_retrieval_cli(
         print_query_type_matrix(
             chunk_res, target_k, ordered_types, "MA TRẬN ĐÁNH GIÁ THEO DẠNG CÂU HỎI - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
         )
+        print_unit_matrix(
+            chunk_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO KHOA/ĐƠN VỊ (UNIT) - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
+        )
+        print_category_matrix(
+            chunk_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO LĨNH VỰC (CATEGORY) - MỨC ĐOẠN CẮT (CHUNK-LEVEL)"
+        )
     else:  # doc
         doc_res = eval_result
         print_metrics_table(doc_res, k_values, "📄 ĐÁNH GIÁ MỨC TÀI LIỆU (DOCUMENT-LEVEL)")
         print("=" * 65 + "\n")
         print_query_type_matrix(
             doc_res, target_k, ordered_types, "MA TRẬN ĐÁNH GIÁ THEO DẠNG CÂU HỎI - MỨC TÀI LIỆU (DOC-LEVEL)"
+        )
+        print_unit_matrix(
+            doc_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO KHOA/ĐƠN VỊ (UNIT) - MỨC TÀI LIỆU (DOC-LEVEL)"
+        )
+        print_category_matrix(
+            doc_res, target_k, "MA TRẬN ĐÁNH GIÁ THEO LĨNH VỰC (CATEGORY) - MỨC TÀI LIỆU (DOC-LEVEL)"
         )
 
     if output:
@@ -620,12 +829,24 @@ def main():
     cfg = load_yaml_config()
     default_k = cfg.get("retrieval", {}).get("final_top_k", 5)
 
+    cfg_file = cfg.get("paths", {}).get("eval_dataset_file")
+    if cfg_file:
+        default_eval_dir = PROJECT_ROOT / cfg_file if not Path(cfg_file).is_absolute() else Path(cfg_file)
+    else:
+        default_eval_dir = PROJECT_ROOT / "data" / "eval_data" / "e2e_eval_100_annotated.json"
+
     parser = argparse.ArgumentParser(description="Đánh giá hiệu quả Retrieval cho UET RAG Chatbot")
     parser.add_argument(
         "--eval_dir",
         type=str,
-        default=str(PROJECT_ROOT / "data" / "eval_data" / "retrieval_eval_data"),
-        help="Thư mục chứa dữ liệu đánh giá (mặc định: data/eval_data/retrieval_eval_data)",
+        default=str(default_eval_dir),
+        help=f"Thư mục chứa dữ liệu đánh giá (mặc định: {default_eval_dir.name})",
+    )
+    parser.add_argument(
+        "--domain",
+        type=str,
+        default=None,
+        help="Lọc đánh giá theo khoa/đơn vị (unit/domain, ví dụ: FET, FIT, TUYENSINH)",
     )
     parser.add_argument(
         "--top_k",
@@ -670,6 +891,8 @@ def main():
     print()
 
     evaluator = RetrievalEvaluator(eval_data_dir=args.eval_dir)
+    if args.domain:
+        evaluator.filter_by_domain(args.domain)
 
     if args.mode == "mock":
         print("📝 Đang chạy mock evaluation (giả lập retriever với ground truth)...")
@@ -679,22 +902,12 @@ def main():
         for query in evaluator.queries:
             qid = query["query_id"]
             # Doc mock results
-            seen_docs = set()
-            rel_docs = []
-            for did in query.get("highly_relevant_doc_ids", []) + query.get("relevant_doc_ids", []):
-                if did not in seen_docs:
-                    seen_docs.add(did)
-                    rel_docs.append(did)
-            doc_mock_results[qid] = rel_docs[:eval_k]
+            gold_docs = list(evaluator.qrels_doc.get(qid, {}).keys())
+            doc_mock_results[qid] = gold_docs[:eval_k]
 
             # Chunk mock results
-            seen_chunks = set()
-            rel_chunks = []
-            for cid in query.get("highly_relevant_chunk_ids", []) + query.get("relevant_chunk_ids", []):
-                if cid not in seen_chunks:
-                    seen_chunks.add(cid)
-                    rel_chunks.append(cid)
-            chunk_mock_results[qid] = rel_chunks[:eval_k]
+            gold_chunks = list(evaluator.qrels_chunk.get(qid, {}).keys())
+            chunk_mock_results[qid] = gold_chunks[:eval_k]
 
         if args.level == "doc":
             eval_result = evaluator.evaluate_batch(doc_mock_results, k_values=k_values, level="doc")
@@ -751,10 +964,19 @@ def main():
     if args.level == "both":
         _print_level_stats(eval_result["doc_level"], "MỨC TÀI LIỆU (DOCUMENT-LEVEL)")
         _print_level_stats(eval_result["chunk_level"], "MỨC ĐOẠN CẮT (CHUNK-LEVEL)")
+        print_query_type_matrix(eval_result["chunk_level"], eval_k, [], "MA TRẬN DẠNG CÂU HỎI (CHUNK-LEVEL)")
+        print_unit_matrix(eval_result["chunk_level"], eval_k, "MA TRẬN KHOA/ĐƠN VỊ (UNIT)")
+        print_category_matrix(eval_result["chunk_level"], eval_k, "MA TRẬN LĨNH VỰC (CATEGORY)")
     elif args.level == "chunk":
         _print_level_stats(eval_result, "MỨC ĐOẠN CẮT (CHUNK-LEVEL)")
+        print_query_type_matrix(eval_result, eval_k, [], "MA TRẬN DẠNG CÂU HỎI (CHUNK-LEVEL)")
+        print_unit_matrix(eval_result, eval_k, "MA TRẬN KHOA/ĐƠN VỊ (UNIT)")
+        print_category_matrix(eval_result, eval_k, "MA TRẬN LĨNH VỰC (CATEGORY)")
     else:
         _print_level_stats(eval_result, "MỨC TÀI LIỆU (DOCUMENT-LEVEL)")
+        print_query_type_matrix(eval_result, eval_k, [], "MA TRẬN DẠNG CÂU HỎI (DOC-LEVEL)")
+        print_unit_matrix(eval_result, eval_k, "MA TRẬN KHOA/ĐƠN VỊ (UNIT)")
+        print_category_matrix(eval_result, eval_k, "MA TRẬN LĨNH VỰC (CATEGORY)")
 
     # Ghi kết quả
     output_path = args.output or str(

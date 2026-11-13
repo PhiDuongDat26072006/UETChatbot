@@ -5,12 +5,11 @@
 paths:
   data_dir: "data/raw_data"
   processed_dir: "data/processed_data"
-  eval_dir: "data/eval_data"
   vector_db_dir: "database/vector_db"
   bm25_index_file: "database/bm25_index.pkl"
   collection_name: "chatbot_collection"
-  eval_dataset_dir: "data/eval_data/uet_domain_qa"
-  eval_dataset_file: "data/eval_data/uet_domain_qa/overview1_qa.json"
+  eval_dataset_dir: "data/eval_data/"
+  eval_dataset_file: "data/eval_data/e2e_eval_100_annotated.json"
 
 chunking:
   chunk_size: 800
@@ -39,24 +38,27 @@ embedding:
   dimension: 1024
 
 retrieval:
-  bm25_top_k: 100              # Số ứng viên BM25 lấy ra
-  vector_top_k: 100            # Số ứng viên Vector search lấy ra
-  candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
-  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
-  final_top_k: 5              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
+  #Cấu hình hybric search 
   fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
   rrf_k: 60                    # Hằng số làm mượt RRF
   vector_weight: 0.6           # Trọng số nhánh Vector Search
   bm25_weight: 0.4             # Trọng số nhánh BM25 Search
-  reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx"
+  bm25_top_k: 50              # Số ứng viên BM25 lấy ra
+  vector_top_k: 50            # Số ứng viên Vector search lấy ra
+  candidate_pool_size: 50     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
+  
+  # Cấu hình Maximal Marginal Relevance (MMR) đa dạng hóa ngữ cảnh trước Reranker
+  enable_mmr: true                      # Bật/tắt tầng đa dạng hóa MMR trước Reranker
+  mmr_lambda: 0.7                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
+  mmr_top_n: 20                         # Số lượng ứng viên đa dạng giữ lại sau MMR để chuyển tiếp cho Reranker
+
+  # cấu hình reranker
+  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
+  final_top_k: 2              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
+  reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx", "viranker"
   reranker_model: "weights/jina-reranker-v2-base-multilingual"
   onnx_filename: "weights/jina-reranker-v2-base-multilingual/onnx/model.onnx"
   score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
-
-  # Cấu hình Maximal Marginal Relevance (MMR) đa dạng hóa ngữ cảnh trước Reranker
-  enable_mmr: true                      # Bật/tắt tầng đa dạng hóa MMR trước Reranker
-  mmr_lambda: 0.6                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
-  mmr_top_n: 40                         # Số lượng ứng viên đa dạng giữ lại sau MMR để chuyển tiếp cho Reranker
 
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề

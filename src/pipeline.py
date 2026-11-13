@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 from urllib.parse import urlparse
-from typing import Any, Dict, Generator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -46,10 +46,12 @@ from src.ingestion import UETDataLoader, clean_whitespace, DataManifestTracker
 from src.chunking import UETChunker
 from src.embeddings import UETEmbedder
 from src.vectordb import UETVectorStore
-from src.retrieval import UETRetriever
 from src.prompts import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
 from src.llm import UETLLMClient
 from src.indexing.chunks import load_chunks_from_dir
+
+if TYPE_CHECKING:
+    from src.retrieval import UETRetriever
 
 logger = get_logger("pipeline")
 
@@ -117,17 +119,44 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             config=cfg,
         )
 
-        emb = embedding_model or UETEmbedder()
-        vs = vector_store or UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=emb)
+        self._embedding_model: Optional[BaseEmbeddingModel] = embedding_model
+        self._vector_store: Optional[BaseVectorStore] = vector_store
         super().__init__(
             crawler=crawler or UETDataLoader(),
             preprocessor=preprocessor or UETPreprocessor(),
             chunker=active_chunker,
-            embedding_model=emb,
-            vector_store=vs,
+            embedding_model=embedding_model,
+            vector_store=vector_store,
         )
         self.config = cfg
         self.manifest = manifest or DataManifestTracker(manifest_path=BASE_DIR / "data" / ".ingest_manifest.json")
+
+    @property
+    def embedding_model(self) -> BaseEmbeddingModel:
+        """Khởi tạo lazy mô hình embedding để tránh tải bge-m3 ở các chặng không dùng vector."""
+        if self._embedding_model is None:
+            self._embedding_model = UETEmbedder()
+            if self._vector_store is not None and getattr(self._vector_store, "embedding_model", None) is None:
+                self._vector_store.embedding_model = self._embedding_model
+        return self._embedding_model
+
+    @embedding_model.setter
+    def embedding_model(self, value: Optional[BaseEmbeddingModel]) -> None:
+        self._embedding_model = value
+
+    @property
+    def vector_store(self) -> BaseVectorStore:
+        """Khởi tạo lazy VectorStore khi thực sự cần truy cập ChromaDB."""
+        if self._vector_store is None:
+            self._vector_store = UETVectorStore(
+                persist_dir=BASE_DIR / "database" / "vector_db",
+                embedding_model=self._embedding_model,
+            )
+        return self._vector_store
+
+    @vector_store.setter
+    def vector_store(self, value: Optional[BaseVectorStore]) -> None:
+        self._vector_store = value
 
     def run(self, sources: List[DataSource], clear_existing: bool = False) -> Dict[str, Any]:
         """
@@ -668,10 +697,13 @@ class UETRAGPipeline(BaseRAGPipeline):
         )
 
         # UETRetriever điều phối quy trình BM25 + Vector + Hybrid RRF + Reranker
-        self.retriever = retriever or UETRetriever(
-            embedding_model=self.embedding_model,
-            vector_store=self.vector_store,
-        )
+        if retriever is None:
+            from src.retrieval import UETRetriever
+            retriever = UETRetriever(
+                embedding_model=self.embedding_model,
+                vector_store=self.vector_store,
+            )
+        self.retriever = retriever
 
     def query(self, query: UserQuery, top_k: Optional[int] = None) -> Response:
         """
@@ -732,6 +764,8 @@ def get_rag_pipeline() -> UETRAGPipeline:
     else:
         logger.info(f"Đã kết nối và sử dụng {vector_store.count()} vectors thực tế từ database/vector_db/")
 
+    from src.retrieval import UETRetriever
+
     prompt_augmenter = UETPromptAugmenter()
     llm = UETLLMClient()
     retriever = UETRetriever(embedding_model=embedding_model, vector_store=vector_store)
@@ -761,6 +795,8 @@ def get_retriever() -> UETRetriever:
     """
     [Phân hệ Retrieval]: Khởi tạo và cung cấp UETRetriever điều phối tìm kiếm đa tầng.
     """
+    from src.retrieval import UETRetriever
+
     embedding_model = UETEmbedder()
     vector_store = UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=embedding_model)
     return UETRetriever(
