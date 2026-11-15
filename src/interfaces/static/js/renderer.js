@@ -114,27 +114,50 @@ export class UETChatRenderer {
 
     /**
      * Trình phân tích cú pháp Markdown nâng cao hỗ trợ Tiêu đề, Bảng, Danh sách, Code Blocks và LaTeX
+     * Sử dụng cơ chế Placeholders (Tokens) chống vỡ định dạng và bảo toàn cấu trúc code/math.
      */
     parseMarkdown(markdownText) {
         if (!markdownText) return "";
+
+        const tokens = new Map();
+        let tokenCount = 0;
+        const addToken = (html) => {
+            const key = `XXUETTOKEN${tokenCount++}XX`;
+            tokens.set(key, html);
+            return key;
+        };
+
+        // Hàm định dạng inline an toàn (Bold, Italic, Link, Inline Code)
+        const formatInline = (str) => {
+            if (!str) return "";
+            let s = str;
+            // Bold & Italic
+            s = s.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+            s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            s = s.replace(/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
+            s = s.replace(/(?<!_)\_(?!\s)([^_\n]+?)(?<!\s)\_(?!\_)/g, '<em>$1</em>');
+            // Links
+            s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
+            return s;
+        };
 
         let text = markdownText;
 
         // 1. Block Math: $$...$$
         text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
-            return `<div class="katex-block-wrapper">${this.renderLatex(formula.trim(), true)}</div>`;
+            return addToken(`<div class="katex-block-wrapper">${this.renderLatex(formula.trim(), true)}</div>`);
         });
 
         // 2. Inline Math: $...$ (không trùng với ký hiệu tiền tệ)
         text = text.replace(/(?<!\$)\$([^\$\n]+?)\$(?!\$)/g, (match, formula) => {
-            return this.renderLatex(formula.trim(), false);
+            return addToken(this.renderLatex(formula.trim(), false));
         });
 
         // 3. Code blocks (```language ... ```)
         text = text.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const escapedCode = this.escapeHtml(code.trim());
             const displayLang = (lang || "code").toUpperCase();
-            return `
+            const codeBlockHtml = `
                 <div class="code-block-wrapper">
                     <div class="code-block-header">
                         <span class="code-lang">${displayLang}</span>
@@ -146,36 +169,21 @@ export class UETChatRenderer {
                     <pre><code class="language-${lang || 'text'}">${escapedCode}</code></pre>
                 </div>
             `;
+            return addToken(codeBlockHtml);
         });
 
         // 4. Inline code (`code`)
-        text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+            return addToken(`<code class="inline-code">${this.escapeHtml(code)}</code>`);
+        });
 
-        // 5. Headers
-        text = text.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
-        text = text.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
-        text = text.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
-
-        // 6. Blockquotes
-        text = text.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
-
-        // 7. Bold & Italic
-        text = text.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
-        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-        // 8. Markdown Tables (Hỗ trợ chuẩn Github, có hoặc không có dấu | ở 2 đầu biên)
+        // 5. Markdown Tables (Hỗ trợ chuẩn Github, có hoặc không có dấu | ở 2 đầu biên)
         text = text.replace(/((?:^[ \t]*\|?.*?\|.*?\|?[ \t]*(?:\r?\n|$))+)/gm, (match) => {
             const rawRows = match.trim().split(/\r?\n/).map(r => r.trim()).filter(r => r.length > 0);
             if (rawRows.length < 2) return match;
 
-            // Kiểm tra dòng thứ 2 có phải dòng ngăn cách bảng (|---|:---|---:| hoặc ---|---)
             const sepRegex = /^\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?$/;
-            let sepIdx = -1;
-            if (rawRows.length > 1 && sepRegex.test(rawRows[1])) {
-                sepIdx = 1;
-            }
-            if (sepIdx === -1) return match;
+            if (!sepRegex.test(rawRows[1])) return match;
 
             const splitRow = (rowStr) => {
                 let parts = rowStr.split("|").map(p => p.trim());
@@ -187,8 +195,7 @@ export class UETChatRenderer {
             const headerCells = splitRow(rawRows[0]);
             if (headerCells.length === 0) return match;
 
-            // Xác định căn lề từ dòng phân cách
-            const alignments = splitRow(rawRows[sepIdx]).map(sep => {
+            const alignments = splitRow(rawRows[1]).map(sep => {
                 const left = sep.startsWith(":");
                 const right = sep.endsWith(":");
                 if (left && right) return "center";
@@ -200,16 +207,16 @@ export class UETChatRenderer {
             let html = '<div class="table-container"><table class="md-table"><thead><tr>';
             headerCells.forEach((cell, idx) => {
                 const alignStyle = alignments[idx] ? ` style="text-align: ${alignments[idx]};"` : "";
-                html += `<th${alignStyle}>${cell}</th>`;
+                html += `<th${alignStyle}>${formatInline(this.escapeHtml(cell))}</th>`;
             });
             html += '</tr></thead><tbody>';
 
-            for (let i = sepIdx + 1; i < rawRows.length; i++) {
+            for (let i = 2; i < rawRows.length; i++) {
                 const rowCells = splitRow(rawRows[i]);
                 if (rowCells.length > 0) {
                     html += '<tr>';
                     headerCells.forEach((_, idx) => {
-                        const cellContent = (rowCells[idx] !== undefined) ? rowCells[idx] : "";
+                        const cellContent = (rowCells[idx] !== undefined) ? formatInline(this.escapeHtml(rowCells[idx])) : "";
                         const alignStyle = alignments[idx] ? ` style="text-align: ${alignments[idx]};"` : "";
                         html += `<td${alignStyle}>${cellContent}</td>`;
                     });
@@ -217,26 +224,56 @@ export class UETChatRenderer {
                 }
             }
             html += '</tbody></table></div>';
-            return html;
+            return addToken(html);
         });
 
-        // 9. Lists (Loại bỏ newlines thừa bên trong ul/ol để không sinh tag br rác)
-        text = text.replace(/^[\*\-\•]\s+(.*)$/gim, '<li class="md-li-bullet">$1</li>');
-        text = text.replace(/(<li class="md-li-bullet">[\s\S]*?<\/li>[\s\n]*)+/g, (m) => `<ul class="md-ul">${m.replace(/\n/g, '')}</ul>`);
+        // 6. Headers
+        text = text.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
+        text = text.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
+        text = text.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
 
-        text = text.replace(/^\d+\.\s+(.*)$/gim, '<li class="md-li-num">$1</li>');
-        text = text.replace(/(<li class="md-li-num">[\s\S]*?<\/li>[\s\n]*)+/g, (m) => `<ol class="md-ol">${m.replace(/\n/g, '')}</ol>`);
+        // 7. Blockquotes
+        text = text.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
 
-        // 10. Links [text](url)
-        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
+        // 8. Lists (Xử lý danh sách TRƯỚC bold/italic để tránh dấu * đầu dòng bị hiểu nhầm thành in nghiêng)
+        text = text.replace(/((?:^[ \t]*[\*\-\•]\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
+            const lines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const items = lines.map(line => {
+                const itemContent = line.replace(/^[\*\-\•]\s+/, '');
+                return `<li class="md-li-bullet">${formatInline(itemContent)}</li>`;
+            }).join('');
+            return addToken(`<ul class="md-ul">${items}</ul>`);
+        });
 
-        // 11. Paragraphs & Line breaks (Xử lý mượt mà, dọn dẹp br cạnh các khối block)
+        text = text.replace(/((?:^[ \t]*\d+\.\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
+            const lines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            const items = lines.map(line => {
+                const itemContent = line.replace(/^\d+\.\s+/, '');
+                return `<li class="md-li-num">${formatInline(itemContent)}</li>`;
+            }).join('');
+            return addToken(`<ol class="md-ol">${items}</ol>`);
+        });
+
+        // 9. Bold & Italic (Được áp dụng an toàn cho phần văn bản còn lại)
+        text = formatInline(text);
+
+        // 10. Horizontal rule (--- hoặc ***)
+        text = text.replace(/^[ \t]*[-*_]{3,}[ \t]*$/gim, '<hr class="md-hr"/>');
+
+        // 11. Paragraphs & Line breaks
         text = text.replace(/\n\n+/g, '<br/><br/>');
         text = text.replace(/\n/g, '<br/>');
 
-        // Dọn sạch br dư thừa ngay trước hoặc ngay sau các thẻ block lớn (bảng, tiêu đề, danh sách, quote, code)
-        text = text.replace(/(<\/(?:div|table|blockquote|ul|ol|h2|h3|h4|pre)>)\s*(?:<br\s*\/?>)+/gi, '$1');
-        text = text.replace(/(?:<br\s*\/?>)+\s*(<(?:div|table|blockquote|ul|ol|h2|h3|h4|pre))/gi, '$1');
+        // 12. Dọn sạch các thẻ <br/> thừa nằm trực tiếp trước/sau các token block lớn
+        tokens.forEach((val, key) => {
+            text = text.replace(new RegExp(`(?:<br\\s*\\/?>)+\\s*(${key})`, 'g'), '$1');
+            text = text.replace(new RegExp(`(${key})\\s*(?:<br\\s*\\/?>)+`, 'g'), '$1');
+        });
+
+        // 13. Khôi phục lại các Tokens (HTML an toàn)
+        tokens.forEach((val, key) => {
+            text = text.split(key).join(val);
+        });
 
         return text;
     }
@@ -283,12 +320,6 @@ export class UETChatRenderer {
                     <div class="message-text">${this.escapeHtml(msg.text)}</div>
                     <div class="message-meta">
                         <span class="message-time">${timeStr}</span>
-                        <span class="read-receipt" title="Đã gửi">
-                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                                <path d="M1 5.5L5 9.5L15 1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M5 5.5L9 9.5L15 1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </span>
                     </div>
                 </div>
             `;
@@ -322,11 +353,6 @@ export class UETChatRenderer {
                                 <div class="source-doc-title">${this.escapeHtml(title)}</div>
                                 <div class="source-doc-meta">${this.escapeHtml(metaParts || "Căn cứ quy chế đào tạo UET")}</div>
                             </div>
-                            <div class="source-doc-action-col">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="9 18 15 12 9 6"></polyline>
-                                </svg>
-                            </div>
                         </div>
                     `;
                 });
@@ -344,10 +370,6 @@ export class UETChatRenderer {
                     <div class="sources-reference-section">
                         <div class="sources-ref-header">
                             <div class="sources-ref-title">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                                </svg>
                                 <span>Tài liệu tham khảo</span>
                                 <span class="sources-count-badge">${totalSources}</span>
                             </div>
@@ -360,46 +382,59 @@ export class UETChatRenderer {
                 `;
             }
 
-            // Thanh thao tác tin nhắn AI
+            // Thanh thao tác tin nhắn AI: Tối giản icon, loại bỏ Like/Dislike rườm rà
             const latencyStr = msg.latency ? `${msg.latency}s` : "";
+
+            let actionsHtml = "";
+            if (msg.error) {
+                // Tin nhắn lỗi: Chỉ hiện nút Thử lại gọn gàng, không icon rườm rà
+                actionsHtml = `
+                    <button class="btn-msg-action btn-retry-msg" title="Thử lại câu hỏi">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                            <path d="M21 3v5h-5"></path>
+                            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                            <path d="M3 21v-5h5"></path>
+                        </svg>
+                        <span class="action-btn-text">Thử lại</span>
+                    </button>
+                `;
+            } else {
+                // Tin nhắn bình thường: Chỉ giữ Copy và Retry
+                actionsHtml = `
+                    <button class="btn-msg-action btn-copy-msg" title="Sao chép câu trả lời">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                    <button class="btn-msg-action btn-retry-msg" title="Tạo lại câu trả lời">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                            <path d="M21 3v5h-5"></path>
+                            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                            <path d="M3 21v-5h5"></path>
+                        </svg>
+                    </button>
+                    ${latencyStr ? `<span class="badge-latency">${latencyStr}</span>` : ""}
+                `;
+            }
 
             item.innerHTML = `
                 <div class="bot-avatar-col">
                     <div class="telegram-avatar bot-avatar-mini" title="UET AI Assistant">
-                        <span>UET</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
                     </div>
                 </div>
-                <div class="message-bubble bot-bubble">
+                <div class="message-bubble bot-bubble ${msg.error ? 'bot-bubble-error' : ''}">
                     <div class="bot-name-tag">UET AI Assistant</div>
                     <div class="message-text markdown-body">${formattedContent}</div>
                     ${sourcesHtml}
                     <div class="message-meta-footer">
                         <div class="message-actions">
-                            <button class="btn-msg-action btn-copy-msg" title="Sao chép câu trả lời">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                            </button>
-                            <button class="btn-msg-action btn-like-msg" title="Câu trả lời hữu ích">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
-                                </svg>
-                            </button>
-                            <button class="btn-msg-action btn-dislike-msg" title="Chưa chính xác hoặc cần hoàn thiện">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
-                                </svg>
-                            </button>
-                            <button class="btn-msg-action btn-retry-msg" title="Tạo lại câu trả lời">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
-                                    <path d="M21 3v5h-5"></path>
-                                    <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
-                                    <path d="M3 21v-5h5"></path>
-                                </svg>
-                            </button>
-                            ${latencyStr ? `<span class="badge-latency">${latencyStr}</span>` : ""}
+                            ${actionsHtml}
                         </div>
                         <span class="message-time">${timeStr}</span>
                     </div>
@@ -463,26 +498,6 @@ export class UETChatRenderer {
                     onRetry();
                 });
             }
-
-            // Like / Dislike
-            const likeBtn = item.querySelector(".btn-like-msg");
-            const dislikeBtn = item.querySelector(".btn-dislike-msg");
-            if (likeBtn && dislikeBtn) {
-                likeBtn.addEventListener("click", () => {
-                    likeBtn.classList.toggle("active");
-                    dislikeBtn.classList.remove("active");
-                    if (likeBtn.classList.contains("active")) {
-                        this.showToast("Cảm ơn đánh giá tích cực của bạn!", "success");
-                    }
-                });
-                dislikeBtn.addEventListener("click", () => {
-                    dislikeBtn.classList.toggle("active");
-                    likeBtn.classList.remove("active");
-                    if (dislikeBtn.classList.contains("active")) {
-                        this.showToast("Đã ghi nhận phản hồi để cải thiện dữ liệu quy chế.", "info");
-                    }
-                });
-            }
         }
 
         return item;
@@ -495,7 +510,9 @@ export class UETChatRenderer {
         item.innerHTML = `
             <div class="bot-avatar-col">
                 <div class="telegram-avatar bot-avatar-mini">
-                    <span>UET</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                    </svg>
                 </div>
             </div>
             <div class="message-bubble bot-bubble typing-bubble">

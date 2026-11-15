@@ -89,6 +89,16 @@ def create_app():
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    @app.on_event("startup")
+    def startup_warmup():
+        """Tải trước toàn bộ mô hình Embedding, Reranker, BM25 vào RAM ngay khi bật server."""
+        logger.info("🚀 Đang khởi động và nạp trước RAG Pipeline vào RAM (Pre-warming)...")
+        try:
+            get_rag_pipeline()
+            logger.info("✅ RAG Pipeline đã sẵn sàng trong RAM, câu hỏi đầu tiên sẽ phản hồi nhanh chóng!")
+        except Exception as e:
+            logger.warning(f"Lỗi tải trước RAG Pipeline khi khởi động: {e}")
+
     @app.get("/")
     def serve_homepage():
         """Phục vụ trang chủ Web UI."""

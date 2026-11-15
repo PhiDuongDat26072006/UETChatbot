@@ -35,7 +35,7 @@ embedding:
   # Mô hình embedding chuẩn hóa cho toàn bộ hệ thống UET Chatbot
   # BAAI/bge-m3 (1024 chiều, chạy cục bộ offline qua sentence-transformers)
   provider: "bge-m3"
-  model_name: "weights/bge-m3"
+  model_name: "BAAI/bge-m3"
   dimension: 1024
 
 retrieval:
@@ -43,7 +43,7 @@ retrieval:
   vector_top_k: 100            # Số ứng viên Vector search lấy ra
   candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
   rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
-  final_top_k: 5              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
+  final_top_k: 10              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
   fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
   rrf_k: 60                    # Hằng số làm mượt RRF
   vector_weight: 0.6           # Trọng số nhánh Vector Search
