@@ -32,9 +32,10 @@ chunking:
 
 embedding:
   # Mô hình embedding chuẩn hóa cho toàn bộ hệ thống UET Chatbot
-  # BAAI/bge-m3 (1024 chiều, chạy cục bộ offline qua sentence-transformers)
-  provider: "bge-m3"
-  model_name: "BAAI/bge-m3"
+  # BAAI/bge-m3 ONNX FP32 (1024 chiều, chạy cục bộ offline qua onnxruntime)
+  provider: "onnx"
+  model_name: "weights/bge-m3"
+  onnx_path: "weights/bge-m3/onnx/model.onnx"
   dimension: 1024
 
 retrieval:
@@ -53,7 +54,7 @@ retrieval:
   
   # Cấu hình Maximal Marginal Relevance (MMR) đa dạng hóa ngữ cảnh trước Reranker
   enable_mmr: true                      # Bật/tắt tầng đa dạng hóa MMR trước Reranker
-  mmr_lambda: 0.8                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
+  mmr_lambda: 0.7                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
   mmr_top_n: 40                         # Số lượng ứng viên đa dạng giữ lại sau MMR để chuyển tiếp cho Reranker
 
   # cấu hình reranker

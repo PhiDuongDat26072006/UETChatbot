@@ -360,13 +360,25 @@ def create_app():
 
     @app.on_event("startup")
     def startup_warmup():
-        """Tải trước toàn bộ mô hình Embedding, Reranker, BM25 vào RAM ngay khi bật server."""
-        logger.info("🚀 Đang khởi động và nạp trước RAG Pipeline vào RAM (Pre-warming)...")
+        """Tải trước toàn bộ mô hình và thực hiện giai đoạn Cold-Start trước khi phục vụ người dùng."""
+        logger.info("🚀 [1/2] Đang khởi động và nạp trước RAG Pipeline vào RAM (Pre-warming)...")
         try:
-            get_rag_pipeline()
-            logger.info("✅ RAG Pipeline đã sẵn sàng trong RAM, câu hỏi đầu tiên sẽ phản hồi nhanh chóng!")
+            pipeline = get_rag_pipeline()
+            logger.info("🔥 [2/2] Đang thực thi Cold-Start Warmup để làm nóng Embedding ONNX, Reranker, BM25 & LLM...")
+            # Thực hiện một truy vấn giả lập để:
+            # 1. Kích hoạt bộ tách từ tiếng Việt underthesea
+            # 2. Kích hoạt đồ thị suy luận ONNX FP32 của BGE-M3 Embedding
+            # 3. Kích hoạt bộ nhớ đệm ChromaDB Vector Search
+            # 4. Kích hoạt đồ thị suy luận ONNX của Jina Reranker
+            # 5. Thiết lập kết nối mạng ban đầu (SSL Handshake) tới LLM API
+            warmup_query = UserQuery(
+                query_text="Tiêu chuẩn xét học bổng khuyến khích học tập UET",
+                session_id="system_cold_start",
+            )
+            pipeline.query(warmup_query, top_k=2)
+            logger.info("✨ Giai đoạn Cold-Start hoàn tất! Toàn bộ hệ thống đã sẵn sàng 100%, câu hỏi đầu tiên sẽ phản hồi tức thì!")
         except Exception as e:
-            logger.warning(f"Lỗi tải trước RAG Pipeline khi khởi động: {e}")
+            logger.warning(f"Lỗi khởi động hoặc Cold-Start Warmup: {e}")
 
     @app.get("/")
     def serve_homepage():
@@ -656,7 +668,23 @@ def run_web(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True
         print("💡 Nhấn Ctrl+C để dừng server.\n")
 
         if open_browser:
-            threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+            def wait_and_open_browser():
+                import time
+                import urllib.request
+                health_url = f"{url}/api/health"
+                # Chờ server hoàn tất khởi động và Cold-Start warmup rồi mới bật trình duyệt
+                for _ in range(120):
+                    time.sleep(0.5)
+                    try:
+                        with urllib.request.urlopen(health_url, timeout=1.0) as resp:
+                            if resp.status == 200:
+                                time.sleep(0.2)
+                                webbrowser.open(url)
+                                break
+                    except Exception:
+                        pass
+
+            threading.Thread(target=wait_and_open_browser, daemon=True).start()
 
         uvicorn.run(app, host=host, port=port)
     except ImportError:
