@@ -12,6 +12,7 @@ from src.retrieval.reranker import (
     FlashRankReranker,
     CrossEncoderReranker,
     JinaONNXReranker,
+    ViRankerReranker,
     RerankerFactory,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "FlashRankReranker",
     "CrossEncoderReranker",
     "JinaONNXReranker",
+    "ViRankerReranker",
     "RerankerFactory",
 ]
