@@ -285,7 +285,10 @@ textarea {
     z-index: 20;
     flex-shrink: 0;
     overflow: hidden;
-    transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+    transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                min-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     color: var(--text-primary);
 }
 
@@ -295,11 +298,246 @@ textarea {
     box-shadow: var(--shadow-card);
 }
 
-/* Khi thu gọn trên Desktop: trượt mượt sang trái và biến mất hoàn toàn */
+/* Khi thu gọn trên Desktop: chuyển sang dạng thanh công cụ dọc (Mini Rail) tinh gọn 58px */
 .telegram-sidebar.sidebar-closed {
-    margin-left: calc(-1 * var(--sidebar-width) - var(--gutter-size) * 2);
-    opacity: 0;
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+    margin-left: 0 !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+.telegram-sidebar.sidebar-closed .sidebar-full-content {
+    display: none !important;
+}
+
+.telegram-sidebar.sidebar-closed .sidebar-mini-rail {
+    display: flex !important;
+}
+
+/* Container cho toàn bộ nội dung Sidebar đầy đủ */
+.sidebar-full-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   MINI RAIL DOCK (Thanh biểu tượng chức năng dọc khi Sidebar thu gọn)
+   ========================================================================== */
+.sidebar-mini-rail {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 8px 0 10px 0;
+    box-sizing: border-box;
+    background: transparent;
+    user-select: none;
+}
+
+/* Nút UET Chatbot Logo ở trên cùng */
+.btn-rail-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    padding: 0;
+}
+
+.btn-rail-logo:hover {
+    background: rgba(8, 117, 201, 0.1);
+    transform: scale(1.05);
+}
+
+[data-theme="dark"] .btn-rail-logo:hover {
+    background: rgba(56, 189, 248, 0.12);
+}
+
+.rail-logo-emblem {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1.5px 5px rgba(0, 84, 166, 0.22);
+    flex-shrink: 0;
+    overflow: hidden;
+    border: 1px solid rgba(8, 117, 201, 0.2);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rail-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+    user-select: none;
     pointer-events: none;
+}
+
+[data-theme="dark"] .rail-logo-emblem {
+    background: #FFFFFF;
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.btn-rail-logo:hover .rail-logo-emblem {
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+    transform: scale(1.05);
+}
+
+/* Đường kẻ phân cách */
+.mini-rail-divider {
+    width: 24px;
+    height: 1px;
+    background: var(--border-divider);
+    margin: 5px 0 6px 0;
+    flex-shrink: 0;
+}
+
+/* Nhóm các nút icon */
+.mini-rail-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.mini-rail-spacer {
+    flex: 1;
+    min-height: 8px;
+}
+
+.mini-rail-bottom {
+    margin-top: auto;
+    padding-top: 4px;
+}
+
+/* Nút icon trong thanh mini rail */
+.mini-rail-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    outline: none;
+}
+
+.mini-rail-btn svg {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+    transition: transform 0.16s ease, stroke 0.16s ease;
+}
+
+.mini-rail-btn:hover {
+    background-color: rgba(8, 117, 201, 0.09);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+[data-theme="dark"] .mini-rail-btn:hover {
+    background-color: rgba(56, 189, 248, 0.12);
+    color: #38BDF8;
+}
+
+.mini-rail-btn:active {
+    transform: scale(0.93);
+    background-color: rgba(8, 117, 201, 0.16);
+}
+
+/* Tooltip hiển thị bên cạnh khi hover vào nút */
+.mini-rail-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(100% + 9px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-5px);
+    background: #0F172A;
+    color: #F8FAFC;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1), transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 1000;
+}
+
+[data-theme="dark"] .mini-rail-btn[data-tooltip]::after {
+    background: #1E293B;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mini-rail-btn[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(-50%) translateX(0);
+}
+
+/* Avatar sinh viên ở dưới cùng */
+.mini-rail-avatar-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin-top: 2px;
+}
+
+.mini-rail-avatar {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0054A6 0%, #0875C9 50%, #38BDF8 100%);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(8, 117, 201, 0.3);
+    transition: all 0.2s ease;
+    border: 1px solid #FFFFFF;
+}
+
+.mini-rail-avatar svg {
+    width: 14px;
+    height: 14px;
+}
+
+[data-theme="dark"] .mini-rail-avatar {
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.mini-rail-avatar-btn:hover .mini-rail-avatar {
+    transform: scale(1.08);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
 }
 
 /* Sidebar Backdrop cho Mobile Drawer */
@@ -389,6 +627,15 @@ textarea {
     letter-spacing: 0.5px;
 }
 
+.uet-brand-text .chat-header-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
 .sidebar-header-actions {
     display: flex;
     align-items: center;
@@ -426,6 +673,76 @@ textarea {
     border-bottom: 1px solid var(--border-divider);
     flex-shrink: 0;
     background-color: transparent;
+}
+
+/* 2b. SIDEBAR CURRENT CHAT BAR (Hiển thị tiêu đề & công cụ hội thoại đang mở) */
+.sidebar-current-chat-bar {
+    padding: 7px 12px;
+    margin: 8px 14px 4px 14px;
+    background: #FFFFFF;
+    border: 1px solid rgba(8, 117, 201, 0.15);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .sidebar-current-chat-bar {
+    background: #181D26;
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: none;
+}
+
+.current-chat-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1;
+}
+
+.current-chat-icon {
+    color: var(--primary);
+    flex-shrink: 0;
+}
+
+.current-chat-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.current-chat-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.btn-sidebar-tool {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-sidebar-tool:hover {
+    background-color: rgba(8, 117, 201, 0.08);
+    color: var(--primary);
 }
 
 .search-input-wrapper {
@@ -970,16 +1287,61 @@ textarea {
 
 .header-dropdown-menu {
     position: absolute;
-    top: 48px;
+    top: calc(100% + 6px);
     right: 0;
-    background-color: var(--bg-sidebar);
-    border: 1px solid var(--border-subtle);
-    border-radius: 14px;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 12px;
     box-shadow: var(--shadow-dropdown);
     padding: 6px;
-    min-width: 200px;
+    min-width: 190px;
     z-index: 100;
     display: none;
+}
+
+/* Floating Sidebar Toggle Button khi ẩn sidebar trên Desktop hoặc Mobile */
+.btn-floating-sidebar {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background-color: #FFFFFF;
+    border: 1px solid rgba(8, 117, 201, 0.2);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    color: var(--text-secondary);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25;
+    transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .btn-floating-sidebar {
+    background-color: #181D26;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+.btn-floating-sidebar:hover {
+    background-color: rgba(8, 117, 201, 0.1);
+    color: var(--primary);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(8, 117, 201, 0.2);
+}
+
+/* Trên Desktop: Ẩn nút floating vì đã có thanh Mini Rail dọc bên trái */
+.telegram-sidebar.sidebar-closed ~ .telegram-main .btn-floating-sidebar {
+    display: none !important;
+}
+
+/* Luôn hiện nút trên Mobile */
+@media (max-width: 768px) {
+    .btn-floating-sidebar {
+        display: flex !important;
+    }
 }
 
 .header-dropdown-menu.show {
@@ -2302,165 +2664,177 @@ mark.search-highlight-active {
     color: #dc2626;
 }
 
-/* Khung Card nhập câu hỏi Telegram V5: Max-width 900px, Radius 18px, Border #DCE4ED */
-.telegram-input-form.claude-composer {
+/* ==========================================================================
+   7. MESSAGE COMPOSER - CHATGPT SINGLE PILL BAR STYLE
+   ========================================================================== */
+.telegram-input-form.chatgpt-input-bar {
     width: 100%;
-    max-width: 900px;
+    max-width: 860px;
     margin: 0 auto;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-composer);
-    border-radius: 18px;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
-    padding: 10px 14px 8px 14px;
+    background-color: #FFFFFF;
+    border: 1px solid rgba(8, 117, 201, 0.2);
+    border-radius: 9999px;
+    box-shadow: 0 2px 14px rgba(15, 23, 42, 0.08);
+    padding: 6px 8px 6px 10px;
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 72px;
-    gap: 4px;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
     position: relative;
-    transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-[data-theme="dark"] .telegram-input-form.claude-composer {
-    background-color: var(--bg-card);
-    border-color: var(--border-composer);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+[data-theme="dark"] .telegram-input-form.chatgpt-input-bar {
+    background-color: #1A1D24;
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
 }
 
-.telegram-input-form.claude-composer:focus-within {
+.telegram-input-form.chatgpt-input-bar:focus-within {
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(8, 117, 201, 0.16);
+    box-shadow: 0 0 0 2px rgba(8, 117, 201, 0.2), 0 4px 16px rgba(15, 23, 42, 0.12);
 }
 
-/* Hàng trên: Textarea nhập câu hỏi gọn gàng, tự động dãn dòng khi gõ nhiều */
-.composer-textarea-row {
-    width: 100%;
-    flex: 1;
+[data-theme="dark"] .telegram-input-form.chatgpt-input-bar:focus-within {
+    border-color: #38BDF8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25), 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+
+/* Nút Action bên trong thanh (Nút + đính kèm & Nút Emoji) */
+.btn-bar-action {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.16s ease;
+    outline: none;
+    padding: 0;
 }
 
-.claude-composer .telegram-textarea {
+.btn-bar-action:hover {
+    background-color: rgba(8, 117, 201, 0.09);
+    color: var(--primary);
+    transform: scale(1.06);
+}
+
+[data-theme="dark"] .btn-bar-action:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #38BDF8;
+}
+
+.btn-bar-action:active {
+    transform: scale(0.95);
+}
+
+/* Wrapper chứa Textarea ở giữa thanh */
+.bar-textarea-wrapper {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+}
+
+.chatgpt-input-bar .telegram-textarea {
     width: 100%;
-    min-height: 28px;
-    max-height: 160px;
-    padding: 2px 0 2px 0;
+    min-height: 24px;
+    max-height: 150px;
+    padding: 4px 0;
     color: var(--text-primary);
     resize: none;
-    line-height: 1.5;
-    font-size: 14.5px;
+    line-height: 1.45;
+    font-size: 15px;
+    font-family: inherit;
     background: transparent;
     border: none;
     outline: none;
     display: block;
+    box-sizing: border-box;
     scrollbar-width: thin;
 }
 
-.claude-composer .telegram-textarea::-webkit-scrollbar {
-    width: 4px;
-}
-
-.claude-composer .telegram-textarea::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.15);
-    border-radius: var(--radius-full);
-}
-
-[data-theme="dark"] .claude-composer .telegram-textarea::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
-}
-
-.claude-composer .telegram-textarea::placeholder {
+.chatgpt-input-bar .telegram-textarea::placeholder {
     color: var(--text-muted);
     opacity: 0.85;
 }
 
-/* Hàng dưới: Thanh công cụ thao tác chuẩn Telegram */
-.composer-toolbar-row {
+.chatgpt-input-bar .telegram-textarea::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chatgpt-input-bar .telegram-textarea::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.15);
+    border-radius: 9999px;
+}
+
+[data-theme="dark"] .chatgpt-input-bar .telegram-textarea::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Cụm nút bên phải */
+.bar-actions-right {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding-top: 2px;
-    border-top: 1px solid transparent;
-}
-
-.composer-toolbar-left {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.composer-toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.btn-composer-tool {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 8px;
-    font-size: 12.5px;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: transparent;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.btn-composer-tool:hover {
-    background-color: var(--user-bubble);
-    color: var(--primary);
-}
-
-.btn-composer-tool.btn-emoji {
-    padding: 4px;
-    width: 32px;
-    height: 32px;
-    justify-content: center;
-}
-
-.btn-composer-submit {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    background-color: var(--primary);
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    gap: 4px;
     flex-shrink: 0;
-    margin: 0;
+}
+
+/* Nút Gửi tròn xanh phong cách ChatGPT */
+.btn-bar-send {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0054A6 0%, #0875C9 100%);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
     cursor: pointer;
+    flex-shrink: 0;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 8px rgba(8, 117, 201, 0.32);
+    outline: none;
+    padding: 0;
 }
 
-.btn-composer-submit:hover:not(:disabled) {
-    background-color: var(--primary-hover);
-    transform: scale(1.02);
-    box-shadow: 0 2px 8px rgba(8, 117, 201, 0.28);
-}
-
-.btn-composer-tool svg {
+.btn-bar-send svg {
     width: 19px;
     height: 19px;
-    stroke-width: 2.2px;
+    stroke-width: 2.5px;
+    transition: transform 0.18s ease;
 }
 
-.btn-composer-submit svg {
-    width: 18px;
-    height: 18px;
-    stroke-width: 2.3px;
+.btn-bar-send:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0875C9 0%, #0054A6 100%);
+    transform: scale(1.05);
+    box-shadow: 0 3px 12px rgba(8, 117, 201, 0.45);
 }
 
-.btn-composer-submit:disabled {
-    background-color: var(--border-subtle);
+.btn-bar-send:active:not(:disabled) {
+    transform: scale(0.94);
+}
+
+.btn-bar-send:disabled {
+    background: var(--border-subtle);
     color: var(--text-muted);
     opacity: 0.55;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+}
+
+[data-theme="dark"] .btn-bar-send:disabled {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.3);
 }
 
 /* Gợi ý phím tắt & nhãn hệ thống phía dưới card */
@@ -3080,13 +3454,14 @@ mark.search-highlight-active {
     }
 
     .telegram-input-pane {
-        padding: 4px 10px 6px 10px;
+        padding: 6px 10px 10px 10px;
     }
 
-    .telegram-input-form.claude-composer {
-        border-radius: 12px;
-        min-height: 70px;
-        padding: 8px 10px 6px 10px;
+    .telegram-input-form.chatgpt-input-bar {
+        border-radius: 9999px;
+        min-height: 48px;
+        padding: 4px 6px 4px 10px;
+        gap: 6px;
     }
 
     .composer-footer-hints {
@@ -3119,6 +3494,17 @@ mark.search-highlight-active {
         margin-left: 0 !important;
         opacity: 1 !important;
         pointer-events: auto !important;
+        width: 86% !important;
+        max-width: 340px !important;
+        min-width: 0 !important;
+    }
+
+    .sidebar-mini-rail {
+        display: none !important;
+    }
+
+    .sidebar-full-content {
+        display: flex !important;
     }
 
     .message-bubble {

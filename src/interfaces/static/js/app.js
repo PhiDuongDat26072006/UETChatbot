@@ -242,6 +242,97 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // 4b. Quản lý các nút trên thanh chức năng Mini Rail (khi thu gọn Sidebar)
+    const btnRailExpand = document.getElementById("btn-rail-expand");
+    const btnRailNewChat = document.getElementById("btn-rail-new-chat");
+    const btnRailSearch = document.getElementById("btn-rail-search");
+    const btnRailModules = document.getElementById("btn-rail-modules");
+    const btnRailHistory = document.getElementById("btn-rail-history");
+    const btnRailRegulations = document.getElementById("btn-rail-regulations");
+    const btnRailTheme = document.getElementById("btn-rail-theme");
+    const btnRailSettings = document.getElementById("btn-rail-settings");
+    const btnRailProfile = document.getElementById("btn-rail-profile");
+
+    if (btnRailExpand) {
+        btnRailExpand.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleSidebar();
+        });
+    }
+
+    if (btnRailNewChat) {
+        btnRailNewChat.addEventListener("click", () => {
+            if (btnNewChat) {
+                btnNewChat.click();
+            } else {
+                const newChat = storage.createChat("Cuộc trò chuyện mới");
+                renderChatList();
+                renderActiveChatMessages();
+                renderer.showToast("Đã tạo cuộc trò chuyện mới!", "success", 1500);
+            }
+        });
+    }
+
+    if (btnRailSearch) {
+        btnRailSearch.addEventListener("click", () => {
+            openInChatSearch();
+        });
+    }
+
+    if (btnRailModules) {
+        btnRailModules.addEventListener("click", () => {
+            if (sidebar && sidebar.classList.contains("sidebar-closed")) {
+                toggleSidebar();
+            }
+            renderer.showToast("Tiện ích & Quy chế đào tạo UET", "info", 1800);
+        });
+    }
+
+    if (btnRailHistory) {
+        btnRailHistory.addEventListener("click", () => {
+            if (sidebar && sidebar.classList.contains("sidebar-closed")) {
+                toggleSidebar();
+            }
+            if (inputSearchChats) inputSearchChats.focus();
+        });
+    }
+
+    if (btnRailRegulations) {
+        btnRailRegulations.addEventListener("click", () => {
+            if (inputMessage) {
+                inputMessage.value = "Tóm tắt các quy định quan trọng nhất trong Quy chế đào tạo UET";
+                inputMessage.dispatchEvent(new Event("input"));
+                inputMessage.focus();
+            }
+        });
+    }
+
+    if (btnRailTheme) {
+        btnRailTheme.addEventListener("click", () => {
+            if (btnThemeToggle) {
+                btnThemeToggle.click();
+            } else {
+                const now = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+                storage.setTheme(now);
+                document.documentElement.setAttribute("data-theme", now);
+                updateThemeIcon(now);
+                renderer.showToast(`Đã chuyển sang giao diện ${now === "dark" ? "Tối" : "Sáng"}`, "info", 1500);
+            }
+        });
+    }
+
+    if (btnRailSettings) {
+        btnRailSettings.addEventListener("click", () => {
+            openSettings();
+        });
+    }
+
+    if (btnRailProfile) {
+        btnRailProfile.addEventListener("click", () => {
+            openSettings();
+        });
+    }
+
     // 5. Kiểm tra kết nối Backend & Trạng thái hoạt động
     async function checkServerStatus() {
         const health = await api.getHealth();
