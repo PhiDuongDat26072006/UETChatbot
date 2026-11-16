@@ -22,9 +22,9 @@ class UETIndexer:
         persist_dir=None,
         collection_name=None,
         sparse_path=None,
-        workers=6,
+        workers=None,
     ):
-        if workers < 1:
+        if workers is not None and workers < 1:
             raise ValueError("workers must be positive")
 
         self.vector_store = vector_store
@@ -232,7 +232,7 @@ def main():
         "--sparse-path",
         default=str(BASE_DIR / "database" / "bm25_index.pkl"),
     )
-    parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--domain")
     parser.add_argument("--sample", type=int)
