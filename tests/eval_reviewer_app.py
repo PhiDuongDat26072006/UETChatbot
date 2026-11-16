@@ -111,25 +111,34 @@ def load_labels():
     else:
         print(f"[INFO] Chưa có file nhãn lưu trước đó. Mặc định tất cả là 'none'.")
 
-    # Đảm bảo tất cả câu hỏi đều có mục nhãn mặc định là 'none'
+    # Đảm bảo tất cả câu hỏi đều có mục nhãn; nếu chưa có trong LABELS_CACHE thì lấy từ review_label trong file annotated
     for it in EVAL_ITEMS:
         qid = it.get("id")
         if qid and qid not in LABELS_CACHE:
             LABELS_CACHE[qid] = {
-                "label": "none",
-                "note": "",
-                "updated_at": None,
+                "label": it.get("review_label", "none") or "none",
+                "note": it.get("review_note", "") or "",
+                "updated_at": it.get("review_updated_at", None),
             }
 
 
 def save_labels_to_file():
-    """Lưu LABELS_CACHE ra file JSON."""
+    """Lưu trạng thái gán nhãn trực tiếp vào EVAL_FILE (e2e_eval_100_annotated.json)."""
     try:
-        LABELS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LABELS_FILE, "w", encoding="utf-8") as f:
-            json.dump(LABELS_CACHE, f, ensure_ascii=False, indent=2)
+        out_items = []
+        for item in EVAL_ITEMS:
+            item_copy = dict(item)
+            qid = item.get("id")
+            rec = LABELS_CACHE.get(qid, {})
+            if isinstance(rec, dict):
+                item_copy["review_label"] = rec.get("label", "none")
+                item_copy["review_note"] = rec.get("note", "")
+                item_copy["review_updated_at"] = rec.get("updated_at", "")
+            out_items.append(item_copy)
+        with open(EVAL_FILE, "w", encoding="utf-8") as f:
+            json.dump(out_items, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[LỖI] Không thể lưu nhãn vào {LABELS_FILE}: {e}")
+        print(f"[LỖI] Không thể lưu nhãn vào {EVAL_FILE}: {e}")
 
 
 def calculate_stats():
@@ -428,11 +437,18 @@ class EvalReviewerHandler(BaseHTTPRequestHandler):
                 return
 
             with DATA_LOCK:
+                now_iso = datetime.datetime.now().isoformat()
                 LABELS_CACHE[qid] = {
                     "label": label,
                     "note": note,
-                    "updated_at": datetime.datetime.now().isoformat(),
+                    "updated_at": now_iso,
                 }
+                for it in EVAL_ITEMS:
+                    if it.get("id") == qid:
+                        it["review_label"] = label
+                        it["review_note"] = note
+                        it["review_updated_at"] = now_iso
+                        break
                 save_labels_to_file()
                 stats = calculate_stats()
 
