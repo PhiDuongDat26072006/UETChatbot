@@ -40,8 +40,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
 
-    <!-- Telegram Clean & Harmonious UI for UET (V5 Tables & Layout) -->
-    <link rel="stylesheet" href="/static/style.css?v=v5_table2">
+    <!-- Telegram Clean & Harmonious UI for UET (V7 Clean UI) -->
+    <link rel="stylesheet" href="/static/style.css?v=v7_clean_ui">
 </head>
 
 <body>
@@ -121,7 +121,10 @@
             <div class="sidebar-student-footer">
                 <div class="student-profile-left">
                     <div class="telegram-avatar student-avatar">
-                        <span>SV</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
                     </div>
                     <div class="student-profile-info">
                         <div class="student-name">Sinh viên UET</div>
@@ -508,17 +511,6 @@
                             <button class="btn-theme-choice" data-theme="dark">🌙 Tối</button>
                         </div>
                     </div>
-                    <div class="settings-row" style="margin-top: 12px; align-items: flex-start;">
-                        <span class="settings-label" style="padding-top: 6px;">Hình nền trò chuyện:</span>
-                        <div class="settings-wallpaper-selector">
-                            <button class="btn-wallpaper-choice active" data-wallpaper="telegram-blue"
-                                title="Hình nền Telegram Doodle UET AI độc quyền">✨ UET AI Doodle</button>
-                            <button class="btn-wallpaper-choice" data-wallpaper="plain"
-                                title="Nền trơn sạch sẽ (#F1F6FC)">⚪ Tối giản (#F1F6FC)</button>
-                            <button class="btn-wallpaper-choice" data-wallpaper="dark-night" title="Starry Night">🌌
-                                Starry Night</button>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="settings-section">
@@ -611,7 +603,7 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- JavaScript Module (Telegram Fleet Edition) -->
-    <script type="module" src="/static/js/app.js?v=v5_table2"></script>
+    <script type="module" src="/static/js/app.js?v=v7_clean_ui"></script>
 </body>
 
 </html>

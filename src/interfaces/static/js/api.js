@@ -7,7 +7,7 @@
 export class UETApiClient {
     constructor(baseUrl = "") {
         this.baseUrl = baseUrl;
-        this.timeoutMs = 60000; // 60s timeout cho LLM RAG
+        this.timeoutMs = 120000; // 120s timeout cho LLM RAG (chống timeout khi tải cold-start)
     }
 
     /**
@@ -90,7 +90,7 @@ export class UETApiClient {
         } catch (error) {
             clearTimeout(timer);
             if (error.name === "AbortError") {
-                throw new Error("Yêu cầu quá thời gian chờ (Timeout 60s). Vui lòng thử lại với câu hỏi ngắn gọn hơn.");
+                throw new Error("Yêu cầu quá thời gian chờ (Timeout 120s). Vui lòng thử lại với câu hỏi ngắn gọn hơn.");
             }
             throw error;
         }

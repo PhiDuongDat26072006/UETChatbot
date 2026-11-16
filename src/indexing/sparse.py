@@ -26,6 +26,14 @@ from src.indexing.chunks import normalize_chunks
 from concurrent.futures import ProcessPoolExecutor
 from rank_bm25 import BM25Plus
 
+# Chống lỗi Windows Smart App Control / Defender chặn file DLL torch_python.dll khi underthesea nạp optional modules
+import sys
+if "underthesea.pipeline.translate" not in sys.modules:
+    try:
+        import torch  # noqa
+    except (OSError, Exception):
+        sys.modules["underthesea.pipeline.translate"] = None
+
 # Patch underthesea CRF model loader on Windows when path contains non-ASCII characters
 try:
     import tempfile, shutil

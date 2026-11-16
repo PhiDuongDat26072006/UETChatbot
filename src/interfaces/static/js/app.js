@@ -6,9 +6,9 @@
  * LaTeX Math (KaTeX), Settings modal và Tối ưu trải nghiệm Telegram.
  */
 
-import { UETApiClient } from "./api.js";
-import { UETChatStorage } from "./storage.js";
-import { UETChatRenderer } from "./renderer.js";
+import { UETApiClient } from "./api.js?v=v7_clean_ui";
+import { UETChatStorage } from "./storage.js?v=v7_clean_ui";
+import { UETChatRenderer } from "./renderer.js?v=v7_clean_ui";
 
 document.addEventListener("DOMContentLoaded", () => {
     // 1. Khởi tạo các phân hệ
@@ -168,18 +168,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.documentElement.setAttribute("data-theme", theme);
                 updateThemeIcon(theme);
                 renderer.showToast(`Đã chuyển sang giao diện ${theme === "dark" ? "Tối" : "Sáng"}`, "info", 1500);
-            }
-        });
-    });
-
-    document.querySelectorAll(".btn-wallpaper-choice").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            const wp = btn.getAttribute("data-wallpaper");
-            if (wp) {
-                storage.setWallpaper(wp);
-                document.documentElement.setAttribute("data-wallpaper", wp);
-                updateActiveWallpaperButtons(wp);
-                renderer.showToast("Đã cập nhật hình nền trò chuyện", "info", 1500);
             }
         });
     });
@@ -886,9 +874,14 @@ document.addEventListener("DOMContentLoaded", () => {
             typingBubble.remove();
             console.error("Lỗi gửi tin nhắn:", err);
 
+            // Thông báo sự cố lịch sự, tinh tế, không in chi tiết lỗi kỹ thuật
+            const friendlyErrorText = 
+                "Hệ thống hiện đang gặp sự cố kết nối tạm thời trong quá trình xử lý câu hỏi.\n\n" +
+                "Bạn vui lòng đợi trong giây lát rồi nhấn nút **Gửi lại** hoặc thử lại sau nhé.";
+
             const errMsg = storage.addMessage(activeChat.id, {
                 sender: "bot",
-                text: `⚠️ **Không thể kết nối đến AI Assistant**: ${err.message}\n\n*Gợi ý: Kiểm tra lại máy chủ backend hoặc nhấn nút **Gửi lại** phía dưới để thử lại.*`,
+                text: friendlyErrorText,
                 timestamp: Date.now(),
                 error: true
             });
@@ -898,7 +891,7 @@ document.addEventListener("DOMContentLoaded", () => {
             messagesContainer.appendChild(errEl);
             scrollToBottom();
 
-            renderer.showToast("Không nhận được phản hồi từ AI Assistant.", "error");
+            renderer.showToast("Hệ thống gặp sự cố tạm thời. Vui lòng thử lại sau.", "info");
         } finally {
             isGenerating = false;
             if (btnSend && inputMessage) {
@@ -1149,22 +1142,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Wallpaper selector inside settings modal
-    document.querySelectorAll(".btn-wallpaper-choice").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            const w = btn.getAttribute("data-wallpaper");
-            storage.setWallpaper(w);
-            document.documentElement.setAttribute("data-wallpaper", w);
-            updateActiveWallpaperButtons(w);
-            const nameMap = {
-                "telegram-green": "Telegram Pastel Green",
-                "telegram-blue": "UET AI Doodle (Telegram Desktop)",
-                "dark-night": "Starry Night (Doodle cute)",
-                "plain": "Tối giản (#F1F6FC Nền trơn)"
-            };
-            renderer.showToast(`Đã đổi hình nền: ${nameMap[w] || w}`, "info", 1500);
-        });
-    });
+    // Wallpaper selector inside settings modal - đã bỏ chọn trong cài đặt theo yêu cầu
 
     // Clear all chats
     if (btnClearAllChats) {

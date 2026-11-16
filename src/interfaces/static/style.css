@@ -692,10 +692,21 @@ textarea {
 }
 
 .student-avatar {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     background: linear-gradient(135deg, #0284c7, #0054A6);
-    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    border-radius: var(--radius-full);
+    box-shadow: 0 2px 5px rgba(0, 84, 166, 0.25);
+    flex-shrink: 0;
+}
+
+.student-avatar svg {
+    color: #ffffff;
+    display: block;
 }
 
 .student-name {
@@ -775,16 +786,7 @@ textarea {
 }
 
 .wallpaper-doodle-pattern {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    background-image: var(--wallpaper-doodle-url);
-    background-size: var(--wallpaper-doodle-size);
-    background-repeat: repeat;
-    background-position: 0 0;
-    opacity: var(--wallpaper-doodle-opacity, 0.13);
-    pointer-events: none;
-    transition: opacity 0.35s ease, filter 0.35s ease;
+    display: none !important;
 }
 
 .telegram-header {
@@ -1230,11 +1232,20 @@ mark.search-highlight-active {
 }
 
 .bot-avatar-mini {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, var(--uet-blue-primary), var(--telegram-accent));
-    font-size: 10px;
-    box-shadow: 0 1px 3px rgba(0, 84, 166, 0.2);
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(135deg, var(--primary), #2481CC);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(8, 117, 201, 0.22);
+}
+
+.bot-avatar-mini svg {
+    color: #ffffff;
+    display: block;
+    flex-shrink: 0;
 }
 
 .message-bubble {
@@ -1363,6 +1374,21 @@ mark.search-highlight-active {
     background: transparent;
     cursor: pointer;
     transition: all 0.15s ease;
+}
+
+.btn-msg-action.btn-retry-msg {
+    width: auto;
+    padding: 0 8px;
+    gap: 5px;
+}
+
+.btn-msg-action .action-btn-text {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.bot-bubble-error {
+    border-color: rgba(234, 179, 8, 0.35);
 }
 
 .btn-msg-action svg {
