@@ -6,9 +6,9 @@
  * LaTeX Math (KaTeX), Settings modal và Tối ưu trải nghiệm Telegram.
  */
 
-import { UETApiClient } from "./api.js?v=v7_clean_ui";
-import { UETChatStorage } from "./storage.js?v=v7_clean_ui";
-import { UETChatRenderer } from "./renderer.js?v=v7_clean_ui";
+import { UETApiClient } from "./api.js?v=v14_robot_mascot";
+import { UETChatStorage } from "./storage.js?v=v14_robot_mascot";
+import { UETChatRenderer } from "./renderer.js?v=v14_robot_mascot";
 
 document.addEventListener("DOMContentLoaded", () => {
     // 1. Khởi tạo các phân hệ
@@ -100,8 +100,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnProceedConfirm = document.getElementById("btn-proceed-confirm");
     let currentConfirmCallback = null;
 
-    // Scroll to Bottom Floating Button
+    // Scroll to Bottom Floating Button & Badge
     const btnScrollBottom = document.getElementById("btn-scroll-bottom");
+    const unreadScrollBadge = document.getElementById("unread-scroll-badge");
+    let unreadMessagesCountWhileScrolledUp = 0;
+    let currentStreamHandle = null;
 
     // In-chat search
     const inChatSearchBar = document.getElementById("in-chat-search-bar");
@@ -481,6 +484,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 8. PHẦN 2: CHAT WINDOW & RENDER ACTIVE MESSAGES
     function renderActiveChatMessages() {
+        if (currentStreamHandle && typeof currentStreamHandle.finishImmediately === "function") {
+            currentStreamHandle.finishImmediately();
+            currentStreamHandle = null;
+        }
+        unreadMessagesCountWhileScrolledUp = 0;
+        updateScrollBottomButton();
+
         const activeChat = storage.getActiveChat();
         if (!activeChat) return;
 
@@ -549,19 +559,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 50);
     }
 
+    // Cập nhật trạng thái hiển thị Nút cuộn xuống & Badge số lượng tin nhắn mới
+    function updateScrollBottomButton() {
+        if (!chatWindow || !btnScrollBottom) return;
+        const distanceToBottom = chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight;
+        const isScrolledUp = distanceToBottom > 150;
+
+        if (isScrolledUp) {
+            btnScrollBottom.classList.add("show");
+            if (unreadScrollBadge && unreadMessagesCountWhileScrolledUp > 0) {
+                unreadScrollBadge.textContent = String(unreadMessagesCountWhileScrolledUp);
+                unreadScrollBadge.style.display = "flex";
+            }
+        } else {
+            btnScrollBottom.classList.remove("show");
+            unreadMessagesCountWhileScrolledUp = 0;
+            if (unreadScrollBadge) {
+                unreadScrollBadge.style.display = "none";
+                unreadScrollBadge.textContent = "0";
+            }
+        }
+    }
+
     // Scroll To Bottom Floating Button (Telegram Web interaction)
     if (chatWindow && btnScrollBottom) {
         chatWindow.addEventListener("scroll", () => {
-            const distanceToBottom = chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight;
-            if (distanceToBottom > 160) {
-                btnScrollBottom.classList.add("show");
-            } else {
-                btnScrollBottom.classList.remove("show");
-            }
-        });
+            updateScrollBottomButton();
+        }, { passive: true });
 
         btnScrollBottom.addEventListener("click", () => {
             scrollToBottom(true);
+            unreadMessagesCountWhileScrolledUp = 0;
+            if (unreadScrollBadge) {
+                unreadScrollBadge.style.display = "none";
+                unreadScrollBadge.textContent = "0";
+            }
+            btnScrollBottom.classList.remove("show");
         });
     }
 
@@ -866,9 +899,46 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const onRetry = () => handleSendMessage(lastUserQueryText);
-            const botEl = renderer.renderMessage(botMsg, (source) => openSourceModal(source), onRetry);
-            messagesContainer.appendChild(botEl);
-            scrollToBottom();
+
+            // Kiểm tra xem người dùng có đang cuộn lên để đọc tin cũ hay không
+            const distanceToBottom = chatWindow ? (chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight) : 0;
+            const isUserScrolledUp = distanceToBottom > 150;
+
+            if (isUserScrolledUp) {
+                unreadMessagesCountWhileScrolledUp++;
+                updateScrollBottomButton();
+            }
+
+            // Gọi renderStreamingBotMessage để chữ và bảng trượt ra từng từ/dòng như ChatGPT/Claude
+            currentStreamHandle = renderer.renderStreamingBotMessage(botMsg, {
+                container: messagesContainer,
+                onOpenSource: (source) => openSourceModal(source),
+                onRetry: onRetry,
+                onScroll: () => {
+                    if (!chatWindow) return;
+                    const dist = chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight;
+                    // Nếu người dùng không chủ động cuộn lên thì tiếp tục bám đáy mượt mà
+                    if (dist <= 160) {
+                        chatWindow.scrollTo({
+                            top: chatWindow.scrollHeight,
+                            behavior: "auto"
+                        });
+                    } else {
+                        updateScrollBottomButton();
+                    }
+                },
+                onFinish: () => {
+                    currentStreamHandle = null;
+                    if (chatWindow) {
+                        const dist = chatWindow.scrollHeight - chatWindow.scrollTop - chatWindow.clientHeight;
+                        if (dist <= 160) {
+                            scrollToBottom(true);
+                        } else {
+                            updateScrollBottomButton();
+                        }
+                    }
+                }
+            });
 
         } catch (err) {
             typingBubble.remove();

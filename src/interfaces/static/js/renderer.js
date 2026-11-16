@@ -9,6 +9,7 @@ export class UETChatRenderer {
     constructor() {
         this.sourceModal = null;
         this.toastContainer = null;
+        this._markedConfigured = false;
         this._initToastContainer();
     }
 
@@ -112,13 +113,149 @@ export class UETChatRenderer {
         return `<${tag} class="math-fallback">${this.escapeHtml(mathStr)}</${tag}>`;
     }
 
+    _initMarked() {
+        if (!window.marked || this._markedConfigured) return;
+        try {
+            const renderer = new window.marked.Renderer();
+
+            // 1. Tables: Bao bọc trong .table-container với lớp .md-table chuẩn card
+            renderer.table = (header, body) => {
+                return `<div class="table-container"><table class="md-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+            };
+
+            // 2. Code blocks: Giao diện thẻ đen hiện đại với nút Copy và huy hiệu ngôn ngữ
+            renderer.code = (code, language) => {
+                const lang = (language || "code").toLowerCase();
+                const displayLang = (language || "code").toUpperCase();
+                const escapedCode = this.escapeHtml(code);
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-block-header">
+                            <span class="code-lang">${displayLang}</span>
+                            <button class="btn-copy-code" onclick="window.__copyCode(this)" title="Sao chép mã">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                <span>Copy</span>
+                            </button>
+                        </div>
+                        <pre><code class="language-${lang}">${escapedCode}</code></pre>
+                    </div>
+                `;
+            };
+
+            // 3. Inline code
+            renderer.codespan = (code) => {
+                return `<code class="inline-code">${this.escapeHtml(code)}</code>`;
+            };
+
+            // 4. Blockquote
+            renderer.blockquote = (quote) => {
+                return `<blockquote class="md-quote">${quote}</blockquote>`;
+            };
+
+            // 5. Links: Mở tab mới an toàn
+            renderer.link = (href, title, text) => {
+                const titleAttr = title ? ` title="${this.escapeHtml(title)}"` : "";
+                return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="md-link"${titleAttr}>${text}</a>`;
+            };
+
+            // 6. Headings: Phân cấp h2, h3, h4
+            renderer.heading = (text, level) => {
+                const hTag = (level === 1) ? 'h2' : (level === 2) ? 'h3' : 'h4';
+                const cls = `md-h${Math.min(level, 3)}`;
+                return `<${hTag} class="${cls}">${text}</${hTag}>`;
+            };
+
+            // 7. Horizontal Rule
+            renderer.hr = () => {
+                return '<hr class="md-hr"/>';
+            };
+
+            // 8. Lists & List items
+            renderer.list = (body, ordered, start) => {
+                const tag = ordered ? 'ol' : 'ul';
+                const cls = ordered ? 'md-ol' : 'md-ul';
+                const startAttr = (ordered && start !== 1) ? ` start="${start}"` : '';
+                return `<${tag} class="${cls}"${startAttr}>${body}</${tag}>`;
+            };
+
+            renderer.listitem = (text) => {
+                return `<li>${text}</li>`;
+            };
+
+            window.marked.setOptions({
+                renderer: renderer,
+                gfm: true,
+                breaks: true,
+                pedantic: false
+            });
+
+            this._markedConfigured = true;
+        } catch (e) {
+            console.warn("Lỗi cấu hình marked.js:", e);
+        }
+    }
+
     /**
-     * Trình phân tích cú pháp Markdown nâng cao hỗ trợ Tiêu đề, Bảng, Danh sách, Code Blocks và LaTeX
-     * Sử dụng cơ chế Placeholders (Tokens) chống vỡ định dạng và bảo toàn cấu trúc code/math.
+     * Trình phân tích cú pháp Markdown chuẩn công nghiệp kết hợp KaTeX và GFM.
+     * Tự động bảo vệ công thức toán, lọc thẻ pseudo-HTML từ LLM,
+     * render bảng biểu, danh sách phân cấp và code blocks hoàn hảo.
      */
     parseMarkdown(markdownText) {
         if (!markdownText) return "";
 
+        this._initMarked();
+
+        let text = String(markdownText);
+        const mathTokens = new Map();
+        let mathIndex = 0;
+
+        // 1. Trích xuất và bảo vệ công thức toán LaTeX (Block Math: $$...$$ hoặc \[...\])
+        text = text.replace(/(?:\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\])/g, (match, f1, f2) => {
+            const formula = (f1 !== undefined ? f1 : f2).trim();
+            const key = `XXUETMATHBLOCK${mathIndex++}XX`;
+            mathTokens.set(key, `<div class="katex-block-wrapper">${this.renderLatex(formula, true)}</div>`);
+            return `\n\n${key}\n\n`;
+        });
+
+        // 2. Trích xuất và bảo vệ công thức toán LaTeX (Inline Math: $...$ hoặc \(...\))
+        // Tránh nhận nhầm giá tiền tệ $100 hoặc ký tự $ đơn độc
+        text = text.replace(/(?:(?<![\w\$])\$(?!\s)([^\$\n]+?)(?<!\s)\$(?![\w\$])|\\\(([\s\S]*?)\\\))/g, (match, f1, f2) => {
+            const formula = (f1 !== undefined ? f1 : f2).trim();
+            const key = `XXUETMATHINLINE${mathIndex++}XX`;
+            mathTokens.set(key, this.renderLatex(formula, false));
+            return key;
+        });
+
+        // 3. Chuẩn hóa các thẻ placeholder từ LLM (Ví dụ: <Phòng 105-E3>, <Chứng chỉ>, <GPA>)
+        // Để trình duyệt không hiểu nhầm là thẻ HTML bị ẩn mất nội dung
+        text = text.replace(/<(?!\/?(?:b|i|strong|em|code|pre|table|thead|tbody|tr|th|td|ul|ol|li|blockquote|h[1-6]|p|a|span|div|hr|sub|sup|mark|img|br)\b)([^>\n]+)>/g, '&lt;$1&gt;');
+
+        // 4. Nếu thư viện marked.js đã tải thành công, sử dụng marked (Chuẩn GitHub Flavored Markdown 100%)
+        if (window.marked && typeof window.marked.parse === "function") {
+            try {
+                let html = window.marked.parse(text);
+
+                // Khôi phục các token công thức toán LaTeX
+                mathTokens.forEach((val, key) => {
+                    // Gỡ bỏ thẻ <p> bao quanh công thức khối nếu marked tự bọc
+                    html = html.replace(new RegExp(`<p>\\s*${key}\\s*<\\/p>`, 'g'), val);
+                    html = html.split(key).join(val);
+                });
+
+                return html;
+            } catch (err) {
+                console.warn("Marked parser warning, switching to fallback:", err);
+            }
+        }
+
+        // 5. FALLBACK PARSER (Khi không có mạng hoặc chưa tải xong marked.js)
+        return this._fallbackParseMarkdown(text, mathTokens);
+    }
+
+    /**
+     * Fallback Parser xử lý Markdown nội bộ bằng Regex nâng cao
+     */
+    _fallbackParseMarkdown(text, mathTokens) {
         const tokens = new Map();
         let tokenCount = 0;
         const addToken = (html) => {
@@ -127,34 +264,21 @@ export class UETChatRenderer {
             return key;
         };
 
-        // Hàm định dạng inline an toàn (Bold, Italic, Link, Inline Code)
         const formatInline = (str) => {
             if (!str) return "";
             let s = str;
-            // Bold & Italic
             s = s.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
             s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             s = s.replace(/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
             s = s.replace(/(?<!_)\_(?!\s)([^_\n]+?)(?<!\s)\_(?!\_)/g, '<em>$1</em>');
-            // Links
             s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
             return s;
         };
 
-        let text = markdownText;
+        let t = text;
 
-        // 1. Block Math: $$...$$
-        text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
-            return addToken(`<div class="katex-block-wrapper">${this.renderLatex(formula.trim(), true)}</div>`);
-        });
-
-        // 2. Inline Math: $...$ (không trùng với ký hiệu tiền tệ)
-        text = text.replace(/(?<!\$)\$([^\$\n]+?)\$(?!\$)/g, (match, formula) => {
-            return addToken(this.renderLatex(formula.trim(), false));
-        });
-
-        // 3. Code blocks (```language ... ```)
-        text = text.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        // Code blocks
+        t = t.replace(/```([a-zA-Z0-9_\-\.]*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const escapedCode = this.escapeHtml(code.trim());
             const displayLang = (lang || "code").toUpperCase();
             const codeBlockHtml = `
@@ -172,13 +296,13 @@ export class UETChatRenderer {
             return addToken(codeBlockHtml);
         });
 
-        // 4. Inline code (`code`)
-        text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+        // Inline code
+        t = t.replace(/`([^`\n]+)`/g, (match, code) => {
             return addToken(`<code class="inline-code">${this.escapeHtml(code)}</code>`);
         });
 
-        // 5. Markdown Tables (Hỗ trợ chuẩn Github, có hoặc không có dấu | ở 2 đầu biên)
-        text = text.replace(/((?:^[ \t]*\|?.*?\|.*?\|?[ \t]*(?:\r?\n|$))+)/gm, (match) => {
+        // Markdown Tables
+        t = t.replace(/((?:^[ \t]*\|?.*?\|.*?\|?[ \t]*(?:\r?\n|$))+)/gm, (match) => {
             const rawRows = match.trim().split(/\r?\n/).map(r => r.trim()).filter(r => r.length > 0);
             if (rawRows.length < 2) return match;
 
@@ -227,55 +351,56 @@ export class UETChatRenderer {
             return addToken(html);
         });
 
-        // 6. Headers
-        text = text.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
-        text = text.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
-        text = text.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
+        // Headers
+        t = t.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
+        t = t.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
+        t = t.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
 
-        // 7. Blockquotes
-        text = text.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
+        // Blockquotes
+        t = t.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
 
-        // 8. Lists (Xử lý danh sách TRƯỚC bold/italic để tránh dấu * đầu dòng bị hiểu nhầm thành in nghiêng)
-        text = text.replace(/((?:^[ \t]*[\*\-\•]\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
+        // Lists
+        t = t.replace(/((?:^[ \t]*[\*\-\•]\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
             const lines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
             const items = lines.map(line => {
                 const itemContent = line.replace(/^[\*\-\•]\s+/, '');
-                return `<li class="md-li-bullet">${formatInline(itemContent)}</li>`;
+                return `<li>${formatInline(itemContent)}</li>`;
             }).join('');
             return addToken(`<ul class="md-ul">${items}</ul>`);
         });
 
-        text = text.replace(/((?:^[ \t]*\d+\.\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
+        t = t.replace(/((?:^[ \t]*\d+\.\s+[^\n]+(?:\r?\n|$))+)/gm, (match) => {
             const lines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
             const items = lines.map(line => {
                 const itemContent = line.replace(/^\d+\.\s+/, '');
-                return `<li class="md-li-num">${formatInline(itemContent)}</li>`;
+                return `<li>${formatInline(itemContent)}</li>`;
             }).join('');
             return addToken(`<ol class="md-ol">${items}</ol>`);
         });
 
-        // 9. Bold & Italic (Được áp dụng an toàn cho phần văn bản còn lại)
-        text = formatInline(text);
+        // Bold & Italic
+        t = formatInline(t);
 
-        // 10. Horizontal rule (--- hoặc ***)
-        text = text.replace(/^[ \t]*[-*_]{3,}[ \t]*$/gim, '<hr class="md-hr"/>');
+        // Horizontal rule
+        t = t.replace(/^[ \t]*[-*_]{3,}[ \t]*$/gim, '<hr class="md-hr"/>');
 
-        // 11. Paragraphs & Line breaks
-        text = text.replace(/\n\n+/g, '<br/><br/>');
-        text = text.replace(/\n/g, '<br/>');
+        // Line breaks
+        t = t.replace(/\n\n+/g, '<br/><br/>');
+        t = t.replace(/\n/g, '<br/>');
 
-        // 12. Dọn sạch các thẻ <br/> thừa nằm trực tiếp trước/sau các token block lớn
+        // Restore custom tokens
         tokens.forEach((val, key) => {
-            text = text.replace(new RegExp(`(?:<br\\s*\\/?>)+\\s*(${key})`, 'g'), '$1');
-            text = text.replace(new RegExp(`(${key})\\s*(?:<br\\s*\\/?>)+`, 'g'), '$1');
+            t = t.replace(new RegExp(`(?:<br\\s*\\/?>)+\\s*(${key})`, 'g'), '$1');
+            t = t.replace(new RegExp(`(${key})\\s*(?:<br\\s*\\/?>)+`, 'g'), '$1');
+            t = t.split(key).join(val);
         });
 
-        // 13. Khôi phục lại các Tokens (HTML an toàn)
-        tokens.forEach((val, key) => {
-            text = text.split(key).join(val);
+        // Restore math tokens
+        mathTokens.forEach((val, key) => {
+            t = t.split(key).join(val);
         });
 
-        return text;
+        return t;
     }
 
     /**
@@ -423,9 +548,7 @@ export class UETChatRenderer {
             item.innerHTML = `
                 <div class="bot-avatar-col">
                     <div class="telegram-avatar bot-avatar-mini" title="UET AI Assistant">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                        </svg>
+                        <img src="/static/uet-logo.png?v=v14_robot_mascot" alt="UET ChatBot Logo" class="uet-logo-img">
                     </div>
                 </div>
                 <div class="message-bubble bot-bubble ${msg.error ? 'bot-bubble-error' : ''}">
@@ -503,6 +626,259 @@ export class UETChatRenderer {
         return item;
     }
 
+    /**
+     * Render câu trả lời của AI với hiệu ứng Typewriter trượt từng chữ/dòng như ChatGPT/Claude
+     * Hỗ trợ tự động cuộn (auto-scroll), click-to-finish, và render bảng Markdown mượt mà.
+     */
+    renderStreamingBotMessage(msg, options = {}) {
+        const {
+            container,
+            onOpenSource,
+            onRetry,
+            onScroll,
+            onFinish
+        } = options;
+
+        const item = document.createElement("div");
+        item.className = "message-bubble-row bot-row message-fade-in";
+        item.id = msg.id;
+
+        const timeStr = this.formatTime(msg.timestamp);
+
+        // Nguồn tài liệu tham khảo (nếu có)
+        let sourcesHtml = "";
+        if (msg.sources && msg.sources.length > 0) {
+            const totalSources = msg.sources.length;
+            const showToggle = totalSources > 3;
+            let cardsHtml = "";
+
+            msg.sources.forEach((src, sIdx) => {
+                const title = src.metadata?.title || src.metadata?.source || `Văn bản quy chế #${sIdx + 1}`;
+                const isPdf = title.toLowerCase().includes(".pdf") || (!title.toLowerCase().includes(".doc") && !title.toLowerCase().includes(".txt"));
+                const iconBadge = isPdf
+                    ? `<span class="source-format-tag format-pdf">PDF</span>`
+                    : `<span class="source-format-tag format-doc">DOC</span>`;
+                const pageStr = src.metadata?.page ? `Trang ${src.metadata.page}` : "";
+                const score = src.similarity_score ? `${(src.similarity_score * 100).toFixed(0)}% liên quan` : "";
+                const metaParts = [pageStr, score].filter(Boolean).join(" • ");
+                const hiddenClass = (showToggle && sIdx >= 3) ? "source-card-hidden" : "";
+
+                cardsHtml += `
+                    <div class="source-doc-card ${hiddenClass}" data-source-index="${sIdx}" role="button" tabindex="0" title="Bấm để xem trích đoạn: ${this.escapeHtml(title)}">
+                        <div class="source-doc-icon-col">
+                            ${iconBadge}
+                        </div>
+                        <div class="source-doc-info-col">
+                            <div class="source-doc-title">${this.escapeHtml(title)}</div>
+                            <div class="source-doc-meta">${this.escapeHtml(metaParts || "Căn cứ quy chế đào tạo UET")}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            const toggleBtnHtml = showToggle ? `
+                <button type="button" class="btn-toggle-sources" data-expanded="false">
+                    <span class="toggle-text">Xem thêm ${totalSources - 3} tài liệu</span>
+                    <svg class="toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+            ` : "";
+
+            sourcesHtml = `
+                <div class="sources-reference-section" style="display: none;">
+                    <div class="sources-ref-header">
+                        <div class="sources-ref-title">
+                            <span>Tài liệu tham khảo</span>
+                            <span class="sources-count-badge">${totalSources}</span>
+                        </div>
+                    </div>
+                    <div class="sources-doc-list">
+                        ${cardsHtml}
+                    </div>
+                    ${toggleBtnHtml}
+                </div>
+            `;
+        }
+
+        const latencyStr = msg.latency ? `${msg.latency}s` : "";
+        let actionsHtml = `
+            <button class="btn-msg-action btn-copy-msg" title="Sao chép câu trả lời">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
+            <button class="btn-msg-action btn-retry-msg" title="Tạo lại câu trả lời">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                    <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                    <path d="M3 21v-5h5"></path>
+                </svg>
+            </button>
+            ${latencyStr ? `<span class="badge-latency">${latencyStr}</span>` : ""}
+        `;
+
+        item.innerHTML = `
+            <div class="bot-avatar-col">
+                <div class="telegram-avatar bot-avatar-mini" title="UET AI Assistant">
+                    <img src="/static/uet-logo.png?v=v14_robot_mascot" alt="UET ChatBot Logo" class="uet-logo-img">
+                </div>
+            </div>
+            <div class="message-bubble bot-bubble">
+                <div class="bot-name-tag">UET AI Assistant</div>
+                <div class="message-text markdown-body streaming-active">
+                    <span class="typing-cursor"></span>
+                </div>
+                ${sourcesHtml}
+                <div class="message-meta-footer" style="display: none;">
+                    <div class="message-actions">
+                        ${actionsHtml}
+                    </div>
+                    <span class="message-time">${timeStr}</span>
+                </div>
+            </div>
+        `;
+
+        if (container) {
+            container.appendChild(item);
+        }
+
+        const textEl = item.querySelector(".message-text.markdown-body");
+        const sourcesEl = item.querySelector(".sources-reference-section");
+        const footerEl = item.querySelector(".message-meta-footer");
+
+        // Hoàn tất hiệu ứng: gắn sự kiện cho các nút
+        const finalizeEvents = () => {
+            if (sourcesEl) sourcesEl.style.display = "block";
+            if (footerEl) footerEl.style.display = "flex";
+            textEl.classList.remove("streaming-active");
+
+            // Xử lý xem nguồn
+            if (msg.sources && msg.sources.length > 0 && typeof onOpenSource === "function") {
+                item.querySelectorAll(".source-doc-card, .source-chip").forEach((card) => {
+                    const clickHandler = () => {
+                        const idx = parseInt(card.getAttribute("data-source-index"), 10);
+                        if (!isNaN(idx) && msg.sources[idx]) {
+                            onOpenSource(msg.sources[idx]);
+                        }
+                    };
+                    card.addEventListener("click", clickHandler);
+                    card.addEventListener("keydown", (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            clickHandler();
+                        }
+                    });
+                });
+
+                const toggleSourcesBtn = item.querySelector(".btn-toggle-sources");
+                if (toggleSourcesBtn) {
+                    toggleSourcesBtn.addEventListener("click", () => {
+                        const isExpanded = toggleSourcesBtn.getAttribute("data-expanded") === "true";
+                        const nextState = !isExpanded;
+                        toggleSourcesBtn.setAttribute("data-expanded", String(nextState));
+                        item.querySelectorAll(".source-doc-card.source-card-hidden").forEach((c) => {
+                            c.style.display = nextState ? "flex" : "none";
+                        });
+                        const textSpan = toggleSourcesBtn.querySelector(".toggle-text");
+                        if (textSpan) {
+                            textSpan.textContent = nextState ? "Thu gọn danh sách" : `Xem thêm ${msg.sources.length - 3} tài liệu`;
+                        }
+                        const icon = toggleSourcesBtn.querySelector(".toggle-icon");
+                        if (icon) {
+                            icon.style.transform = nextState ? "rotate(180deg)" : "none";
+                        }
+                    });
+                }
+            }
+
+            // Copy
+            const copyBtn = item.querySelector(".btn-copy-msg");
+            if (copyBtn) {
+                copyBtn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(msg.text).then(() => {
+                        this.showToast("Đã sao chép nội dung vào khay nhớ tạm!", "success");
+                    });
+                });
+            }
+
+            // Retry
+            const retryBtn = item.querySelector(".btn-retry-msg");
+            if (retryBtn && typeof onRetry === "function") {
+                retryBtn.addEventListener("click", () => {
+                    onRetry();
+                });
+            }
+        };
+
+        const fullText = msg.text || "";
+        const tokens = fullText.match(/\S+|\s+/g) || [fullText];
+        const totalTokens = tokens.length;
+
+        // Nếu nội dung quá ngắn, render ngay lập tức
+        if (totalTokens <= 2) {
+            textEl.innerHTML = this.parseMarkdown(fullText);
+            finalizeEvents();
+            if (typeof onFinish === "function") onFinish();
+            return { element: item, finishImmediately: () => {} };
+        }
+
+        // Tốc độ: Chạy trong 1.0s - 3.2s
+        const targetDuration = Math.min(3200, Math.max(1000, totalTokens * 14));
+        const frameInterval = 22; // ~45 fps
+        const totalFrames = Math.max(1, Math.floor(targetDuration / frameInterval));
+        const tokensPerFrame = Math.max(1, Math.ceil(totalTokens / totalFrames));
+
+        let currentIdx = 0;
+        let isDone = false;
+        let timer = null;
+
+        const completeStream = () => {
+            if (isDone) return;
+            isDone = true;
+            if (timer) clearInterval(timer);
+            textEl.innerHTML = this.parseMarkdown(fullText);
+            finalizeEvents();
+            if (typeof onScroll === "function") onScroll();
+            if (typeof onFinish === "function") onFinish();
+        };
+
+        // Click để bỏ qua hiệu ứng, hiện ngay toàn bộ
+        textEl.style.cursor = "pointer";
+        textEl.title = "Bấm để hiện ngay toàn bộ nội dung";
+        const skipHandler = () => {
+            textEl.style.cursor = "";
+            textEl.title = "";
+            completeStream();
+            textEl.removeEventListener("click", skipHandler);
+        };
+        textEl.addEventListener("click", skipHandler);
+
+        timer = setInterval(() => {
+            if (currentIdx < totalTokens) {
+                currentIdx = Math.min(totalTokens, currentIdx + tokensPerFrame);
+                const partialText = tokens.slice(0, currentIdx).join("");
+                textEl.innerHTML = this.parseMarkdown(partialText) + '<span class="typing-cursor"></span>';
+
+                if (typeof onScroll === "function") {
+                    onScroll();
+                }
+            } else {
+                textEl.style.cursor = "";
+                textEl.title = "";
+                textEl.removeEventListener("click", skipHandler);
+                completeStream();
+            }
+        }, frameInterval);
+
+        return {
+            element: item,
+            finishImmediately: completeStream
+        };
+    }
+
     createTypingBubble() {
         const item = document.createElement("div");
         item.className = "message-bubble-row bot-row typing-indicator-row message-fade-in";
@@ -510,9 +886,7 @@ export class UETChatRenderer {
         item.innerHTML = `
             <div class="bot-avatar-col">
                 <div class="telegram-avatar bot-avatar-mini">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                    </svg>
+                    <img src="/static/uet-logo.png?v=v14_robot_mascot" alt="UET ChatBot Logo" class="uet-logo-img">
                 </div>
             </div>
             <div class="message-bubble bot-bubble typing-bubble">
