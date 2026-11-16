@@ -276,7 +276,7 @@ textarea {
     min-width: var(--sidebar-width);
     max-width: var(--sidebar-width);
     height: 100%;
-    background-color: var(--bg-sidebar);
+    background-color: var(--bg-app);
     border: 1px solid var(--border-card);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
@@ -286,6 +286,13 @@ textarea {
     flex-shrink: 0;
     overflow: hidden;
     transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .telegram-sidebar {
+    background-color: var(--bg-app);
+    border: 1px solid var(--border-card);
+    box-shadow: var(--shadow-card);
 }
 
 /* Khi thu gọn trên Desktop: trượt mượt sang trái và biến mất hoàn toàn */
@@ -323,6 +330,7 @@ textarea {
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--border-divider);
+    background-color: transparent;
     flex-shrink: 0;
 }
 
@@ -335,14 +343,34 @@ textarea {
 .uet-logo-emblem {
     width: 38px;
     height: 38px;
-    border-radius: var(--radius-md);
-    background: linear-gradient(135deg, var(--uet-blue-primary), var(--telegram-accent));
-    color: #ffffff;
+    border-radius: var(--radius-full);
+    background: #FFFFFF;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 6px rgba(0, 84, 166, 0.25);
+    box-shadow: 0 2px 6px rgba(0, 84, 166, 0.22);
     flex-shrink: 0;
+    overflow: hidden;
+    border: 1px solid rgba(8, 117, 201, 0.15);
+}
+
+.uet-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--radius-full);
+    display: block;
+    user-select: none;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .uet-logo-emblem,
+[data-theme="dark"] .bot-avatar-header,
+[data-theme="dark"] .bot-avatar-mini,
+[data-theme="dark"] .welcome-emblem {
+    background: #FFFFFF;
+    border-color: rgba(56, 189, 248, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .brand-name {
@@ -378,18 +406,18 @@ textarea {
 }
 
 .btn-sidebar-action:hover {
-    background-color: var(--bg-search);
-    color: var(--text-primary);
+    background-color: rgba(8, 117, 201, 0.08);
+    color: var(--primary);
 }
 
 .btn-compose {
-    background-color: var(--uet-blue-tint);
-    color: var(--uet-blue-primary);
+    background-color: rgba(8, 117, 201, 0.1);
+    color: var(--primary);
 }
 
 .btn-compose:hover {
-    background-color: var(--uet-blue-light);
-    color: var(--uet-blue-active);
+    background-color: rgba(8, 117, 201, 0.18);
+    color: var(--primary);
 }
 
 /* 2. SIDEBAR SEARCH BOX (Height 38px, Gọn gàng) */
@@ -397,23 +425,29 @@ textarea {
     padding: 10px 14px;
     border-bottom: 1px solid var(--border-divider);
     flex-shrink: 0;
+    background-color: transparent;
 }
 
 .search-input-wrapper {
     position: relative;
     display: flex;
     align-items: center;
-    background-color: var(--bg-search);
+    background-color: #FFFFFF;
     border-radius: var(--radius-full);
     height: 38px;
     padding: 0 14px;
     transition: all 0.2s ease;
-    border: 1px solid transparent;
+    border: 1px solid rgba(8, 117, 201, 0.15);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="dark"] .search-input-wrapper {
+    background-color: #181D26;
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 .search-input-wrapper:focus-within {
     box-shadow: 0 0 0 2px rgba(8, 117, 201, 0.2);
-    background-color: var(--bg-sidebar);
     border-color: var(--primary);
 }
 
@@ -458,12 +492,12 @@ textarea {
 }
 
 .chat-list-wrapper::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(8, 117, 201, 0.15);
     border-radius: var(--radius-full);
 }
 
 [data-theme="dark"] .chat-list-wrapper::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 /* Phân nhóm thời gian (Hôm nay, Hôm qua, Trước đó, Đã ghim) - Cân đối, không bị thưa */
@@ -483,7 +517,8 @@ textarea {
 .group-count {
     font-size: 10px;
     font-weight: 600;
-    opacity: 0.8;
+    color: var(--text-muted);
+    opacity: 0.85;
 }
 
 /* Chat List Item - Padding hợp lý 8px 12px */
@@ -495,17 +530,31 @@ textarea {
     border-radius: var(--radius-md);
     cursor: pointer;
     position: relative;
-    transition: background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
     user-select: none;
     margin-bottom: 2px;
+    color: var(--text-primary);
+    border: 1px solid transparent;
 }
 
 .chat-list-item:hover {
-    background-color: var(--bg-hover-chat);
+    background-color: rgba(255, 255, 255, 0.65);
+}
+
+[data-theme="dark"] .chat-list-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
 .chat-list-item.active {
-    background-color: var(--bg-active-chat);
+    background-color: #FFFFFF;
+    border: 1px solid rgba(8, 117, 201, 0.18);
+    box-shadow: 0 2px 6px rgba(8, 117, 201, 0.06);
+}
+
+[data-theme="dark"] .chat-list-item.active {
+    background-color: #1E2430;
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .chat-list-item.active .chat-item-title {
@@ -513,16 +562,20 @@ textarea {
     font-weight: 700;
 }
 
+.chat-list-item.active .chat-item-snippet {
+    color: var(--text-secondary);
+}
+
 [data-theme="dark"] .chat-list-item.active .chat-item-title {
-    color: #ffffff;
+    color: #38BDF8;
 }
 
 [data-theme="dark"] .chat-list-item.active .chat-item-snippet {
-    color: rgba(255, 255, 255, 0.85);
+    color: #E2E8F0;
 }
 
 .chat-list-item.pinned-chat {
-    border-left: 3px solid var(--telegram-accent);
+    border-left: 3px solid var(--primary);
 }
 
 .telegram-avatar {
@@ -537,6 +590,7 @@ textarea {
     color: #ffffff;
     flex-shrink: 0;
     position: relative;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
 }
 
 .pin-badge-dot {
@@ -544,10 +598,10 @@ textarea {
     bottom: -2px;
     right: -2px;
     font-size: 10px;
-    background-color: var(--bg-sidebar);
+    background-color: var(--bg-app);
     border-radius: var(--radius-full);
     padding: 1px 2px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 /* Avatar Gradients */
@@ -618,7 +672,7 @@ textarea {
 }
 
 .unread-badge {
-    background-color: var(--uet-blue-primary);
+    background-color: var(--primary);
     color: #ffffff;
     font-size: 11px;
     font-weight: 700;
@@ -634,7 +688,8 @@ textarea {
 }
 
 [data-theme="dark"] .unread-badge {
-    background-color: var(--telegram-accent);
+    background-color: var(--primary);
+    color: #ffffff;
 }
 
 .chat-item-actions {
@@ -658,8 +713,8 @@ textarea {
 }
 
 .btn-chat-item-menu:hover {
-    background-color: var(--border-subtle);
-    color: var(--text-primary);
+    background-color: rgba(8, 117, 201, 0.1);
+    color: var(--primary);
 }
 
 .chat-list-empty {
@@ -680,7 +735,7 @@ textarea {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: var(--bg-sidebar);
+    background-color: transparent;
     flex-shrink: 0;
 }
 
@@ -695,12 +750,13 @@ textarea {
     width: 38px;
     height: 38px;
     background: linear-gradient(135deg, #0284c7, #0054A6);
+    border: 1.5px solid rgba(8, 117, 201, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     border-radius: var(--radius-full);
-    box-shadow: 0 2px 5px rgba(0, 84, 166, 0.25);
+    box-shadow: 0 2px 5px rgba(0, 84, 166, 0.2);
     flex-shrink: 0;
 }
 
@@ -732,8 +788,8 @@ textarea {
 }
 
 .btn-student-settings:hover {
-    background-color: var(--bg-search);
-    color: var(--uet-blue-primary);
+    background-color: rgba(8, 117, 201, 0.08);
+    color: var(--primary);
 }
 
 /* ==========================================================================
@@ -786,7 +842,16 @@ textarea {
 }
 
 .wallpaper-doodle-pattern {
-    display: none !important;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background-image: var(--wallpaper-doodle-url);
+    background-size: var(--wallpaper-doodle-size);
+    background-repeat: repeat;
+    background-position: 0 0;
+    opacity: var(--wallpaper-doodle-opacity, 0.19);
+    pointer-events: none;
+    transition: opacity 0.35s ease, filter 0.35s ease;
 }
 
 .telegram-header {
@@ -817,13 +882,15 @@ textarea {
     width: 42px;
     height: 42px;
     border-radius: var(--radius-full);
-    background: linear-gradient(135deg, var(--primary), #2481CC);
+    background: #FFFFFF;
     box-shadow: 0 2px 6px rgba(8, 117, 201, 0.25);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     flex-shrink: 0;
+    overflow: hidden;
+    border: 1px solid rgba(8, 117, 201, 0.15);
 }
 
 .chat-header-info {
@@ -1141,15 +1208,14 @@ mark.search-highlight-active {
 .btn-scroll-bottom {
     position: absolute;
     bottom: 112px;
-    /* Nổi ngay phía trên thanh nhập câu hỏi */
     right: 24px;
     width: 42px;
     height: 42px;
     border-radius: var(--radius-full);
-    background-color: var(--bg-sidebar);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-card);
-    box-shadow: var(--shadow-floating);
+    background-color: #FFFFFF;
+    color: var(--primary);
+    border: 1px solid rgba(8, 117, 201, 0.2);
+    box-shadow: 0 4px 14px rgba(8, 117, 201, 0.18);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1168,21 +1234,81 @@ mark.search-highlight-active {
 }
 
 .btn-scroll-bottom:hover {
-    background-color: var(--uet-blue-primary);
+    background-color: var(--primary);
     color: #ffffff;
-    border-color: var(--uet-blue-primary);
+    border-color: var(--primary);
     box-shadow: 0 6px 20px rgba(8, 117, 201, 0.35);
+    transform: translateY(-2px) scale(1.05);
 }
 
-.unread-scroll-dot {
+[data-theme="dark"] .btn-scroll-bottom {
+    background-color: #1E2430;
+    color: #38BDF8;
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .btn-scroll-bottom:hover {
+    background-color: #38BDF8;
+    color: #0F172A;
+}
+
+.unread-scroll-badge {
     position: absolute;
-    top: 7px;
-    right: 7px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--uet-blue-primary);
-    border: 2px solid var(--bg-sidebar);
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background-color: #ef4444;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+    border: 2px solid #ffffff;
+    animation: badgePop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .unread-scroll-badge {
+    border-color: #181D26;
+    background-color: #f87171;
+    color: #ffffff;
+}
+
+@keyframes badgePop {
+    0% { transform: scale(0.4); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* Typewriter Streaming Cursor */
+.typing-cursor {
+    display: inline-block;
+    width: 3px;
+    height: 16px;
+    vertical-align: -2px;
+    margin-left: 3px;
+    background-color: var(--primary);
+    border-radius: 1px;
+    animation: typingBlink 0.8s infinite cubic-bezier(1, 0, 0, 1);
+}
+
+[data-theme="dark"] .typing-cursor {
+    background-color: #38BDF8;
+}
+
+@keyframes typingBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.streaming-active {
+    user-select: text;
 }
 
 /* Animation xuất hiện tin nhắn mới */
@@ -1234,12 +1360,15 @@ mark.search-highlight-active {
 .bot-avatar-mini {
     width: 34px;
     height: 34px;
-    background: linear-gradient(135deg, var(--primary), #2481CC);
+    background: #FFFFFF;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     box-shadow: 0 2px 6px rgba(8, 117, 201, 0.22);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    border: 1px solid rgba(8, 117, 201, 0.15);
 }
 
 .bot-avatar-mini svg {
@@ -1465,6 +1594,7 @@ mark.search-highlight-active {
     color: var(--text-primary);
 }
 
+.markdown-body blockquote,
 .markdown-body .md-quote {
     border-left: 3.5px solid var(--primary);
     padding: 10px 14px;
@@ -1477,23 +1607,61 @@ mark.search-highlight-active {
     line-height: 1.6;
 }
 
+[data-theme="dark"] .markdown-body blockquote,
 [data-theme="dark"] .markdown-body .md-quote {
     border-left-color: #38BDF8;
     background-color: rgba(8, 117, 201, 0.14);
     color: #E2E8F0;
 }
 
+.markdown-body ul,
+.markdown-body ol,
 .markdown-body .md-ul,
 .markdown-body .md-ol {
-    padding-left: 20px;
+    padding-left: 22px;
     margin: 8px 0 12px 0;
 }
 
+.markdown-body ul,
+.markdown-body .md-ul {
+    list-style-type: disc;
+}
+
+.markdown-body ul ul {
+    list-style-type: circle;
+}
+
+.markdown-body ul ul ul {
+    list-style-type: square;
+}
+
+.markdown-body ol,
+.markdown-body .md-ol {
+    list-style-type: decimal;
+}
+
+.markdown-body ol ol {
+    list-style-type: lower-alpha;
+}
+
 .markdown-body li {
-    margin-bottom: 6px;
+    margin-bottom: 5px;
     line-height: 1.65;
 }
 
+.markdown-body li > p {
+    margin-bottom: 4px;
+    display: inline;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding-left: 18px;
+}
+
+.markdown-body a,
 .markdown-body .md-link {
     color: var(--primary);
     text-decoration: underline;
@@ -1501,10 +1669,12 @@ mark.search-highlight-active {
     transition: color 0.15s ease;
 }
 
+.markdown-body a:hover,
 .markdown-body .md-link:hover {
     color: var(--primary-hover);
 }
 
+.markdown-body code:not(pre code),
 .markdown-body .inline-code {
     background-color: var(--bg-search);
     padding: 2px 6px;
@@ -1514,8 +1684,16 @@ mark.search-highlight-active {
     color: #e11d48;
 }
 
+[data-theme="dark"] .markdown-body code:not(pre code),
 [data-theme="dark"] .markdown-body .inline-code {
     color: #fb7185;
+}
+
+.markdown-body hr,
+.markdown-body .md-hr {
+    border: none;
+    border-top: 1px solid var(--border-divider);
+    margin: 16px 0;
 }
 
 /* LaTeX Math */
@@ -1563,6 +1741,7 @@ mark.search-highlight-active {
     border-radius: var(--radius-full);
 }
 
+.markdown-body table,
 .md-table {
     width: 100%;
     min-width: 480px;
@@ -1572,6 +1751,7 @@ mark.search-highlight-active {
     text-align: left;
 }
 
+.markdown-body th,
 .md-table th {
     background-color: #EBF4FC;
     color: var(--primary);
@@ -1583,6 +1763,7 @@ mark.search-highlight-active {
     white-space: nowrap;
 }
 
+.markdown-body td,
 .md-table td {
     padding: 10px 14px;
     line-height: 1.55;
@@ -1591,14 +1772,17 @@ mark.search-highlight-active {
     vertical-align: middle;
 }
 
+.markdown-body tbody tr:last-child td,
 .md-table tbody tr:last-child td {
     border-bottom: none;
 }
 
+.markdown-body tbody tr:nth-child(even),
 .md-table tbody tr:nth-child(even) {
     background-color: rgba(241, 246, 252, 0.65);
 }
 
+.markdown-body tbody tr:hover,
 .md-table tbody tr:hover {
     background-color: rgba(8, 117, 201, 0.05);
 }
@@ -1614,21 +1798,25 @@ mark.search-highlight-active {
     background: rgba(56, 189, 248, 0.25);
 }
 
+[data-theme="dark"] .markdown-body th,
 [data-theme="dark"] .md-table th {
     background-color: rgba(8, 117, 201, 0.22);
     color: #38BDF8;
     border-bottom: 2px solid rgba(56, 189, 248, 0.28);
 }
 
+[data-theme="dark"] .markdown-body td,
 [data-theme="dark"] .md-table td {
     color: #E2E8F0;
     border-bottom: 1px solid var(--border-color);
 }
 
+[data-theme="dark"] .markdown-body tbody tr:nth-child(even),
 [data-theme="dark"] .md-table tbody tr:nth-child(even) {
     background-color: rgba(255, 255, 255, 0.025);
 }
 
+[data-theme="dark"] .markdown-body tbody tr:hover,
 [data-theme="dark"] .md-table tbody tr:hover {
     background-color: rgba(56, 189, 248, 0.08);
 }
@@ -1950,15 +2138,16 @@ mark.search-highlight-active {
 }
 
 .welcome-emblem {
-    width: 76px;
-    height: 76px;
-    border-radius: var(--radius-lg);
-    background: linear-gradient(135deg, var(--uet-blue-primary), var(--telegram-accent));
-    color: #ffffff;
+    width: 82px;
+    height: 82px;
+    border-radius: var(--radius-full);
+    background: #FFFFFF;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 20px rgba(0, 84, 166, 0.28);
+    box-shadow: 0 8px 24px rgba(0, 84, 166, 0.25);
+    overflow: hidden;
+    border: 2px solid rgba(8, 117, 201, 0.18);
 }
 
 .welcome-headline {
