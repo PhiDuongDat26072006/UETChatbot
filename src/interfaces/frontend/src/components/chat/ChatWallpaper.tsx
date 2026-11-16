@@ -12,7 +12,8 @@ export interface ChatWallpaperProps {
 }
 
 interface WallpaperConfig {
-  gradient: string;
+  lightBackground: string;
+  darkBackground: string;
   maskUrl: string | null;
   maskColor: string;
   maskOpacity: number;
@@ -24,7 +25,8 @@ function resolveWallpaperConfig(
 ): WallpaperConfig {
   if (wallpaper === "plain") {
     return {
-      gradient: theme === "dark" ? "#0E1621" : "#EFF7FE",
+      lightBackground: "#EFF7FE",
+      darkBackground: "#0E1621",
       maskUrl: null,
       maskColor: "transparent",
       maskOpacity: 0,
@@ -33,10 +35,8 @@ function resolveWallpaperConfig(
 
   if (wallpaper === "dark-night") {
     return {
-      gradient:
-        theme === "dark"
-          ? "linear-gradient(135deg, #0E1621 0%, #17212B 100%)"
-          : "linear-gradient(135deg, #0E1621 0%, #17212B 100%)",
+      lightBackground: "linear-gradient(135deg, #0E1621 0%, #17212B 100%)",
+      darkBackground: "linear-gradient(135deg, #0E1621 0%, #17212B 100%)",
       maskUrl: "url('/static/tdesktop-background.svg')",
       maskColor: "#6AB3F3",
       maskOpacity: 0.11,
@@ -44,10 +44,8 @@ function resolveWallpaperConfig(
   }
 
   return {
-    gradient:
-      theme === "dark"
-        ? "linear-gradient(145deg, #0E1621 0%, #131D29 100%)"
-        : "linear-gradient(145deg, #EFF7FE 0%, #E3F1FA 100%)",
+    lightBackground: "linear-gradient(145deg, #EFF7FE 0%, #E3F1FA 100%)",
+    darkBackground: "linear-gradient(145deg, #0E1621 0%, #131D29 100%)",
     maskUrl: "url('/static/tdesktop-background.svg')",
     maskColor: theme === "dark" ? "#6AB3F3" : "#4D7BA8",
     maskOpacity: theme === "dark" ? 0.11 : 0.16,
@@ -56,6 +54,7 @@ function resolveWallpaperConfig(
 
 export function ChatWallpaper({ wallpaper, theme }: ChatWallpaperProps) {
   const cfg = resolveWallpaperConfig(wallpaper, theme);
+  const isDark = theme === "dark";
 
   return (
     <div
@@ -77,14 +76,27 @@ export function ChatWallpaper({ wallpaper, theme }: ChatWallpaperProps) {
       }}
     >
       <div
-        className="wallpaper-gradient-bg"
+        className="wallpaper-gradient-bg wallpaper-gradient-layer"
         style={{
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
           zIndex: 0,
-          background: cfg.gradient,
-          transition: "background 0.3s ease",
+          background: cfg.lightBackground,
+          opacity: isDark ? 0 : 1,
+          transition: "opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      />
+      <div
+        className="wallpaper-gradient-bg wallpaper-gradient-layer"
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 0,
+          background: cfg.darkBackground,
+          opacity: isDark ? 1 : 0,
+          transition: "opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       />
       {cfg.maskUrl && (
@@ -107,7 +119,8 @@ export function ChatWallpaper({ wallpaper, theme }: ChatWallpaperProps) {
             opacity: cfg.maskOpacity,
             transform: "translate3d(0, 0, 0)",
             backfaceVisibility: "hidden",
-            transition: "opacity 0.3s ease, background-color 0.3s ease",
+            transition:
+              "opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.38s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         />
       )}

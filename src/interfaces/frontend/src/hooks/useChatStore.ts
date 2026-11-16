@@ -200,6 +200,9 @@ export function useChatStore(): UseChatStoreReturn {
   const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map()
   );
+  const themeTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   // Sync theme & wallpaper lên <html>
   useEffect(() => {
@@ -210,12 +213,19 @@ export function useChatStore(): UseChatStoreReturn {
     applyWallpaperToDom(wallpaper);
   }, [wallpaper]);
 
-  // Cleanup toast timers & active stream khi unmount
+  // Cleanup toast timers, theme timer & active stream khi unmount
   useEffect(() => {
     const timers = toastTimersRef.current;
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
       timers.clear();
+      if (themeTransitionTimerRef.current) {
+        clearTimeout(themeTransitionTimerRef.current);
+        themeTransitionTimerRef.current = null;
+      }
+      if (typeof document !== "undefined") {
+        document.documentElement.classList.remove("theme-transitioning");
+      }
       if (abortControllerRef.current) {
         abortReasonRef.current = "chat_switch";
         abortControllerRef.current.abort();
@@ -259,6 +269,20 @@ export function useChatStore(): UseChatStoreReturn {
 
   const setThemeMode = useCallback(
     (mode: ThemeMode) => {
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        root.classList.add("theme-transitioning");
+        // Đọc layout property để đảm bảo trình duyệt áp rule transition trước khi đổi biến theme
+        void root.offsetHeight;
+        if (themeTransitionTimerRef.current) {
+          clearTimeout(themeTransitionTimerRef.current);
+        }
+        themeTransitionTimerRef.current = setTimeout(() => {
+          root.classList.remove("theme-transitioning");
+          themeTransitionTimerRef.current = null;
+        }, 430);
+      }
+
       const normalized = persistTheme(mode);
       setThemeState(normalized);
       applyThemeToDom(normalized);
