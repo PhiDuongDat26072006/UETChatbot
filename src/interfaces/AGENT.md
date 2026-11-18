@@ -35,7 +35,7 @@ src/interfaces/
 │   ├── context.md            # Tổng mục lục lịch sử thay đổi & kiến trúc
 │   └── context-DD-MM-YYYY-HH-MM-SS.md  # Nhật ký chi tiết từng đợt chỉnh sửa
 ├── cli.py                    # Giao diện CLI & entrypoint run_web
-├── routes.py                 # FastAPI endpoints, SSE stream, phân loại lỗi, format rules
+├── routes.py                 # FastAPI endpoints, SSE stream, /api/voice/transcribe, phân loại lỗi, format rules
 ├── static/
 │   ├── dist/                 # Bản build production do Vite sinh ra (KHÔNG sửa tay)
 │   ├── audio/                # Âm thanh tdesktop & tweb (msg_incoming.mp3, group_call_*.mp3)
@@ -61,7 +61,8 @@ src/interfaces/
         ├── utils/
         │   ├── errorClassifier.ts # Lọc & phân loại lỗi kỹ thuật -> tiếng Việt thân thiện
         │   ├── formatters.ts
-        │   └── sound.ts
+        │   ├── sound.ts
+        │   └── voice.ts           # Xin quyền Micro thống nhất + MediaRecorder/AudioContext VAD cho Firefox
         └── components/
             ├── chat/
             │   ├── ChatWallpaper.tsx       # Hình nền CSS mask-image viewport cố định 100vw x 100dvh
@@ -104,9 +105,10 @@ src/interfaces/
 6. **Quy ước Render Toán & Bảng (`StreamdownRenderer.tsx`)**:
    - Đã tắt bọc bảng phụ mặc định của `streamdown` (`controls={{ code: true, table: false }}`, `tableMaxHeight={Infinity}`) để tránh "bảng trong bảng".
    - Mọi xử lý KaTeX đều chuyển qua tag giả `<uet-math>` dùng `encodeMathPayload` / `decodeMathPayload` nhằm tránh bị bộ parser Markdown làm hỏng dấu `_`, `*`, `|`.
-7. **Tính năng Voice Chat trực tiếp & giới hạn Web API**:
-   - Hiện tại `VoiceChatModal.tsx` hoạt động hoàn toàn bằng **Web Speech API** (`SpeechRecognition` + `speechSynthesis`) kết hợp cờ `voice_mode: true` gửi lên `routes.py` (`_VOICE_RESPONSE_FORMAT_RULES`) mà **không sửa module nào ngoài `src/interfaces/`**.
-   - **Ghi chú mở rộng cho Agent tương lai**: Nếu dự án yêu cầu thay Speech-to-Text / Text-to-Speech sang mô hình phía server (như Whisper / Edge-TTS / OpenAI Realtime audio stream), cần thiết kế endpoint audio/WebSocket hoặc tích hợp dịch vụ giọng nói ở các module xử lý model ngoài `src/interfaces/`.
+7. **Tính năng Voice Chat trực tiếp & Hỗ trợ đa trình duyệt (Chrome, Edge, Safari, Firefox)**:
+   - **Chrome / Edge / Safari**: Dùng **Web Speech API** (`SpeechRecognition`) để nhận dạng giọng nói; trong đó **Chrome & Edge** chủ động gọi `requestMicrophoneStream({ keepStream: false })` (`getUserMedia`) trước khi mở mic để kích hoạt popup xin quyền ở lần đầu truy cập, còn **Safari** phải gọi `recognition.start()` đồng bộ trực tiếp trong sự kiện click để không mất user-gesture.
+   - **Firefox (và trình duyệt không có `SpeechRecognition`)**: Hoạt động bằng `requestMicrophoneStream({ keepStream: true })` (giữ nguyên 1 `MediaStream` để tránh bị Firefox hỏi quyền 2 lần) kết hợp `startAudioSilenceRecorder` trong `utils/voice.ts` (`MediaRecorder` + Web Audio API `AudioContext`/`AnalyserNode` đo RMS mỗi 60ms để tự động dừng khi ngừng nói hết câu) và gửi âm thanh qua `POST /api/voice/transcribe` (tái sử dụng `groq_keys` qua Groq Whisper `whisper-large-v3-turbo` / `whisper-large-v3` ngay trong `routes.py`), giữ nguyên không sửa module lõi ngoài `src/interfaces/`.
+   - **Phản hồi giọng nói**: Dùng `voice_mode: true` (`_VOICE_RESPONSE_FORMAT_RULES`, 1–3 câu ngắn gọn) kết hợp `speechSynthesis`. Nếu tương lai nâng cấp sang server TTS hoặc Realtime WebSocket audio stream mới cần mở rộng sang module ngoài `src/interfaces/`.
 8. **KHÔNG tự ý/ngẫu hứng sinh ra icon khi viết code**:
    - Tuyệt đối **không** tự ý thêm icon, emoji hay biểu tượng trang trí ngẫu hứng vào giao diện, thông báo đẩy (toast), tiêu đề, thẻ gợi ý, modal hoặc nội dung phản hồi của AI khi viết code, trừ khi được người dùng yêu cầu tường minh.
    - Với các lưu ý hoặc thông tin quan trọng trong nội dung chat, chỉ dùng **chữ in đậm** (đã có `stripDecorativeEmojis` + `boldNoticeLabels` hỗ trợ); với thông báo đẩy (`ToastContainer.tsx`), các thông báo bình thường hoặc tích cực (`info`, `success`) không gắn icon, chỉ giữ icon cảnh báo cho thông báo quan trọng/lỗi (`warning`, `error`).
@@ -142,6 +144,7 @@ Xem [context.md](file:///home/hoangthang/Documents/UETChatbot/src/interfaces/con
 - [context-17-11-2026-00-35-00.md](file:///home/hoangthang/Documents/UETChatbot/src/interfaces/contexts/context-17-11-2026-00-35-00.md) — Tìm kiếm nổi trong suốt, sửa công thức SAT, Responsive đa thiết bị, Sidebar Gemini & Live Voice Chat
 - [context-17-11-2026-01-00-00.md](file:///home/hoangthang/Documents/UETChatbot/src/interfaces/contexts/context-17-11-2026-01-00-00.md) — Khắc phục abort khi chuyển chat, tìm kiếm & bôi đậm trong tin nhắn AI, ẩn nguồn ngoài domain/lỗi & thay icon Voice Chat sang Mic
 - [context-17-11-2026-01-10-00.md](file:///home/hoangthang/Documents/UETChatbot/src/interfaces/contexts/context-17-11-2026-01-10-00.md) — Menu đính kèm nút `+`, bỏ `...` placeholder & Tích hợp theme, art, sounds từ Telegram Desktop (`tdesktop`)
+- [context-18-11-2026-11-30-00.md](file:///home/hoangthang/Documents/UETChatbot/src/interfaces/contexts/context-18-11-2026-11-30-00.md) — Hỗ trợ Voice Chat & Mic trên Firefox (`MediaRecorder` + RMS VAD + Groq Whisper) & xin quyền Micro thống nhất trên mọi trình duyệt
 
 ---
 

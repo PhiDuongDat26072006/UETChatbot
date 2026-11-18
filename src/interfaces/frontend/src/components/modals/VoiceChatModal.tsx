@@ -16,50 +16,25 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { transcribeAudio } from "../../services/api";
 import {
   playVoiceConnectSound,
   playVoiceEndSound,
 } from "../../utils/sound";
+import {
+  detectBrowserName,
+  getSpeechRecognitionConstructor,
+  requestMicrophoneStream,
+  startAudioSilenceRecorder,
+  stopMediaStream,
+  VoiceAccessError,
+  type AudioSilenceRecorderHandle,
+  type SpeechRecognitionCtrl,
+  type SpeechRecognitionErrEvtLike,
+  type SpeechRecognitionEvtLike,
+} from "../../utils/voice";
 
 type VoicePhase = "idle" | "listening" | "thinking" | "speaking" | "error";
-
-interface SpeechRecognitionAlt {
-  transcript: string;
-}
-
-interface SpeechRecognitionRes {
-  isFinal: boolean;
-  length: number;
-  [index: number]: SpeechRecognitionAlt;
-}
-
-interface SpeechRecognitionEvt extends Event {
-  results: {
-    length: number;
-    [index: number]: SpeechRecognitionRes;
-  };
-}
-
-interface SpeechRecognitionErrEvt extends Event {
-  error: string;
-}
-
-interface SpeechRecognitionCtrl extends EventTarget {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onstart: ((ev: Event) => void) | null;
-  onresult: ((ev: SpeechRecognitionEvt) => void) | null;
-  onspeechend: ((ev: Event) => void) | null;
-  onerror: ((ev: SpeechRecognitionErrEvt) => void) | null;
-  onend: ((ev: Event) => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type SpeechRecognitionClass = new () => SpeechRecognitionCtrl;
 
 export interface VoiceChatModalProps {
   isOpen: boolean;
@@ -69,25 +44,6 @@ export interface VoiceChatModalProps {
 }
 
 const SILENCE_SUBMIT_MS = 1350;
-
-function getSpeechRecognitionCtor(): SpeechRecognitionClass | null {
-  if (typeof window === "undefined") return null;
-  const win = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionClass;
-    webkitSpeechRecognition?: SpeechRecognitionClass;
-  };
-  return win.SpeechRecognition || win.webkitSpeechRecognition || null;
-}
-
-function detectBrowser(): "Firefox" | "Safari" | "Chrome" | "Edge" | "Other" {
-  if (typeof navigator === "undefined") return "Other";
-  const ua = navigator.userAgent;
-  if (/Edg\//i.test(ua)) return "Edge";
-  if (/Firefox\//i.test(ua)) return "Firefox";
-  if (/Chrome\//i.test(ua) || /CriOS\//i.test(ua)) return "Chrome";
-  if (/Safari\//i.test(ua)) return "Safari";
-  return "Other";
-}
 
 function stripMarkdownForSpeech(raw: string): string {
   return (raw || "")
@@ -147,6 +103,7 @@ export function VoiceChatModal({
   const [replyText, setReplyText] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isMuted, setIsMuted] = useState(false);
+  const [recorderSpeechDetected, setRecorderSpeechDetected] = useState(false);
 
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
@@ -156,6 +113,9 @@ export function VoiceChatModal({
   onSendVoiceQueryRef.current = onSendVoiceQuery;
 
   const recognitionRef = useRef<SpeechRecognitionCtrl | null>(null);
+  const audioRecorderRef = useRef<AudioSilenceRecorderHandle | null>(null);
+  const sttAbortRef = useRef<AbortController | null>(null);
+  const listeningSessionIdRef = useRef(0);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef("");
@@ -185,7 +145,14 @@ export function VoiceChatModal({
     }
   }, []);
 
-  const stopRecognition = useCallback((abort = true) => {
+  const stopCapture = useCallback((abort = true) => {
+    if (abort) {
+      listeningSessionIdRef.current += 1;
+      if (sttAbortRef.current) {
+        sttAbortRef.current.abort();
+        sttAbortRef.current = null;
+      }
+    }
     if (recognitionRef.current) {
       const rec = recognitionRef.current;
       recognitionRef.current = null;
@@ -197,9 +164,16 @@ export function VoiceChatModal({
         // ignore stop/abort errors
       }
     }
+    if (audioRecorderRef.current) {
+      const recorder = audioRecorderRef.current;
+      audioRecorderRef.current = null;
+      if (abort) recorder.cancel();
+      else recorder.stop();
+    }
+    setRecorderSpeechDetected(false);
   }, []);
 
-  const startListeningRef = useRef<() => void>(() => {});
+  const startListeningRef = useRef<() => Promise<void>>(async () => {});
 
   const speakAndContinue = useCallback(
     (rawReply: string) => {
@@ -287,7 +261,7 @@ export function VoiceChatModal({
 
       submittedRef.current = true;
       clearTimers();
-      stopRecognition(false);
+      stopCapture(false);
       setPhase("thinking");
       setReplyText("");
 
@@ -302,152 +276,319 @@ export function VoiceChatModal({
 
       speakAndContinue(reply);
     },
-    [clearTimers, speakAndContinue, stopRecognition]
+    [clearTimers, speakAndContinue, stopCapture]
   );
 
-  const startListening = useCallback(() => {
+  const startWebSpeechRecognition = useCallback(
+    (SpeechCtor: NonNullable<ReturnType<typeof getSpeechRecognitionConstructor>>) => {
+      if (!isOpenRef.current) return;
+      try {
+        const rec = new SpeechCtor();
+        rec.lang = "vi-VN";
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 1;
+        recognitionRef.current = rec;
+
+        rec.onstart = () => {
+          if (!isOpenRef.current) return;
+          setPhase("listening");
+        };
+
+        rec.onresult = (event: SpeechRecognitionEvtLike) => {
+          if (!isOpenRef.current || submittedRef.current) return;
+
+          const parts: string[] = [];
+          for (let i = 0; i < event.results.length; i += 1) {
+            const t = event.results[i]?.[0]?.transcript?.trim();
+            if (t) parts.push(t);
+          }
+          const merged = parts.join(" ").trim();
+          transcriptRef.current = merged;
+          setLiveTranscript(merged);
+
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+          }
+          if (merged) {
+            silenceTimerRef.current = setTimeout(() => {
+              if (isOpenRef.current && !submittedRef.current) {
+                void submitTranscript(transcriptRef.current);
+              }
+            }, SILENCE_SUBMIT_MS);
+          }
+        };
+
+        rec.onspeechend = () => {
+          if (
+            isOpenRef.current &&
+            !submittedRef.current &&
+            transcriptRef.current.trim()
+          ) {
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+            }
+            silenceTimerRef.current = setTimeout(() => {
+              void submitTranscript(transcriptRef.current);
+            }, 550);
+          }
+        };
+
+        rec.onerror = (event: SpeechRecognitionErrEvtLike) => {
+          if (intentionalAbortRef.current || event.error === "aborted") {
+            return;
+          }
+          clearTimers();
+          recognitionRef.current = null;
+          if (!isOpenRef.current) return;
+
+          if (
+            event.error === "not-allowed" ||
+            event.error === "service-not-allowed"
+          ) {
+            setPhase("error");
+            setErrorMessage(
+              "Vui lòng cấp quyền truy cập micro cho trình duyệt để sử dụng đàm thoại trực tiếp."
+            );
+          } else if (event.error === "audio-capture") {
+            setPhase("error");
+            setErrorMessage("Không tìm thấy thiết bị micro trên máy tính.");
+          } else if (event.error === "no-speech") {
+            setPhase("idle");
+            setErrorMessage("Chưa nghe thấy giọng nói, bấm micro để nói lại.");
+          } else if (event.error === "network") {
+            setPhase("error");
+            setErrorMessage(
+              "Mất kết nối dịch vụ nhận dạng giọng nói của trình duyệt."
+            );
+          } else {
+            setPhase("error");
+            setErrorMessage("Không thể tiếp tục thu âm. Bấm micro để thử lại.");
+          }
+        };
+
+        rec.onend = () => {
+          recognitionRef.current = null;
+          if (
+            !intentionalAbortRef.current &&
+            isOpenRef.current &&
+            !submittedRef.current &&
+            transcriptRef.current.trim()
+          ) {
+            void submitTranscript(transcriptRef.current);
+          } else if (
+            !intentionalAbortRef.current &&
+            isOpenRef.current &&
+            !submittedRef.current
+          ) {
+            setPhase((prev) => (prev === "listening" ? "idle" : prev));
+          }
+        };
+
+        rec.start();
+      } catch {
+        setPhase("error");
+        setErrorMessage("Không thể khởi chạy micro trên trình duyệt.");
+      }
+    },
+    [clearTimers, submitTranscript]
+  );
+
+  const startListening = useCallback(async () => {
     if (!isOpenRef.current) return;
 
     clearTimers();
     stopSpeechSynthesis();
-    stopRecognition(true);
+    stopCapture(true);
 
-    const SpeechCtor = getSpeechRecognitionCtor();
-    if (!SpeechCtor) {
-      const browser = detectBrowser();
-      setPhase("error");
-      setErrorMessage(
-        browser === "Firefox"
-          ? "Trình duyệt Firefox chưa hỗ trợ sẵn đàm thoại giọng nói trực tiếp (Web Speech API). Vui lòng mở bằng Chrome, Edge hoặc Safari."
-          : "Trình duyệt hiện tại chưa hỗ trợ đàm thoại giọng nói."
-      );
-      return;
-    }
-
-    if (typeof window !== "undefined" && !window.isSecureContext) {
-      setPhase("error");
-      setErrorMessage(
-        "Đàm thoại giọng nói yêu cầu kết nối HTTPS hoặc localhost."
-      );
-      return;
-    }
-
+    const sessionId = listeningSessionIdRef.current;
     transcriptRef.current = "";
     submittedRef.current = false;
     intentionalAbortRef.current = false;
+    setRecorderSpeechDetected(false);
     setLiveTranscript("");
     setErrorMessage("");
     setPhase("listening");
 
-    try {
-      const rec = new SpeechCtor();
-      rec.lang = "vi-VN";
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
-      recognitionRef.current = rec;
+    const SpeechCtor = getSpeechRecognitionConstructor();
+    const browser = detectBrowserName();
 
-      rec.onstart = () => {
-        if (!isOpenRef.current) return;
-        setPhase("listening");
-      };
-
-      rec.onresult = (event: SpeechRecognitionEvt) => {
-        if (!isOpenRef.current || submittedRef.current) return;
-
-        const parts: string[] = [];
-        for (let i = 0; i < event.results.length; i += 1) {
-          const t = event.results[i]?.[0]?.transcript?.trim();
-          if (t) parts.push(t);
-        }
-        const merged = parts.join(" ").trim();
-        transcriptRef.current = merged;
-        setLiveTranscript(merged);
-
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-        }
-        if (merged) {
-          silenceTimerRef.current = setTimeout(() => {
-            if (isOpenRef.current && !submittedRef.current) {
-              void submitTranscript(transcriptRef.current);
-            }
-          }, SILENCE_SUBMIT_MS);
-        }
-      };
-
-      rec.onspeechend = () => {
-        if (
-          isOpenRef.current &&
-          !submittedRef.current &&
-          transcriptRef.current.trim()
-        ) {
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
+    // Đường dẫn A: Chrome / Edge / Safari dùng Web Speech API
+    if (SpeechCtor) {
+      if (browser !== "Safari") {
+        try {
+          await requestMicrophoneStream({ keepStream: false });
+        } catch (err) {
+          if (
+            !isOpenRef.current ||
+            listeningSessionIdRef.current !== sessionId
+          ) {
+            return;
           }
-          silenceTimerRef.current = setTimeout(() => {
-            void submitTranscript(transcriptRef.current);
-          }, 550);
-        }
-      };
-
-      rec.onerror = (event: SpeechRecognitionErrEvt) => {
-        if (intentionalAbortRef.current || event.error === "aborted") {
+          setPhase("error");
+          setErrorMessage(
+            err instanceof VoiceAccessError
+              ? err.message
+              : "Vui lòng cấp quyền truy cập micro cho trình duyệt để sử dụng đàm thoại trực tiếp."
+          );
           return;
         }
-        clearTimers();
-        recognitionRef.current = null;
-        if (!isOpenRef.current) return;
+      }
 
-        if (
-          event.error === "not-allowed" ||
-          event.error === "service-not-allowed"
-        ) {
-          setPhase("error");
-          setErrorMessage(
-            "Vui lòng cấp quyền truy cập micro cho trình duyệt để sử dụng đàm thoại trực tiếp."
-          );
-        } else if (event.error === "audio-capture") {
-          setPhase("error");
-          setErrorMessage("Không tìm thấy thiết bị micro trên máy tính.");
-        } else if (event.error === "no-speech") {
+      if (!isOpenRef.current || listeningSessionIdRef.current !== sessionId) {
+        return;
+      }
+
+      startWebSpeechRecognition(SpeechCtor);
+      return;
+    }
+
+    // Đường dẫn B: Firefox & các trình duyệt không có Web Speech API -> xin quyền Micro + MediaRecorder + Whisper STT
+    let stream: MediaStream | null = null;
+    try {
+      stream = await requestMicrophoneStream({ keepStream: true });
+    } catch (err) {
+      if (!isOpenRef.current || listeningSessionIdRef.current !== sessionId) {
+        return;
+      }
+      setPhase("error");
+      setErrorMessage(
+        err instanceof VoiceAccessError
+          ? err.message
+          : "Không thể truy cập micro trên trình duyệt."
+      );
+      return;
+    }
+
+    if (
+      !stream ||
+      !isOpenRef.current ||
+      listeningSessionIdRef.current !== sessionId
+    ) {
+      stopMediaStream(stream);
+      return;
+    }
+
+    try {
+      audioRecorderRef.current = startAudioSilenceRecorder(stream, {
+        autoStopOnSilence: true,
+        silenceDurationMs: SILENCE_SUBMIT_MS,
+        noSpeechTimeoutMs: 14000,
+        onSpeechStart: () => {
+          if (
+            !isOpenRef.current ||
+            listeningSessionIdRef.current !== sessionId
+          ) {
+            return;
+          }
+          setRecorderSpeechDetected(true);
+        },
+        onNoSpeech: () => {
+          if (
+            !isOpenRef.current ||
+            listeningSessionIdRef.current !== sessionId
+          ) {
+            return;
+          }
+          audioRecorderRef.current = null;
+          setRecorderSpeechDetected(false);
           setPhase("idle");
           setErrorMessage("Chưa nghe thấy giọng nói, bấm micro để nói lại.");
-        } else if (event.error === "network") {
+        },
+        onError: (msg) => {
+          if (
+            !isOpenRef.current ||
+            listeningSessionIdRef.current !== sessionId
+          ) {
+            return;
+          }
+          audioRecorderRef.current = null;
+          setRecorderSpeechDetected(false);
           setPhase("error");
-          setErrorMessage(
-            "Mất kết nối dịch vụ nhận dạng giọng nói của trình duyệt."
-          );
-        } else {
-          setPhase("error");
-          setErrorMessage("Không thể tiếp tục thu âm. Bấm micro để thử lại.");
-        }
-      };
+          setErrorMessage(msg);
+        },
+        onComplete: (audioBase64, mimeType) => {
+          audioRecorderRef.current = null;
+          setRecorderSpeechDetected(false);
+          if (
+            !isOpenRef.current ||
+            listeningSessionIdRef.current !== sessionId ||
+            submittedRef.current
+          ) {
+            return;
+          }
 
-      rec.onend = () => {
-        recognitionRef.current = null;
-        if (
-          !intentionalAbortRef.current &&
-          isOpenRef.current &&
-          !submittedRef.current &&
-          transcriptRef.current.trim()
-        ) {
-          void submitTranscript(transcriptRef.current);
-        } else if (
-          !intentionalAbortRef.current &&
-          isOpenRef.current &&
-          !submittedRef.current
-        ) {
-          setPhase((prev) => (prev === "listening" ? "idle" : prev));
-        }
-      };
+          if (!audioBase64) {
+            setPhase("idle");
+            setErrorMessage("Chưa nghe rõ câu hỏi, bấm micro để nói lại.");
+            return;
+          }
 
-      rec.start();
-    } catch {
+          setPhase("thinking");
+          setLiveTranscript("Đang nhận dạng câu hỏi của bạn...");
+
+          const abortCtrl = new AbortController();
+          sttAbortRef.current = abortCtrl;
+
+          void transcribeAudio(audioBase64, mimeType, abortCtrl.signal)
+            .then((recognizedText) => {
+              if (sttAbortRef.current === abortCtrl) {
+                sttAbortRef.current = null;
+              }
+              if (
+                !isOpenRef.current ||
+                listeningSessionIdRef.current !== sessionId ||
+                abortCtrl.signal.aborted
+              ) {
+                return;
+              }
+              if (!recognizedText) {
+                setLiveTranscript("");
+                setPhase("idle");
+                setErrorMessage("Chưa nghe rõ câu hỏi, bấm micro để nói lại.");
+                return;
+              }
+              transcriptRef.current = recognizedText;
+              setLiveTranscript(recognizedText);
+              void submitTranscript(recognizedText);
+            })
+            .catch((err: unknown) => {
+              if (sttAbortRef.current === abortCtrl) {
+                sttAbortRef.current = null;
+              }
+              if (
+                !isOpenRef.current ||
+                listeningSessionIdRef.current !== sessionId ||
+                abortCtrl.signal.aborted
+              ) {
+                return;
+              }
+              setLiveTranscript("");
+              setPhase("error");
+              setErrorMessage(
+                err instanceof Error && err.message
+                  ? err.message
+                  : "Không thể nhận dạng giọng nói lúc này. Bạn hãy thử nói lại."
+              );
+            });
+        },
+      });
+    } catch (err) {
+      audioRecorderRef.current = null;
       setPhase("error");
-      setErrorMessage("Không thể khởi chạy micro trên trình duyệt.");
+      setErrorMessage(
+        err instanceof VoiceAccessError
+          ? err.message
+          : "Không thể khởi chạy micro trên trình duyệt."
+      );
     }
-  }, [clearTimers, stopRecognition, stopSpeechSynthesis, submitTranscript]);
+  }, [
+    clearTimers,
+    startWebSpeechRecognition,
+    stopCapture,
+    stopSpeechSynthesis,
+    submitTranscript,
+  ]);
 
   startListeningRef.current = startListening;
 
@@ -457,14 +598,14 @@ export function VoiceChatModal({
       setLiveTranscript("");
       setErrorMessage("");
       playVoiceConnectSound();
-      startListening();
+      void startListening();
     } else {
       clearTimers();
-      stopRecognition(true);
+      stopCapture(true);
       stopSpeechSynthesis();
       setPhase("idle");
     }
-  }, [clearTimers, isOpen, startListening, stopRecognition, stopSpeechSynthesis]);
+  }, [clearTimers, isOpen, startListening, stopCapture, stopSpeechSynthesis]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -480,7 +621,7 @@ export function VoiceChatModal({
 
   const handleCloseModal = () => {
     clearTimers();
-    stopRecognition(true);
+    stopCapture(true);
     stopSpeechSynthesis();
     playVoiceEndSound();
     if (phase === "thinking") {
@@ -494,27 +635,29 @@ export function VoiceChatModal({
     setIsMuted(nextMuted);
     if (nextMuted && phase === "speaking") {
       stopSpeechSynthesis();
-      startListening();
+      void startListening();
     }
   };
 
   const handlePrimaryOrbAction = () => {
     if (phase === "speaking") {
       stopSpeechSynthesis();
-      startListening();
+      void startListening();
       return;
     }
     if (phase === "listening") {
       if (liveTranscript.trim()) {
         void submitTranscript(liveTranscript);
+      } else if (recorderSpeechDetected && audioRecorderRef.current) {
+        audioRecorderRef.current.stop();
       } else {
-        stopRecognition(true);
+        stopCapture(true);
         setPhase("idle");
       }
       return;
     }
     if (phase === "idle" || phase === "error") {
-      startListening();
+      void startListening();
     }
   };
 
@@ -653,7 +796,8 @@ export function VoiceChatModal({
 
             {/* Live Transcript / Concise AI Reply / Guidance */}
             <div className="mt-3 min-h-[72px] max-w-[540px] px-2">
-              {phase === "error" && errorMessage ? (
+              {(phase === "error" || (phase === "idle" && errorMessage)) &&
+              errorMessage ? (
                 <p className="text-[14px] leading-relaxed text-amber-200">
                   {errorMessage}
                 </p>
@@ -668,7 +812,9 @@ export function VoiceChatModal({
               ) : (
                 <p className="text-[13.5px] text-slate-300">
                   {phase === "listening"
-                    ? "Hãy đặt câu hỏi về quy chế, điểm số hoặc học vụ UET..."
+                    ? recorderSpeechDetected
+                      ? "Đang ghi nhận câu hỏi của bạn... (ngừng nói để gửi)"
+                      : "Hãy đặt câu hỏi về quy chế, điểm số hoặc học vụ UET..."
                     : phase === "thinking"
                     ? "Đang tìm thông tin ngắn gọn nhất cho bạn..."
                     : "Bấm vào biểu tượng micro để bắt đầu nói."}
@@ -693,10 +839,17 @@ export function VoiceChatModal({
               {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
             </button>
 
-            {phase === "listening" && liveTranscript.trim().length > 0 ? (
+            {phase === "listening" &&
+            (liveTranscript.trim().length > 0 || recorderSpeechDetected) ? (
               <button
                 type="button"
-                onClick={() => void submitTranscript(liveTranscript)}
+                onClick={() => {
+                  if (liveTranscript.trim()) {
+                    void submitTranscript(liveTranscript);
+                  } else if (audioRecorderRef.current) {
+                    audioRecorderRef.current.stop();
+                  }
+                }}
                 className="inline-flex h-12 items-center gap-2 rounded-full bg-[var(--primary)] px-6 text-[14px] font-semibold text-white shadow-lg transition-colors hover:bg-[var(--primary-hover)]"
               >
                 <Send size={17} />

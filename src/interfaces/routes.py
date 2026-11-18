@@ -6,6 +6,7 @@ Nhiệm vụ: Phục vụ giao diện Web người dùng và chuyển tiếp yê
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -133,6 +134,25 @@ class ChatResponse(BaseModel):
 
 
 ChatResponse.model_rebuild()
+
+
+class VoiceTranscribeRequest(BaseModel):
+    audio_base64: str = Field(..., description="Dữ liệu âm thanh mã hóa Base64")
+    mime_type: str = Field(
+        default="audio/webm",
+        description="MIME type từ MediaRecorder (vd: audio/webm, audio/ogg)",
+    )
+    language: str = Field(default="vi", description="Mã ngôn ngữ nhận dạng")
+
+
+class VoiceTranscribeResponse(BaseModel):
+    text: str
+    model_name: str = ""
+    latency_seconds: float = 0.0
+
+
+VoiceTranscribeRequest.model_rebuild()
+VoiceTranscribeResponse.model_rebuild()
 
 
 def _build_sources_data(contexts: Optional[List[Any]]) -> List[SourceItem]:
@@ -310,6 +330,43 @@ def _is_no_answer_or_out_of_domain(answer: str) -> bool:
     if not lower:
         return True
     return any(marker in lower for marker in _NO_ANSWER_MARKERS)
+
+
+_WHISPER_PROMPT = (
+    "Sinh viên Trường Đại học Công nghệ ĐHQGHN UET hỏi đáp về quy chế đào tạo, "
+    "tín chỉ, học phí, học bổng, điểm chuẩn, IELTS, TOEIC, SAT."
+)
+_SILENCE_HALLUCINATIONS = {
+    "hãy subscribe cho kênh ghiền mì gõ để không bỏ lỡ những video hấp dẫn",
+    "cảm ơn các bạn đã theo dõi",
+    "cảm ơn các bạn đã xem video",
+    "subtitles by the amara.org community",
+}
+
+
+def _guess_audio_ext(mime_type: str) -> str:
+    lower = (mime_type or "").lower()
+    if "ogg" in lower:
+        return "ogg"
+    if "mp4" in lower or "m4a" in lower:
+        return "m4a"
+    if "wav" in lower:
+        return "wav"
+    if "mpeg" in lower or "mp3" in lower:
+        return "mp3"
+    return "webm"
+
+
+def _resolve_stt_groq_keys(pipeline: Any) -> List[str]:
+    llm = getattr(pipeline, "llm", None) if pipeline else None
+    keys = list(getattr(llm, "groq_keys", None) or [])
+    if keys:
+        return keys
+    try:
+        from src.llm.llm_client import UETLLMClient
+        return list(UETLLMClient._load_keys_for_provider("GROQ"))
+    except Exception:
+        return []
 
 
 def create_app():
@@ -634,6 +691,114 @@ def create_app():
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.post("/api/voice/transcribe", response_model=VoiceTranscribeResponse)
+    def voice_transcribe_endpoint(request: VoiceTranscribeRequest):
+        """
+        Chuyển đổi âm thanh thu từ trình duyệt (đặc biệt cho Firefox khi không có Web Speech STT)
+        thành văn bản tiếng Việt thông qua Groq Whisper API.
+        """
+        raw_b64 = (request.audio_base64 or "").strip()
+        if "," in raw_b64 and raw_b64.lower().startswith("data:"):
+            raw_b64 = raw_b64.split(",", 1)[1].strip()
+
+        if not raw_b64:
+            return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
+
+        try:
+            audio_bytes = base64.b64decode(raw_b64, validate=True)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Dữ liệu âm thanh không hợp lệ, vui lòng thử thu âm lại.",
+                    "error_type": "server",
+                },
+            )
+
+        if len(audio_bytes) < 400:
+            return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
+
+        if len(audio_bytes) > 12 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "message": "Đoạn ghi âm quá dài vượt quá giới hạn cho phép. Bạn vui lòng nói câu ngắn hơn nhé.",
+                    "error_type": "token_limit",
+                },
+            )
+
+        pipeline = get_rag_pipeline()
+        groq_keys = _resolve_stt_groq_keys(pipeline)
+        if not groq_keys:
+            logger.error("Không tìm thấy GROQ_API_KEY cho tính năng voice transcribe.")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "Máy chủ hiện chưa cấu hình dịch vụ nhận dạng giọng nói. Vui lòng thử lại sau.",
+                    "error_type": "server",
+                },
+            )
+
+        try:
+            import groq
+        except ImportError:
+            logger.error("Thư viện groq chưa được cài đặt trong môi trường.")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Hệ thống tạm thời chưa hỗ trợ chuyển đổi giọng nói. Vui lòng thử lại sau.",
+                    "error_type": "server",
+                },
+            )
+
+        clean_mime = (request.mime_type or "audio/webm").split(";", 1)[0].strip() or "audio/webm"
+        ext = _guess_audio_ext(clean_mime)
+        lang = (request.language or "vi").strip() or "vi"
+        models = ("whisper-large-v3-turbo", "whisper-large-v3")
+
+        last_exc: Optional[Exception] = None
+        with Timer() as timer:
+            for model_name in models:
+                for api_key in groq_keys:
+                    try:
+                        client = groq.Groq(api_key=api_key, timeout=25.0)
+                        transcription = client.audio.transcriptions.create(
+                            model=model_name,
+                            file=(f"voice.{ext}", audio_bytes, clean_mime),
+                            language=lang,
+                            prompt=_WHISPER_PROMPT,
+                            response_format="json",
+                            temperature=0.0,
+                        )
+                        text = (getattr(transcription, "text", None) or "").strip()
+                        if text.lower().strip(".!? ") in _SILENCE_HALLUCINATIONS:
+                            text = ""
+                        return VoiceTranscribeResponse(
+                            text=text,
+                            model_name=model_name,
+                            latency_seconds=round(timer.elapsed, 3),
+                        )
+                    except Exception as exc:
+                        last_exc = exc
+                        logger.warning(
+                            "Groq Whisper thất bại với model=%s: %s",
+                            model_name,
+                            type(exc).__name__,
+                        )
+
+        if last_exc is not None:
+            logger.exception("Tất cả key Groq Whisper đều thất bại trong /api/voice/transcribe: %s", last_exc)
+            classified = _classify_exception(last_exc)
+            raise HTTPException(
+                status_code=classified["status_code"],
+                detail={
+                    "message": classified["message"],
+                    "error_type": classified["error_type"],
+                },
+            )
+
+        return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
 
     return app
 
