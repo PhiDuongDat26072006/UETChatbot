@@ -227,6 +227,7 @@ export interface AudioSilenceRecorderOptions {
   speechThreshold?: number;
   noSpeechTimeoutMs?: number;
   maxDurationMs?: number;
+  warmupMs?: number;
   autoStopOnSilence?: boolean;
   onSpeechStart?: () => void;
   onSilenceTimeout?: () => void;
@@ -257,9 +258,10 @@ export function startAudioSilenceRecorder(
   }
 
   const silenceDurationMs = options.silenceDurationMs ?? 1350;
-  const speechThreshold = options.speechThreshold ?? 0.016;
+  const speechThreshold = options.speechThreshold ?? 0.026;
   const noSpeechTimeoutMs = options.noSpeechTimeoutMs ?? 12000;
   const maxDurationMs = options.maxDurationMs ?? 35000;
+  const warmupMs = options.warmupMs ?? 300;
   const autoStopOnSilence = options.autoStopOnSilence ?? true;
 
   const preferredMime = pickSupportedAudioMimeType();
@@ -273,6 +275,10 @@ export function startAudioSilenceRecorder(
   const startedAt = performance.now();
   let lastSpeechAt = startedAt;
   let hasSpoken = false;
+  let hasVad = false;
+  let consecutiveSpeechFrames = 0;
+  let totalSpeechFrames = 0;
+  let peakRms = 0;
   let cancelled = false;
   let finished = false;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -328,16 +334,24 @@ export function startAudioSilenceRecorder(
     cleanupMonitoring();
     if (cancelled) return;
 
+    const validSpeech = hasVad
+      ? hasSpoken && totalSpeechFrames >= 5 && peakRms >= speechThreshold
+      : true;
+    if (!validSpeech) {
+      options.onComplete("", actualMime, false);
+      return;
+    }
+
     const blob = new Blob(chunks, { type: actualMime });
     if (blob.size < 400) {
-      options.onComplete("", actualMime, hasSpoken);
+      options.onComplete("", actualMime, false);
       return;
     }
 
     void blobToBase64(blob)
       .then((b64) => {
         if (!cancelled) {
-          options.onComplete(b64, actualMime, hasSpoken);
+          options.onComplete(b64, actualMime, validSpeech);
         }
       })
       .catch(() => {
@@ -366,9 +380,15 @@ export function startAudioSilenceRecorder(
       analyser.fftSize = 2048;
       source.connect(analyser);
 
+      hasVad = true;
       const dataArray = new Uint8Array(analyser.fftSize);
       pollInterval = setInterval(() => {
         if (finished || cancelled || recorder.state !== "recording") return;
+
+        const now = performance.now();
+        if (now - startedAt < warmupMs) {
+          return;
+        }
 
         analyser.getByteTimeDomainData(dataArray);
         let sumSq = 0;
@@ -377,32 +397,41 @@ export function startAudioSilenceRecorder(
           sumSq += sample * sample;
         }
         const rms = Math.sqrt(sumSq / dataArray.length);
-        const now = performance.now();
+        if (rms > peakRms) {
+          peakRms = rms;
+        }
 
         if (rms >= speechThreshold) {
-          if (!hasSpoken) {
+          consecutiveSpeechFrames += 1;
+          totalSpeechFrames += 1;
+          if (!hasSpoken && consecutiveSpeechFrames >= 4) {
             hasSpoken = true;
             options.onSpeechStart?.();
           }
-          lastSpeechAt = now;
-        } else if (hasSpoken && autoStopOnSilence) {
-          if (now - lastSpeechAt >= silenceDurationMs) {
-            options.onSilenceTimeout?.();
-            stopInternal();
+          if (hasSpoken) {
+            lastSpeechAt = now;
           }
-        } else if (!hasSpoken && noSpeechTimeoutMs > 0) {
-          if (now - startedAt >= noSpeechTimeoutMs) {
-            cancelled = true;
-            if (recorder.state === "recording") {
-              try {
-                recorder.stop();
-              } catch {
+        } else {
+          consecutiveSpeechFrames = 0;
+          if (hasSpoken && autoStopOnSilence) {
+            if (now - lastSpeechAt >= silenceDurationMs) {
+              options.onSilenceTimeout?.();
+              stopInternal();
+            }
+          } else if (!hasSpoken && noSpeechTimeoutMs > 0) {
+            if (now - startedAt >= noSpeechTimeoutMs) {
+              cancelled = true;
+              if (recorder.state === "recording") {
+                try {
+                  recorder.stop();
+                } catch {
+                  cleanupMonitoring();
+                }
+              } else {
                 cleanupMonitoring();
               }
-            } else {
-              cleanupMonitoring();
+              options.onNoSpeech?.();
             }
-            options.onNoSpeech?.();
           }
         }
       }, 60);

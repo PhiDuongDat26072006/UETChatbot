@@ -332,16 +332,105 @@ def _is_no_answer_or_out_of_domain(answer: str) -> bool:
     return any(marker in lower for marker in _NO_ANSWER_MARKERS)
 
 
-_WHISPER_PROMPT = (
-    "Sinh viên Trường Đại học Công nghệ ĐHQGHN UET hỏi đáp về quy chế đào tạo, "
-    "tín chỉ, học phí, học bổng, điểm chuẩn, IELTS, TOEIC, SAT."
-)
-_SILENCE_HALLUCINATIONS = {
-    "hãy subscribe cho kênh ghiền mì gõ để không bỏ lỡ những video hấp dẫn",
+_HALLUCINATION_SUBSTRINGS = (
+    "subscribe cho kênh",
+    "đăng ký kênh",
+    "la la school",
+    "ghiền mì gõ",
+    "faptv",
+    "kem xôi",
+    "để không bỏ lỡ những video",
+    "không bỏ lỡ các video",
+    "những video hấp dẫn",
+    "video mới nhất",
+    "like và subscribe",
+    "nhấn chuông",
+    "bấm chuông",
     "cảm ơn các bạn đã theo dõi",
-    "cảm ơn các bạn đã xem video",
-    "subtitles by the amara.org community",
-}
+    "cảm ơn các bạn đã xem",
+    "hẹn gặp lại các bạn",
+    "phụ đề được thực hiện bởi",
+    "subtitles by",
+    "amara.org",
+    "translated by",
+)
+
+_REPEATED_PHRASE_RE = re.compile(
+    r"(?:^|[\s,.!?])([^\s,.!?]+(?:\s+[^\s,.!?]+){0,2})(?:\s*[,.\s]+\1){3,}(?:$|[\s,.!?])",
+    re.IGNORECASE,
+)
+
+
+def _is_whisper_hallucination(text: str) -> bool:
+    """Nhận diện các câu ảo giác phổ biến của Whisper khi gặp khoảng lặng hoặc tạp âm."""
+    cleaned = re.sub(r"\s+", " ", (text or "")).strip()
+    if not cleaned:
+        return True
+    if not re.search(r"[0-9A-Za-zÀ-ỹ]", cleaned):
+        return True
+    lowered = cleaned.lower()
+    if any(marker in lowered for marker in _HALLUCINATION_SUBSTRINGS):
+        return True
+    if _REPEATED_PHRASE_RE.search(lowered):
+        return True
+    return False
+
+
+def _extract_clean_transcript(transcription: Any) -> str:
+    """Trích xuất văn bản sạch từ verbose_json, lọc bỏ segment no_speech cao và ảo giác."""
+    segments = (
+        transcription.get("segments")
+        if isinstance(transcription, dict)
+        else getattr(transcription, "segments", None)
+    )
+    if isinstance(segments, list) and segments:
+        kept_parts: List[str] = []
+        for seg in segments:
+            seg_text = (
+                seg.get("text", "")
+                if isinstance(seg, dict)
+                else getattr(seg, "text", "")
+            )
+            seg_text = re.sub(r"\s+", " ", str(seg_text or "")).strip()
+            if not seg_text:
+                continue
+
+            raw_no_speech = (
+                seg.get("no_speech_prob", 0.0)
+                if isinstance(seg, dict)
+                else getattr(seg, "no_speech_prob", 0.0)
+            )
+            raw_avg_logprob = (
+                seg.get("avg_logprob", 0.0)
+                if isinstance(seg, dict)
+                else getattr(seg, "avg_logprob", 0.0)
+            )
+            try:
+                no_speech_prob = float(raw_no_speech or 0.0)
+            except (TypeError, ValueError):
+                no_speech_prob = 0.0
+            try:
+                avg_logprob = float(raw_avg_logprob or 0.0)
+            except (TypeError, ValueError):
+                avg_logprob = 0.0
+
+            if no_speech_prob > 0.6 or (no_speech_prob > 0.45 and avg_logprob < -0.85):
+                continue
+            if _is_whisper_hallucination(seg_text):
+                continue
+            kept_parts.append(seg_text)
+        text = " ".join(kept_parts).strip()
+    else:
+        raw_text = (
+            transcription.get("text", "")
+            if isinstance(transcription, dict)
+            else getattr(transcription, "text", "")
+        )
+        text = re.sub(r"\s+", " ", str(raw_text or "")).strip()
+
+    if _is_whisper_hallucination(text):
+        return ""
+    return text
 
 
 def _guess_audio_ext(mime_type: str) -> str:
@@ -767,13 +856,10 @@ def create_app():
                             model=model_name,
                             file=(f"voice.{ext}", audio_bytes, clean_mime),
                             language=lang,
-                            prompt=_WHISPER_PROMPT,
-                            response_format="json",
+                            response_format="verbose_json",
                             temperature=0.0,
                         )
-                        text = (getattr(transcription, "text", None) or "").strip()
-                        if text.lower().strip(".!? ") in _SILENCE_HALLUCINATIONS:
-                            text = ""
+                        text = _extract_clean_transcript(transcription)
                         return VoiceTranscribeResponse(
                             text=text,
                             model_name=model_name,

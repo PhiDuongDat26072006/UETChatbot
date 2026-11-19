@@ -355,12 +355,19 @@ export function ChatComposer({
           audioRecorderRef.current = null;
           onShowToast?.(msg, "warning", 3200);
         },
-        onComplete: (audioBase64, mimeType) => {
+        onComplete: (audioBase64, mimeType, hasSpoken) => {
           if (!isMountedRef.current) return;
           setIsRecording(false);
           audioRecorderRef.current = null;
 
-          if (!audioBase64) return;
+          if (!hasSpoken || !audioBase64) {
+            onShowToast?.(
+              "Không phát hiện giọng nói, vui lòng thử lại.",
+              "info",
+              2400
+            );
+            return;
+          }
 
           setIsTranscribing(true);
           const controller = new AbortController();

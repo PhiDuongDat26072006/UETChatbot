@@ -507,7 +507,7 @@ export function VoiceChatModal({
           setPhase("error");
           setErrorMessage(msg);
         },
-        onComplete: (audioBase64, mimeType) => {
+        onComplete: (audioBase64, mimeType, hasSpoken) => {
           audioRecorderRef.current = null;
           setRecorderSpeechDetected(false);
           if (
@@ -518,9 +518,9 @@ export function VoiceChatModal({
             return;
           }
 
-          if (!audioBase64) {
+          if (!hasSpoken || !audioBase64) {
             setPhase("idle");
-            setErrorMessage("Chưa nghe rõ câu hỏi, bấm micro để nói lại.");
+            setErrorMessage("Chưa nghe thấy giọng nói, bấm micro để nói lại.");
             return;
           }
 
