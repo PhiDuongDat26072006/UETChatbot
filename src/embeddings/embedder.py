@@ -117,6 +117,8 @@ class UETEmbedder(BaseEmbeddingModel):
                             sess_options=sess_options,
                             providers=["CPUExecutionProvider"],
                         )
+                    out_names = [o.name for o in self._onnx_session.get_outputs()]
+                    self._onnx_output_names = ["sentence_embedding"] if "sentence_embedding" in out_names else None
                     logger.info(
                         f"Đã khởi tạo thành công mô hình ONNX Embedding BGE-M3 "
                         f"({self._dimension} chiều, providers={self._onnx_session.get_providers()})."
@@ -191,6 +193,7 @@ class UETEmbedder(BaseEmbeddingModel):
             try:
                 batch_size = 32
                 all_vectors: List[List[float]] = []
+                out_names = getattr(self, "_onnx_output_names", None)
                 for i in range(0, len(texts), batch_size):
                     batch = texts[i : i + batch_size]
                     encoded = self._tokenizer(
@@ -204,8 +207,24 @@ class UETEmbedder(BaseEmbeddingModel):
                         "input_ids": encoded["input_ids"].astype(np.int64),
                         "attention_mask": encoded["attention_mask"].astype(np.int64),
                     }
-                    ort_outputs = self._onnx_session.run(None, ort_inputs)
-                    sentence_emb = ort_outputs[0]  # shape: (batch_size, 1024)
+                    if out_names:
+                        ort_outputs = self._onnx_session.run(out_names, ort_inputs)
+                        sentence_emb = ort_outputs[0]
+                    else:
+                        ort_outputs = self._onnx_session.run(None, ort_inputs)
+                        sentence_emb = None
+                        for out in ort_outputs:
+                            if out.ndim == 2:
+                                sentence_emb = out
+                                break
+                        if sentence_emb is None:
+                            sentence_emb = ort_outputs[0][:, 0, :]
+
+                    # Đảm bảo chuẩn hóa L2 vector
+                    norms = np.linalg.norm(sentence_emb, ord=2, axis=-1, keepdims=True)
+                    norms = np.maximum(norms, 1e-12)
+                    sentence_emb = sentence_emb / norms
+
                     for vec in sentence_emb:
                         all_vectors.append(vec.tolist())
                 return all_vectors
@@ -241,6 +260,3 @@ class UETEmbedder(BaseEmbeddingModel):
                 logger.error(f"Lỗi khi nhúng bằng Chroma EF: {e}.")
 
         return [self._fallback_vector(t) for t in texts]
-
-
-

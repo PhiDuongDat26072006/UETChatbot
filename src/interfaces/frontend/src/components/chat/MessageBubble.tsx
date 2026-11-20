@@ -9,8 +9,10 @@ import { motion } from "motion/react";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Copy,
+  ExternalLink,
+  FileText,
+  Globe,
   RotateCw,
   User,
 } from "lucide-react";
@@ -19,7 +21,6 @@ import {
   escapeRegex,
   formatFileSize,
   formatTime,
-  isNoAnswerOrOutOfDomain,
 } from "../../utils/formatters";
 import { StreamdownRenderer } from "./StreamdownRenderer";
 
@@ -68,12 +69,12 @@ export function BubbleTail({ sender }: { sender: "user" | "bot" }) {
 
 export interface SourceReferenceListProps {
   sources: SourceItem[];
-  onOpenSource: (source: SourceItem) => void;
+  onOpenSource?: (source: SourceItem) => void;
 }
 
 export function SourceReferenceList({
   sources,
-  onOpenSource,
+  onOpenSource: _onOpenSource,
 }: SourceReferenceListProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -110,47 +111,91 @@ export function SourceReferenceList({
             const title =
               src.metadata?.title ||
               src.metadata?.source ||
-              `Văn bản quy chế #${idx + 1}`;
+              `Tài liệu tham khảo #${idx + 1}`;
             const lowerTitle = title.toLowerCase();
-            const formatLabel = lowerTitle.endsWith(".txt")
-              ? "TXT"
-              : lowerTitle.includes(".doc")
-              ? "DOC"
-              : "PDF";
-            const isPdf = formatLabel === "PDF";
 
-            const pageStr = src.metadata?.page
-              ? `Trang ${src.metadata.page}`
-              : "";
+            const rawUrl =
+              typeof src.metadata?.final_url === "string" && src.metadata.final_url.trim()
+                ? src.metadata.final_url.trim()
+                : typeof src.metadata?.url === "string" && src.metadata.url.trim()
+                ? src.metadata.url.trim()
+                : typeof src.metadata?.source === "string" && src.metadata.source.startsWith("http")
+                ? src.metadata.source.trim()
+                : "";
+            const isHttp = rawUrl.startsWith("http");
+
+            let domain = typeof src.metadata?.domain === "string" ? src.metadata.domain : "";
+            if (!domain && isHttp) {
+              try {
+                domain = new URL(rawUrl).hostname.replace(/^www\./, "");
+              } catch {
+                domain = "";
+              }
+            }
+
+            const resType = String(src.metadata?.resource_type || "").toLowerCase();
+            const isPdf =
+              resType === "pdf" ||
+              lowerTitle.endsWith(".pdf") ||
+              rawUrl.toLowerCase().endsWith(".pdf");
+
             const scoreStr =
-              typeof src.similarity_score === "number" &&
-              src.similarity_score > 0
+              typeof src.similarity_score === "number" && src.similarity_score > 0
                 ? `${(src.similarity_score * 100).toFixed(0)}% liên quan`
                 : "";
             const metaText =
-              [pageStr, scoreStr].filter(Boolean).join(" • ") ||
-              "Căn cứ quy chế đào tạo UET";
+              [domain || (src.metadata?.site ? String(src.metadata.site) : ""), scoreStr]
+                .filter(Boolean)
+                .join(" • ") || "Trang web trường ĐH Công nghệ";
+
+            if (isHttp) {
+              return (
+                <a
+                  key={`${src.chunk_id || idx}_${idx}`}
+                  href={rawUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Mở trang web gốc: ${title}`}
+                  className="source-doc-card group flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-hover-chat)] px-3 py-2 text-left no-underline transition-all hover:-translate-y-px hover:border-[var(--primary)] hover:bg-[var(--user-bubble)] dark:bg-[#141922] dark:hover:border-[#38BDF8] dark:hover:bg-[#1E3A5F]"
+                >
+                  <div className="source-doc-icon-col shrink-0">
+                    <span
+                      className={`source-format-tag inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide ${
+                        isPdf
+                          ? "format-pdf bg-red-100 text-red-600 dark:bg-[#3D1A1A] dark:text-red-400"
+                          : "format-web bg-emerald-100 text-emerald-700 dark:bg-[#064E3B] dark:text-emerald-300"
+                      }`}
+                    >
+                      {isPdf ? <FileText size={10} /> : <Globe size={10} />}
+                      {isPdf ? "PDF" : "WEB"}
+                    </span>
+                  </div>
+
+                  <div className="source-doc-info-col min-w-0 flex-1">
+                    <div className="source-doc-title truncate text-[13px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--primary)] dark:group-hover:text-[#38BDF8]">
+                      {title}
+                    </div>
+                    <div className="source-doc-meta mt-0.5 truncate text-[11.5px] text-[var(--text-muted)]">
+                      {metaText}
+                    </div>
+                  </div>
+
+                  <ExternalLink className="h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--primary)] dark:group-hover:text-[#38BDF8]" />
+                </a>
+              );
+            }
 
             return (
-              <button
+              <div
                 key={`${src.chunk_id || idx}_${idx}`}
-                type="button"
-                onClick={() => onOpenSource(src)}
-                title={`Bấm để xem trích đoạn: ${title}`}
-                className="source-doc-card group flex w-full items-center gap-3 rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-hover-chat)] px-3 py-2 text-left transition-all hover:-translate-y-px hover:border-[var(--primary)] hover:bg-[var(--user-bubble)] dark:bg-[#141922] dark:hover:border-[#38BDF8] dark:hover:bg-[#1E3A5F]"
+                title={title}
+                className="source-doc-card group flex w-full items-center gap-3 rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-hover-chat)] px-3 py-2 text-left transition-all hover:bg-[var(--user-bubble)] dark:bg-[#141922]"
               >
                 <div className="source-doc-icon-col shrink-0">
-                  <span
-                    className={`source-format-tag rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide ${
-                      isPdf
-                        ? "format-pdf bg-red-100 text-red-600 dark:bg-[#3D1A1A] dark:text-red-400"
-                        : "format-doc bg-blue-100 text-blue-700 dark:bg-[#172554] dark:text-blue-400"
-                    }`}
-                  >
-                    {formatLabel}
+                  <span className="source-format-tag rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-extrabold text-blue-700 dark:bg-[#172554] dark:text-blue-400">
+                    DOC
                   </span>
                 </div>
-
                 <div className="source-doc-info-col min-w-0 flex-1">
                   <div className="source-doc-title truncate text-[13px] font-semibold text-[var(--text-primary)]">
                     {title}
@@ -159,9 +204,7 @@ export function SourceReferenceList({
                     {metaText}
                   </div>
                 </div>
-
-                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--primary)] dark:group-hover:text-[#38BDF8]" />
-              </button>
+              </div>
             );
           })}
         </div>
@@ -239,7 +282,7 @@ const MessageBubbleInner = ({
   isLastInGroup,
   isHighlighted = false,
   searchQuery,
-  onOpenSource,
+  onOpenSource: _onOpenSource,
   onRetry,
   onCopy,
 }: MessageBubbleProps) => {
@@ -410,16 +453,6 @@ const MessageBubbleInner = ({
             isActiveMatch={isHighlighted}
           />
         </div>
-
-        {!message.error &&
-          !isNoAnswerOrOutOfDomain(message.text) &&
-          message.sources &&
-          message.sources.length > 0 && (
-            <SourceReferenceList
-              sources={message.sources}
-              onOpenSource={onOpenSource}
-            />
-          )}
 
         <div className="message-meta-footer mt-2.5 flex items-center justify-between gap-3 border-t border-[var(--border-divider)] pt-2 text-[11px] text-[var(--text-muted)]">
           <div className="message-actions flex items-center gap-1.5">
