@@ -51,6 +51,8 @@ scope:
 #   - ^/(category|tag|author|page)(/|$)
 #   - -c\d+\.html$
 discovery:
+  start_urls:
+  - https://sae.uet.vnu.edu.vn/
   link_selectors:
   - .wrapper a[href]
   - .menu_top a[href]

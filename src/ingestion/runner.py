@@ -3,13 +3,22 @@
 from contextlib import nullcontext
 import logging
 from collections import Counter
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 from src.base import DataSource
 from .config.profiles import load_profiles
 from .crawler.engine import crawl
-from .crawler.policy import evaluate, reconcile_sources, resource_type
+from .crawler.policy import (
+    discovery_verdict,
+    evaluate,
+    in_discovery_scope,
+    reconcile_sources,
+    resource_type,
+)
 from .crawler.parser import metadata as extract_metadata, parse_page
-from .identity import source_id
+from .identity import normalize_site_url, source_id
+from .overrides import lookup
 from .downloader.http import HTMLFetcher
 from .downloader.service import download_source
 from .storage import Storage, writer_lock, write_json, now
@@ -178,9 +187,69 @@ def run_ingestion_serial(
                         jobs.append((source, previous))
                         selected += 1
 
+                    seed_urls = {
+                        normalize_site_url(u, profile)
+                        for u in profile.get("_manual_seeds", []) + profile.get("seeds", [])
+                    }
+                    rejected_sids = {
+                        sid
+                        for sid, r in storage.records("sources", site).items()
+                        if r.get("metadata", {}).get("decision") == "rejected"
+                    }
+
                     def download(job):
                         source, previous = job
                         try:
+                            parts = urlsplit(source.uri)
+                            if parts.path.startswith("/offline/"):
+                                rel_name = unquote(parts.path.split("/offline/", 1)[1]).strip("/")
+                                offline_root = (storage.root / "offline_docs").resolve()
+                                local_path = (offline_root / rel_name).resolve()
+                                if (
+                                    rel_name
+                                    and local_path.is_relative_to(offline_root)
+                                    and local_path.is_file()
+                                ):
+                                    body = local_path.read_bytes()
+                                    is_pdf_file = local_path.suffix.lower() == ".pdf" or body.startswith(b"%PDF-")
+                                    page = {
+                                        "requested_url": source.uri,
+                                        "final_url": source.uri,
+                                        "status_code": 200,
+                                        "headers": {
+                                            "content-type": (
+                                                "application/pdf"
+                                                if is_pdf_file
+                                                else "text/html; charset=utf-8"
+                                            )
+                                        },
+                                        "body": body,
+                                        "encoding": "binary" if is_pdf_file else "utf-8",
+                                    }
+                                    return source, page, None
+                            if (
+                                source.metadata.get("decision_reason") == "manual_curation"
+                                or site == "OTHER"
+                            ) and lookup(source.uri, profile) is None:
+                                headers = {}
+                                if previous:
+                                    pmeta = previous["metadata"]
+                                    if pmeta.get("etag"):
+                                        headers["If-None-Match"] = pmeta["etag"]
+                                    if pmeta.get("last_modified"):
+                                        headers["If-Modified-Since"] = pmeta["last_modified"]
+                                page = fetcher.fetch(
+                                    source.uri,
+                                    lambda u: (
+                                        source_id(u) not in rejected_sids
+                                        and (
+                                            site == "OTHER"
+                                            or in_discovery_scope(u, profile)
+                                        )
+                                    ),
+                                    headers,
+                                )
+                                return source, page, None
                             return (
                                 source,
                                 download_source(
@@ -235,7 +304,6 @@ def run_ingestion_serial(
                                 )
                                 if is_pdf:
                                     from pathlib import PurePosixPath
-                                    from urllib.parse import unquote, urlsplit
 
                                     clean_name = (
                                         PurePosixPath(unquote(urlsplit(page["final_url"]).path))
@@ -252,14 +320,18 @@ def run_ingestion_serial(
                                         page["final_url"],
                                         profile,
                                     )
+                                    existing_sources = storage.records("sources", site)
                                     for link in links:
                                         target = link["url"]
                                         kind = resource_type(target)
                                         if kind == "asset":
                                             continue
-                                        verdict, why = evaluate(target, profile)
                                         sid = source_id(target)
-                                        if sid not in storage.records("sources", site):
+                                        if sid not in existing_sources:
+                                            if lookup(target, profile) or target in seed_urls:
+                                                verdict, why = evaluate(target, profile)
+                                            else:
+                                                verdict, why = discovery_verdict(target, profile)
                                             storage.save_source(
                                                 DataSource(
                                                     source_id=sid,
@@ -277,13 +349,29 @@ def run_ingestion_serial(
                                                     },
                                                 )
                                             )
-                                decision, reason = evaluate(
-                                    page["final_url"], profile, meta
-                                )
+                                if lookup(page["final_url"], profile):
+                                    decision, reason = evaluate(
+                                        page["final_url"], profile, meta
+                                    )
+                                elif source.metadata.get("decision") == "accepted" and (
+                                    source.metadata.get("decision_reason") == "manual_curation"
+                                    or urlsplit(page["final_url"]).path.startswith("/offline/")
+                                    or site == "OTHER"
+                                ):
+                                    decision = "accepted"
+                                    reason = source.metadata.get("decision_reason") or "manual_curation"
+                                else:
+                                    decision, reason = evaluate(
+                                        page["final_url"], profile, meta
+                                    )
                                 source.metadata.update(
                                     meta, decision=decision, decision_reason=reason
                                 )
                                 source = storage.resolve_redirect(source, page, profile)
+                                redirect_existing = storage.records("sources", site).get(source.source_id)
+                                if redirect_existing and redirect_existing["metadata"].get("decision") == "rejected":
+                                    counts["raw_rejected"] += 1
+                                    continue
                                 storage.save_source(source)
                                 if decision == "accepted":
                                     accept(source, page)

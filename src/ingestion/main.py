@@ -92,6 +92,11 @@ def build_parser():
     ingest.add_argument("--refresh", action="store_true")
     ingest.add_argument("--reprocess", action="store_true")
     ingest.add_argument("--retry-failed", action="store_true")
+    ingest.add_argument(
+        "--discover-all",
+        action="store_true",
+        help="Crawl discovery.start_urls in web -> data_source mode into pending without downloading raw/processed",
+    )
     status = commands.add_parser("status", help="Read stage counts")
     for command in (ingest, status):
         command.add_argument("--sites", nargs="+", type=str.upper)
@@ -115,12 +120,50 @@ def build_parser():
         default=DEFAULT_LOG_FILE,
         help="Path to project log file (default: logs/app.log)",
     )
+    review = commands.add_parser("review", help="Launch local web UI for source curation")
+    review.add_argument("--host", default="127.0.0.1")
+    review.add_argument("--port", type=positive, default=8001)
+    review.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    review.add_argument(
+        "--open-browser",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Open the review UI in the default browser",
+    )
+    migrate = commands.add_parser(
+        "migrate-pending",
+        help="Migrate non-accepted/non-alias sources to pending",
+    )
+    migrate.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    migrate.add_argument("--profile-dir", type=Path)
+    tg = commands.add_parser("telegram", help="Telegram notification and curation bot")
+    tg.add_argument("--token", help="Telegram Bot Token from @BotFather")
+    tg.add_argument("--chat-id", help="Target Telegram chat ID")
+    tg.add_argument("--setup", action="store_true", help="Verify token, detect chat ID on /start, and save config")
+    tg.add_argument("--test", action="store_true", help="Send a test status message to Telegram")
+    tg.add_argument("--watch", action="store_true", help="Run daily category watch and notify new pending links")
+    tg.add_argument("--listen", action="store_true", help="Run interactive long-polling Telegram bot")
+    tg.add_argument("--wait-seconds", type=positive, default=60, help="Wait timeout for --setup /start detection")
+    tg.add_argument("--max-cards", type=positive, default=10, help="Max inline approval cards sent by --watch")
+    tg.add_argument("--sites", nargs="+", type=str.upper)
+    tg.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    tg.add_argument("--profile-dir", type=Path)
     return parser
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "telegram" and not (
+        args.setup or args.test or args.watch or args.listen
+    ):
+        parser.error("Choose one of --setup, --test, --watch, or --listen")
+    if args.command == "telegram":
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+            force=True,
+        )
     if args.command == "ingest":
         from .runner import STAGES
 
@@ -134,6 +177,10 @@ def main(argv=None):
             parser.error("--reprocess requires --to processed")
         if args.retry_failed and args.from_stage == "web":
             parser.error("Resume web automatically; --retry-failed is for stored data")
+        if args.discover_all and (
+            args.from_stage != "web" or args.to_stage != "data_source"
+        ):
+            parser.error("--discover-all requires --from web --to data_source")
         if (
             args.retry_failed
             and args.from_stage == "data_source"
@@ -154,7 +201,67 @@ def main(argv=None):
             force=True,
         )
     try:
-        if args.command == "filter":
+        if args.command == "review":
+            from .review_web.app import run_review_web
+
+            run_review_web(
+                host=args.host,
+                port=args.port,
+                data_dir=args.data_dir,
+                open_browser=args.open_browser,
+            )
+            return 0
+        if args.command == "telegram":
+            from .telegram_bot import (
+                run_daily_category_watch,
+                run_telegram_polling,
+                send_test_status,
+                send_watch_notification,
+                setup_telegram_bot,
+            )
+
+            if args.setup:
+                result = setup_telegram_bot(
+                    args.data_dir,
+                    token=args.token,
+                    chat_id=args.chat_id,
+                    wait_seconds=args.wait_seconds,
+                    profile_dir=args.profile_dir,
+                )
+            elif args.test:
+                result = send_test_status(
+                    args.data_dir,
+                    token=args.token,
+                    chat_id=args.chat_id,
+                    profile_dir=args.profile_dir,
+                )
+            elif args.watch:
+                watch_res = run_daily_category_watch(
+                    args.data_dir,
+                    sites=args.sites,
+                    profile_dir=args.profile_dir,
+                )
+                notif = send_watch_notification(
+                    args.data_dir,
+                    watch_res,
+                    token=args.token,
+                    chat_id=args.chat_id,
+                    max_cards=args.max_cards,
+                )
+                result = {"watch": watch_res, "notification": notif}
+            else:
+                run_telegram_polling(
+                    args.data_dir,
+                    token=args.token,
+                    chat_id=args.chat_id,
+                    profile_dir=args.profile_dir,
+                )
+                return 0
+        elif args.command == "migrate-pending":
+            from .curation import migrate_non_accepted_to_pending
+
+            result = migrate_non_accepted_to_pending(args.data_dir, args.profile_dir)
+        elif args.command == "filter":
             from .corpus.runner import run_filter
             result = run_filter(args)
         else:

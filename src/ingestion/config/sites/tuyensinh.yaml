@@ -76,11 +76,27 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  start_urls:
+    - https://tuyensinh.uet.vnu.edu.vn/
+    - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/diem-chuan-cac-nganh/
+    - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/van-ban-huong-dan/
+    - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
+    - https://tuyensinh.uet.vnu.edu.vn/category/phuong-thuc-xet-tuyen/
+    - https://tuyensinh.uet.vnu.edu.vn/category/nganh-theo-khoa/
+    - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/
   link_selectors:
     # --- CORE SCOPE: Bốc link bài viết trong danh sách, phân trang và PDF đính kèm ---
     - .content-wrapper article a[href]
     - .paginate_links a[href]
     - a.page-numbers
+    - .content-wrapper a[href]
+    - .content-inside a[href]
+    - .hexagon-in1 a[href]
+    - nav a[href]
+    - header a[href]
+    - article a[href]
+    - '#main a[href]'
+    - '#page-wrapper a[href]'
 
     # --- GENERAL SCOPE ---
     # - .content-wrapper a[href]

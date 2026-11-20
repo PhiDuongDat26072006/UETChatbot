@@ -50,6 +50,7 @@ scope:
   - /wp-admin
   - /wp-login.php
   - /feed
+  - /en
 
 # ==============================================================================
 # GENERAL SCOPE (Preserved for future general crawling - DO NOT DELETE)
@@ -120,6 +121,8 @@ scope:
   - respond
   - comments
 discovery:
+  start_urls:
+  - https://www.fit.uet.vnu.edu.vn/
   link_selectors:
   - main a[href]
   - article a[href]

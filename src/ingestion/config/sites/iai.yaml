@@ -6,6 +6,10 @@ url_normalization:
   - uet.vnu.edu.vn
 seeds:
 - https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
+- https://uet.vnu.edu.vn/chuong-trinh-dao-tao-khoa-hoc-va-ky-thuat-du-lieu-nganh-khoa-hoc-du-lieu-4/
+- https://uet.vnu.edu.vn/chuong-trinh-dao-tao-nganh-tri-tue-nhan-tao-3/
+- https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/thong-bao-nguong-dau-vao-va-quy-doi-diem-trong-xet-tuyen-dhcq-nam-2025/
+- https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/thong-tin-tuyen-sinh-dhcq-nam-2026-cap-nhat/
 scope:
   hosts:
   - uet.vnu.edu.vn
@@ -23,6 +27,8 @@ scope:
   exact_paths:
   - /vien-tri-tue-nhan-tao
 discovery:
+  start_urls:
+  - https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
   link_selectors:
   - main a[href]
   - article a[href]

@@ -59,6 +59,8 @@ scope:
 #   - ^/(category|tag|author|page)(/|$)
 #   - ^/\d{4}(/\d{2})?$
 discovery:
+  start_urls:
+  - https://fet.uet.vnu.edu.vn/
   link_selectors:
   - main a[href]
   - article a[href]

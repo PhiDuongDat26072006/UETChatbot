@@ -48,8 +48,41 @@ def annotate(row, profile):
     return result
 
 
+def _normalized_url(url, profile):
+    from ..identity import normalize_site_url
+
+    try:
+        return normalize_site_url(url, profile)
+    except ValueError:
+        return url
+
+
+def _is_manually_approved(row, profile):
+    meta = row.get("metadata", {})
+    if meta.get("decision") != "accepted":
+        return False
+    if meta.get("decision_reason") in {"manual_override", "manual_curation", "manual_seed"}:
+        return True
+    uri = row.get("uri") or meta.get("source_uri") or meta.get("final_url") or ""
+    if not uri:
+        return False
+    norm = _normalized_url(uri, profile)
+    if "/offline/" in urlsplit(norm).path:
+        return True
+    override = profile.get("_overrides", {}).get(norm)
+    if override and override.get("decision") == "accepted":
+        return True
+    seeds = {
+        _normalized_url(u, profile)
+        for u in profile.get("_manual_seeds", []) + profile.get("seeds", [])
+    }
+    return norm in seeds
+
+
 def selected(row, profile):
     result = annotate(row, profile)
+    if _is_manually_approved(row, profile):
+        return True
     return result is None or result['decision'] == 'include' or (
         result['decision'] == 'review' and profile.get('_corpus_mode') != 'strict')
 
@@ -59,15 +92,20 @@ def prefetch(url, profile):
     if not profile.get('_corpus_policy'):
         return None
     from ..crawler.policy import is_listing
-    from ..identity import normalize_site_url
-    url = normalize_site_url(url, profile)
+    url = _normalized_url(url, profile)
     manual = profile.get('_overrides', {}).get(url)
     if manual and manual['decision'] in {'accepted', 'listing'}:
+        return None
+    if "/offline/" in urlsplit(url).path:
         return None
     override = profile['_corpus_policy']['overrides'].get(url)
     if override:
         return 'manual_exclude' if override['decision'] == 'exclude' else None
-    if url in [normalize_site_url(u, profile) for u in profile['seeds']]:
+    seeds = {
+        _normalized_url(u, profile)
+        for u in profile.get("_manual_seeds", []) + profile.get("seeds", [])
+    }
+    if url in seeds:
         return None
     raw_path = unquote(urlsplit(url).path).rstrip('/') or '/'
     prefixes = profile['_corpus_policy'].get('prefetch', {}).get('exclude_prefixes', [])

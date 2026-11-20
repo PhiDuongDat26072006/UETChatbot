@@ -55,6 +55,8 @@ scope:
 #   - ^/(category|tag|author)(/|$)
 #   - (?:^|/)page(?:/|$)
 discovery:
+  start_urls:
+  - https://fema.uet.vnu.edu.vn/
   link_selectors:
   - main a[href]
   - article a[href]

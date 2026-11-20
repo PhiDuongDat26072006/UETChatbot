@@ -54,6 +54,8 @@ scope:
 #   listing_patterns:
 #   - ^/(category|tag|author|page)(/|$)
 discovery:
+  start_urls:
+  - https://fepn.uet.vnu.edu.vn/
   link_selectors:
   - main a[href]
   - article a[href]

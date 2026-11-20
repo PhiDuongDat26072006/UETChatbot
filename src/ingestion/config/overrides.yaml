@@ -1,10 +1,78 @@
-# Exact URLs. Edit between runs; changes take effect after restarting CLI.
 version: 1
-sites: {}
-# Example:
-# sites:
-#   UET:
-#     urls:
-#       "https://uet.vnu.edu.vn/doi-song-sinh-vien/":
-#         decision: listing
-#         note: "Trang tổng hợp; chỉ khám phá link"
+sites:
+  TUOITRECONGNGHE:
+    urls:
+      https://tuoitrecongnghe.uet.vnu.edu.vn/auth/login:
+        decision: rejected
+      https://tuoitrecongnghe.uet.vnu.edu.vn/contest:
+        decision: rejected
+      https://tuoitrecongnghe.uet.vnu.edu.vn/:
+        decision: rejected
+      https://tuoitrecongnghe.uet.vnu.edu.vn/about-us:
+        decision: rejected
+      https://tuoitrecongnghe.uet.vnu.edu.vn/dashboard/account?tab=sv5t:
+        decision: rejected
+      https://www.facebook.com/DTNHSV.UET.VNU?mibextid=ZbWKwL:
+        decision: rejected
+      https://tuoitrecongnghe.uet.vnu.edu.vn/auth/register:
+        decision: rejected
+  STUDENTHUB:
+    urls:
+      http://portal.uet.vnu.edu.vn/:
+        decision: rejected
+      http://uet.edu.vn/:
+        decision: rejected
+      http://vnu.edu.vn/:
+        decision: rejected
+      https://studenthub.uet.edu.vn/:
+        decision: rejected
+      https://studenthub.uet.edu.vn/login:
+        decision: rejected
+      https://studenthub.uet.edu.vn/login’:
+        decision: rejected
+      https://studenthub.uet.edu.vn/login”:
+        decision: rejected
+  FIT:
+    urls:
+      ? https://www.fit.uet.vnu.edu.vn/tuyen-chon-va-xet-bo-sung-sinh-vien-vao-hoc-chuong-trinh-dao-tao-chat-luong-cao-nganh-cong-nghe-thong-tin-nam-2023/
+      : decision: rejected
+      https://www.fit.uet.vnu.edu.vn/vinbigdata_chuong-trinh-dao-tao-ky-su-ai-vingroup/:
+        decision: rejected
+  IAI:
+    urls:
+      https://uet.vnu.edu.vn/chuong-trinh-dao-tao-khoa-hoc-va-ky-thuat-du-lieu-nganh-khoa-hoc-du-lieu-4/:
+        decision: accepted
+      https://uet.vnu.edu.vn/chuong-trinh-dao-tao-nganh-tri-tue-nhan-tao-3/:
+        decision: accepted
+      https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/thong-bao-nguong-dau-vao-va-quy-doi-diem-trong-xet-tuyen-dhcq-nam-2025/:
+        decision: accepted
+      https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/thong-tin-tuyen-sinh-dhcq-nam-2026-cap-nhat/:
+        decision: accepted
+      https://uet.vnu.edu.vn/tuyen-sinh/:
+        decision: listing
+      https://www.facebook.com/groups/uet.tvts/:
+        decision: rejected
+      https://www.tiktok.com/@uet.vnu.edu.vn:
+        decision: rejected
+      https://gemvietnam.com/:
+        decision: rejected
+      https://uet.vnu.edu.vn/gioi-thieu/:
+        decision: rejected
+      https://hblab.vn/:
+        decision: rejected
+      https://jcsce.vnu.edu.vn/index.php/jcsce:
+        decision: rejected
+      https://lic.vnu.edu.vn/:
+        decision: rejected
+      https://orai.io/:
+        decision: rejected
+      https://qac.uet.vnu.edu.vn/:
+        decision: rejected
+      https://qac.uet.vnu.edu.vn/bai-viet/cong-khai-csgd:
+        decision: rejected
+      https://tuan-phong.com/:
+        decision: rejected
+      https://uet.edu.vn/~tqlong/:
+        decision: rejected
+      https://uet.vnu.edu.vn/:
+        decision: rejected

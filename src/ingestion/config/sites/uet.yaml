@@ -41,6 +41,20 @@ scope:
     - Quy-chế-ĐTĐH-3626\.pdf$
     - Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final\.pdf$
 
+  exclude_prefixes:
+    - /wp-admin
+    - /wp-login.php
+    - /feed
+    - /vien-tri-tue-nhan-tao
+    - /en
+    - /cdu-en
+    - /~
+    - /tag
+    - /author
+    - /wp-json
+    - /wp-includes
+    - /static
+
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
   # exclude_prefixes:
   #   - /wp-admin
@@ -82,12 +96,29 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  start_urls:
+    - https://uet.vnu.edu.vn/
+    - https://uet.edu.vn/dao-tao/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
+    - https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
+    - https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
   link_selectors:
     # --- CORE SCOPE: Bốc link bảng CTĐT và bài viết trọng tâm ---
     - table a[href]
     - .entry-content a[href]
     - .elementor-widget a[href]
     - '#content a[href]'
+    - nav a[href]
+    - header a[href]
+    - article a[href]
+    - .pagination a[href]
+    - main a[href]
+    - .container a[href]
+    - .item-post a[href]
+    - .sc-list-post a[href]
+    - .jw-posts a[href]
 
     # --- GENERAL SCOPE ---
     # - .elementor-element a[href]

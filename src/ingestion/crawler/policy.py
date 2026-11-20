@@ -33,6 +33,28 @@ ASSETS = {
 }
 
 
+DEFAULT_TECH_EXCLUDE_PREFIXES = (
+    "/wp-admin",
+    "/wp-login.php",
+    "/feed",
+    "/wp-json",
+    "/xmlrpc.php",
+    "/wp-trackback.php",
+    "/wp-includes",
+    "/wp-content/themes",
+    "/wp-content/plugins",
+    "/tag",
+    "/author",
+)
+DEFAULT_TECH_EXCLUDE_QUERY_KEYS = ("s", "replytocom", "preview", "share", "format", "print", "amp")
+DEFAULT_TECH_EXCLUDE_FRAGMENTS = ("respond", "comments")
+_TECH_PATH_RE = re.compile(
+    r"(?:^|/)(?:wp-admin|wp-login\.php|wp-json|xmlrpc\.php|wp-trackback\.php|wp-includes)(?:/|$)"
+    r"|(?:^|/)(?:en/)?(?:tag|author)(?:/|$)"
+    r"|(?:^|/)feed(?:/|$)"
+)
+
+
 def resource_type(url):
     suffix = PurePosixPath(urlsplit(url).path).suffix.lower()
     return ATTACHMENTS.get(suffix, "asset" if suffix in ASSETS else "html")
@@ -41,49 +63,63 @@ def resource_type(url):
 def has_blocked_fragment(url, profile):
     """Check before canonicalization, which deliberately removes all fragments."""
     fragment = unquote(urlsplit(url).fragment).casefold()
-    return fragment in {
+    blocked = set(DEFAULT_TECH_EXCLUDE_FRAGMENTS)
+    blocked.update(
         str(value).casefold() for value in profile["scope"].get("exclude_fragments", [])
-    }
+    )
+    return fragment in blocked
 
 
-def automatic_in_scope(url, profile):
+def _normalized_seeds(profile):
+    from ..identity import normalize_site_url
+
+    seeds = set()
+    for raw in profile.get("_manual_seeds", []) + profile.get("seeds", []):
+        try:
+            seeds.add(normalize_site_url(raw, profile))
+        except ValueError:
+            seeds.add(raw.rstrip("/"))
+    return seeds
+
+
+def in_discovery_scope(url, profile):
+    """Technical discovery eligibility: valid host, non-asset, and non-junk."""
     p = urlsplit(url)
     scope = profile["scope"]
     path = unquote(p.path).rstrip("/") or "/"
+    path_lower = path.casefold()
+    if p.path.startswith("/offline/"):
+        return resource_type(url) in {"html", "pdf"}
     if p.netloc.lower() not in scope["hosts"]:
         return False
-    seeds = {
-        s.rstrip("/")
-        for s in profile.get("_manual_seeds", []) + profile.get("seeds", [])
-    }
-    if resource_type(url) == "pdf" and url.rstrip("/") not in seeds:
-        return False
-    if scope.get("exact_paths") and path not in [
-        s.rstrip("/") or "/" for s in scope["exact_paths"]
-    ]:
+    if resource_type(url) == "asset":
         return False
     if not any(
         path == x.rstrip("/") or path.startswith(x.rstrip("/") + "/")
         for x in scope.get("path_prefixes", ["/"])
     ):
         return False
+    excluded_prefixes = list(DEFAULT_TECH_EXCLUDE_PREFIXES) + list(
+        scope.get("exclude_prefixes", [])
+    )
     if any(
-        path == x.rstrip("/") or path.startswith(x.rstrip("/") + "/")
-        for x in scope.get("exclude_prefixes", [])
+        path_lower == x.rstrip("/").casefold()
+        or path_lower.startswith(x.rstrip("/").casefold() + "/")
+        for x in excluded_prefixes
     ):
+        return False
+    if _TECH_PATH_RE.search(path_lower):
         return False
     if any(re.search(pattern, path) for pattern in scope.get("exclude_patterns", [])):
-        return False
-    if scope.get("include_patterns") and not any(
-        re.search(pattern, path) for pattern in scope["include_patterns"]
-    ):
         return False
     query = {
         k.casefold(): values
         for k, values in parse_qs(p.query, keep_blank_values=True).items()
     }
-    blocked_keys = scope.get("exclude_query_keys", ["s", "replytocom", "preview"])
-    if any(key.casefold() in query for key in blocked_keys):
+    blocked_keys = set(DEFAULT_TECH_EXCLUDE_QUERY_KEYS) | {
+        str(key).casefold() for key in scope.get("exclude_query_keys", [])
+    }
+    if any(key in query for key in blocked_keys):
         return False
     for key, values in scope.get("exclude_query_values", {}).items():
         blocked = {str(v).casefold() for v in values}
@@ -92,15 +128,63 @@ def automatic_in_scope(url, profile):
     return not has_blocked_fragment(url, profile)
 
 
+def discovery_verdict(url, profile):
+    """Return initial (decision, reason) for a newly discovered child link."""
+    from ..overrides import lookup
+
+    rule = lookup(url, profile)
+    if rule:
+        return rule["decision"], "manual_override"
+    if in_discovery_scope(url, profile):
+        return "pending", "discovered_pending"
+    p = urlsplit(url)
+    if p.netloc.lower() not in profile["scope"]["hosts"] and not p.path.startswith(
+        "/offline/"
+    ):
+        return "rejected", "outside_host"
+    if resource_type(url) == "asset":
+        return "rejected", "asset"
+    return "rejected", "technical_junk"
+
+
+def automatic_in_scope(url, profile):
+    from ..identity import normalize_site_url
+
+    p = urlsplit(url)
+    scope = profile["scope"]
+    path = unquote(p.path).rstrip("/") or "/"
+    try:
+        norm = normalize_site_url(url, profile)
+    except ValueError:
+        norm = url
+    seeds = _normalized_seeds(profile)
+    is_seed = norm in seeds or url.rstrip("/") in {s.rstrip("/") for s in seeds}
+    if is_seed and resource_type(url) != "asset":
+        return True
+    if not in_discovery_scope(url, profile):
+        return False
+    if resource_type(url) == "pdf":
+        return False
+    if scope.get("exact_paths") and path not in [
+        s.rstrip("/") or "/" for s in scope["exact_paths"]
+    ]:
+        return False
+    if scope.get("include_patterns") and not any(
+        re.search(pattern, path) for pattern in scope["include_patterns"]
+    ):
+        return False
+    return True
+
+
 def in_scope(url, profile):
     from ..overrides import lookup
 
     rule = lookup(url, profile)
     if rule:
-        return (
-            rule["decision"] in {"accepted", "listing"}
-            and urlsplit(url).netloc.lower() in profile["scope"]["hosts"]
-        )
+        if rule["decision"] not in {"accepted", "listing"}:
+            return False
+        p = urlsplit(url)
+        return p.scheme.lower() in {"http", "https"} and bool(p.netloc)
     return automatic_in_scope(url, profile)
 
 
@@ -161,7 +245,7 @@ def reconcile_sources(storage, site, profile):
     from ..identity import normalize_site_url, source_id
     from copy import deepcopy
 
-    from ..overrides import reconcile
+    from ..overrides import lookup, reconcile
 
     reconcile(storage, site, profile)
     changed = 0
@@ -191,8 +275,19 @@ def reconcile_sources(storage, site, profile):
         storage.remove_processed(site, source["source_id"])
     for source in storage.records("sources", site).values():
         metadata = source["metadata"]
-        if metadata.get("decision") == "alias":
+        current_decision = metadata.get("decision")
+        if current_decision == "alias":
             continue
+        rule = lookup(source["uri"], profile)
+        if rule is None:
+            if current_decision in {"rejected", "pending"}:
+                storage.remove_processed(site, source["source_id"])
+                continue
+            if (
+                current_decision in {"accepted", "listing"}
+                and metadata.get("decision_reason") == "manual_curation"
+            ):
+                continue
         before = dict(metadata)
         decision, reason = evaluate(source["uri"], profile, metadata)
         if before != metadata:
@@ -205,6 +300,7 @@ def reconcile_sources(storage, site, profile):
             changed += 1
         if decision != "accepted":
             storage.remove_processed(site, source["source_id"])
-    if changed:
+    accepted_export = storage.root / "data_source" / f"{site}-accepted.jsonl"
+    if changed or (storage.path("sources", site).exists() and not accepted_export.exists()):
         storage.flush("sources", site)
     return changed

@@ -61,6 +61,7 @@ def attach(profiles, path=None):
                 "listing",
                 "rejected",
                 "deferred",
+                "pending",
             } or not isinstance(rule.get("note", ""), str):
                 raise ValueError(f"Invalid decision/note: {url}")
             url = normalize_site_url(url, profiles[site])
@@ -69,13 +70,17 @@ def attach(profiles, path=None):
             if rule["decision"] in {"accepted", "listing"}:
                 from .crawler.policy import resource_type
 
-                if urlsplit(url).netloc.lower() not in profiles[site]["scope"]["hosts"]:
+                parts = urlsplit(url)
+                if parts.scheme.lower() not in {"http", "https"} or not parts.netloc:
+                    raise ValueError(f"{url}: invalid HTTP(S) URL for override")
+                kind = resource_type(url)
+                if rule["decision"] == "listing" and kind != "html":
                     raise ValueError(
-                        f"{url}: add host to site profile or route to another site first"
+                        f"{url}: unsupported for HTML listing; use accepted/rejected/pending"
                     )
-                if resource_type(url) != "html":
+                if rule["decision"] == "accepted" and kind not in {"html", "pdf"}:
                     raise ValueError(
-                        f"{url}: unsupported for HTML ingestion; use deferred"
+                        f"{url}: unsupported for ingestion; use deferred or pending"
                     )
             rules[url] = dict(rule)
         profiles[site]["_overrides"] = rules
@@ -88,7 +93,7 @@ def lookup(url, profile):
 
 def reconcile(storage, site, profile):
     """Seed explicit URLs and requeue changed eligibility even after complete crawl."""
-    from .crawler.policy import evaluate
+    from .crawler.policy import resource_type
 
     rows = storage.records("sources", site)
     for url in profile.get("_overrides", {}):
@@ -102,9 +107,9 @@ def reconcile(storage, site, profile):
                     metadata={
                         "site": site,
                         "faculty": site,
-                        "decision": "deferred",
+                        "decision": "pending",
                         "decision_reason": "manual_seed",
-                        "resource_type": "html",
+                        "resource_type": resource_type(url),
                     },
                 )
             )
@@ -115,8 +120,11 @@ def reconcile(storage, site, profile):
         meta = row["metadata"]
         if meta.get("decision") == "alias":
             continue
+        rule = lookup(row["uri"], profile)
+        if not rule:
+            continue
         old = meta.get("decision")
-        new, _ = evaluate(row["uri"], profile, dict(meta))
+        new = rule["decision"]
         if new in {"accepted", "listing"} and old != new:
             queue.append(row["uri"])
     # Commit replay intent before reconcile_sources changes decisions.

@@ -35,9 +35,16 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  start_urls:
+    - https://tuoitrecongnghe.uet.vnu.edu.vn/
+    - https://tuoitrecongnghe.uet.vnu.edu.vn/sv5t
   link_selectors:
     - .entry-content a[href]
     - '#content a[href]'
+    - nav a[href]
+    - header a[href]
+    - main a[href]
+    - a[href]
 
 # ==============================================================================
 # EXTRACTION

@@ -51,6 +51,8 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  start_urls:
+    - https://handbook.uet.vnu.edu.vn/
   link_selectors:
     - header a[href]
     - main a[href]

@@ -41,6 +41,8 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  start_urls:
+    - https://studenthub.uet.edu.vn/
   link_selectors:
     - .entry-content a[href]
     - article a[href]
