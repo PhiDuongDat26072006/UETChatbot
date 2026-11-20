@@ -73,6 +73,8 @@ const NO_ANSWER_PATTERNS: readonly RegExp[] = [
   /chưa được đề cập/i,
   /không được đề cập/i,
   /không phải là thông tin thuộc/i,
+  /không liên quan/i,
+  /nội dung (?:em|bạn)?(?: vừa)?(?: chia sẻ| hỏi)? không liên quan/i,
   /xin lỗi[\s\S]{0,60}văn bản quy chế[\s\S]{0,60}chưa có/i,
   /vui lòng liên hệ trực tiếp phòng đào tạo/i,
   /mất nhiều thời gian xử lý hơn dự kiến/i,

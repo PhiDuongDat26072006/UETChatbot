@@ -129,7 +129,7 @@ class FlashRankReranker(BaseReranker):
         self._fallback = HeuristicReranker()
 
         try:
-            from flashrank import Ranker
+            from flashrank import Ranker  # type: ignore
             self._ranker = Ranker(model_name=model_name)
             logger.info(f"Đã khởi tạo thành công FlashRankReranker với model '{model_name}'.")
         except Exception as e:
@@ -148,7 +148,7 @@ class FlashRankReranker(BaseReranker):
             return self._fallback.rerank(query, candidates, top_n=top_n)
 
         try:
-            from flashrank import RerankRequest
+            from flashrank import RerankRequest  # type: ignore
             passages = [{"id": c.chunk_id, "text": c.text, "meta": c.metadata} for c in candidates]
             rerank_req = RerankRequest(query=query, passages=passages)
             ranked_results = self._ranker.rerank(rerank_req)
@@ -283,12 +283,18 @@ class JinaONNXReranker(BaseReranker):
 
             sess_options = ort.SessionOptions()
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+            available_providers = ort.get_available_providers()
+            providers = (
+                ["DmlExecutionProvider", "CPUExecutionProvider"]
+                if "DmlExecutionProvider" in available_providers
+                else ["CPUExecutionProvider"]
+            )
             self._session = ort.InferenceSession(
                 onnx_path,
                 sess_options=sess_options,
-                providers=["CPUExecutionProvider"],
+                providers=providers,
             )
-            logger.info(f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}'.")
+            logger.info(f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}' [Providers: {self._session.get_providers()}].")
         except Exception as e:
             logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
             self._session = None
@@ -724,8 +730,8 @@ class VietnameseRerankerGGUF(BaseReranker):
 
     def _init_model(self) -> None:
         try:
-            import llama_cpp
-            from llama_cpp import Llama
+            import llama_cpp  # type: ignore
+            from llama_cpp import Llama  # type: ignore
 
             path_obj = Path(self.model_path)
             target = str(path_obj.resolve()) if path_obj.exists() else self.model_path
@@ -865,7 +871,7 @@ class RerankerFactory:
             pass
 
         try:
-            import flashrank  # noqa: F401
+            import flashrank  # type: ignore # noqa: F401
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
         except ImportError:
             pass

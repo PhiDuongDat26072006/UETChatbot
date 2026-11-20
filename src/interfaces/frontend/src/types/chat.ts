@@ -7,9 +7,16 @@
 export interface SourceMetadata {
   title?: string;
   source?: string;
+  final_url?: string;
+  url?: string;
+  resource_type?: string;
+  domain?: string;
+  matched_chunks_count?: number;
   page?: number | string;
   chapter?: string;
   article?: string;
+  site?: string;
+  faculty?: string;
   search_type?: string;
   search_source?: string;
   bm25_rank?: number;

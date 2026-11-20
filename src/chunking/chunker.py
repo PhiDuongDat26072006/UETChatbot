@@ -175,20 +175,29 @@ class UETChunker(BaseChunker):
                 next_start += 1
             start = max(start + 1, next_start)
 
+        doc_meta = doc.metadata or {}
+        res_type = str(doc_meta.get("resource_type") or "document").lower()
+
         result = []
         total = len(groups)
         for idx, body in enumerate(groups):
             enriched = chunk_prefix + body
-            meta = dict(doc.metadata or {})
-            meta.update({
-                "title": doc.title,
+            meta = {
                 "document_id": doc.id,
+                "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                "resource_type": res_type,
+                "breadcrumb": doc.title,
+                "heading": table_title,
+                "data_type": "tabular",
+                "table_title": table_title,
                 "chunk_index": idx,
                 "total_chunks": total,
                 "char_count": len(enriched),
-                "data_type": "tabular",
-                "table_title": table_title,
-            })
+            }
+            for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                if k in doc_meta and doc_meta[k] is not None:
+                    meta[k] = doc_meta[k]
+
             result.append(DataChunk(document_id=doc.id, text=enriched, chunk_index=idx, metadata=meta))
         return result
 
@@ -504,6 +513,9 @@ class UETChunker(BaseChunker):
         if not text.strip():
             return []
 
+        doc_meta = doc.metadata or {}
+        res_type = str(doc_meta.get("resource_type") or "document").lower()
+
         sections = self._split_into_sections(doc.title, text)
         result: List[DataChunk] = []
 
@@ -539,15 +551,19 @@ class UETChunker(BaseChunker):
                     if header_prefix and not segment.startswith(header_prefix)
                     else segment
                 )
-                meta = dict(doc.metadata or {})
-                meta.update({
-                    "title": doc.title,
+                meta = {
                     "document_id": doc.id,
+                    "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                    "resource_type": res_type,
                     "breadcrumb": breadcrumb_str,
                     "heading": heading_name,
-                    "char_count": len(enriched),
                     "data_type": "text",
-                })
+                    "char_count": len(enriched),
+                }
+                for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                    if k in doc_meta and doc_meta[k] is not None:
+                        meta[k] = doc_meta[k]
+
                 result.append(DataChunk(
                     document_id=doc.id,
                     text=enriched,
@@ -598,28 +614,35 @@ class UETChunker(BaseChunker):
 
         # Nếu độ dài toàn bộ tài liệu nhỏ hơn hoặc bằng chunk_size và không có cấu trúc phân cấp -> 1 chunk duy nhất
         if len(sections) <= 1 and len(raw_text) <= self.chunk_size:
-            chunk_metadata = dict(doc.metadata) if doc.metadata else {}
             enriched_text = (
                 f"[{doc.title}]\n{raw_text}"
                 if doc.title and not raw_text.startswith(f"[{doc.title}]")
                 else raw_text
             )
-            chunk_metadata.update({
-                "title": doc.title,
+            doc_meta = doc.metadata or {}
+            res_type = str(doc_meta.get("resource_type") or "document").lower()
+
+            meta = {
                 "document_id": doc.id,
-                "chunk_index": 0,
-                "total_chunks": 1,
+                "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                "resource_type": res_type,
                 "breadcrumb": doc.title,
                 "heading": doc.title,
-                "char_count": len(enriched_text),
                 "data_type": "text",
-            })
+                "chunk_index": 0,
+                "total_chunks": 1,
+                "char_count": len(enriched_text),
+            }
+            for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                if k in doc_meta and doc_meta[k] is not None:
+                    meta[k] = doc_meta[k]
+
             return [
                 DataChunk(
                     document_id=doc.id,
                     text=enriched_text,
                     chunk_index=0,
-                    metadata=chunk_metadata,
+                    metadata=meta,
                 )
             ]
 
