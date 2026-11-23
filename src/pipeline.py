@@ -96,7 +96,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
     Hỗ trợ điều phối chặng linh hoạt (Multi-Stage Ingestion) và chống xử lý trùng lặp (Deduplication).
     """
 
-    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data"]
+    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data", "graph_data"]
 
     def __init__(
         self,
@@ -495,6 +495,80 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             "status": result["status"],
         }
 
+    def _run_chunked_to_graph_data(
+        self,
+        clear_existing: bool = False,
+        domain: Optional[str] = None,
+        max_chunks: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Xây dựng chỉ mục GraphRAG (Graph Vector Index) từ data/chunked_data/*.jsonl
+        và lưu ra database/graph_index.pkl. Hỗ trợ giới hạn domain / số chunk để thử nghiệm an toàn.
+        """
+        from src.indexing.chunks import load_chunks_from_dir
+        from src.indexing.graph import GraphIndex
+
+        paths_cfg = self.config.get("paths", {})
+        graph_cfg = self.config.get("graph", {})
+
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        effective_max_chunks = max_chunks if max_chunks is not None else graph_cfg.get("max_chunks")
+        chunks = load_chunks_from_dir(
+            chunked_dir,
+            domain=domain,
+            max_chunks=effective_max_chunks,
+        )
+
+        out_path = Path(paths_cfg.get("graph_index_file", "database/graph_index.pkl"))
+        if not out_path.is_absolute():
+            out_path = BASE_DIR / out_path
+
+        cache_path = Path(paths_cfg.get("graph_llm_cache_file", "database/graph_llm_cache.json"))
+        if not cache_path.is_absolute():
+            cache_path = BASE_DIR / cache_path
+
+        if clear_existing and out_path.exists():
+            out_path.unlink()
+
+        enable_llm = bool(graph_cfg.get("enable_llm_extraction", False))
+        llm_provider = str(graph_cfg.get("llm_provider", "openrouter"))
+        llm_client = UETLLMClient(provider=llm_provider) if enable_llm else None
+
+        active_store = self.vector_store
+        fallback_emb = self._embedding_model if active_store.count() > 0 else self.embedding_model
+
+        graph_index = GraphIndex(
+            chunks=chunks,
+            embedding_model=fallback_emb,
+            vector_store=active_store,
+            llm_client=llm_client,
+            enable_llm_extraction=enable_llm,
+            llm_provider=llm_provider,
+            llm_model=graph_cfg.get("llm_model", "tencent/hy4-flash"),
+            llm_domains=graph_cfg.get("llm_domains"),
+            max_llm_chunks=graph_cfg.get("max_llm_chunks"),
+            embed_batch_size=int(graph_cfg.get("embed_batch_size", 256)),
+            cache_path=cache_path,
+        )
+        graph_index.save(out_path)
+
+        for chunk in chunks:
+            self.manifest.mark_processed(
+                chunk.chunk_id,
+                "graph_data",
+                content_hash=self.manifest.compute_hash(chunk.text),
+            )
+        self.manifest.save()
+
+        return {
+            "chunks_indexed": graph_index.count(),
+            "entities_count": graph_index.entity_count(),
+            "triples_count": graph_index.triple_count(),
+            "llm_calls": graph_index.llm_calls_count,
+            "graph_file": str(out_path),
+            "status": "success" if chunks else "empty",
+        }
+
     def run_stages(
         self,
         from_stage: str = "raw",
@@ -502,6 +576,8 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         batch_size: int = 500,
         clear: bool = False,
         clear_existing: Optional[bool] = None,
+        domain: Optional[str] = None,
+        max_chunks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
@@ -526,19 +602,19 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 f"Nhận được: from='{from_stage}', to='{to_stage}'"
             )
 
-        if to_stage == "indexed_data" and from_stage in ["raw", "processed"]:
+        if to_stage in ("indexed_data", "graph_data") and from_stage in ["raw", "processed"]:
             raise ValueError(
-                "Để đảm bảo tính toàn vẹn và đồng bộ ID giữa ChromaDB và BM25, "
+                "Để đảm bảo tính toàn vẹn và đồng bộ ID giữa ChromaDB, BM25 và GraphRAG, "
                 "vui lòng thực hiện theo 2 bước tuần tự:\n"
                 f"  • Bước 1: python main.py --ingest --from {from_stage} --to vectordb --clear\n"
-                "  • Bước 2: python main.py --ingest --from chunked --to indexed_data --clear"
+                f"  • Bước 2: python main.py --ingest --from chunked --to {to_stage} --clear"
             )
 
-        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3}
+        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3, "graph_data": 3}
         if stage_order[from_stage] >= stage_order[to_stage]:
             raise ValueError(
                 f"from_stage '{from_stage}' phải đứng trước to_stage '{to_stage}'. "
-                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data"
+                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data / graph_data"
             )
 
         # ---- XÓA DỮ LIỆU CŨ nếu --clear được bật ----
@@ -575,6 +651,15 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                     bm25_path.unlink()
                     logger.info("✅ Đã xóa file BM25 index cũ (database/bm25_index.pkl)")
                 stages_to_reset.add("indexed_data")
+
+            # 4b. Xóa file GraphRAG index cũ nếu đích là graph_data
+            if to_stage == "graph_data":
+                graph_rel = self.config.get("paths", {}).get("graph_index_file", "database/graph_index.pkl")
+                graph_path = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+                if graph_path.exists():
+                    graph_path.unlink()
+                    logger.info(f"✅ Đã xóa file GraphRAG index cũ ({graph_rel})")
+                stages_to_reset.add("graph_data")
 
             # 5. Reset manifest entries cho các chặng tương ứng
             if stages_to_reset:
@@ -617,6 +702,17 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 results["transitions"]["chunked_to_indexed_data"] = res_4
                 logger.info(f"✔ Hoàn thành chunked -> indexed_data: {res_4}")
 
+            # Chặng 3c: chunked -> graph_data
+            if from_stage == "chunked" and to_stage == "graph_data":
+                logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> graph_data (GraphRAG Vector Index)")
+                res_5 = self._run_chunked_to_graph_data(
+                    clear_existing=clear,
+                    domain=domain,
+                    max_chunks=max_chunks,
+                )
+                results["transitions"]["chunked_to_graph_data"] = res_5
+                logger.info(f"✔ Hoàn thành chunked -> graph_data: {res_5}")
+
         results["latency_seconds"] = round(timer.elapsed, 2)
         logger.info(f"Hoàn thành toàn bộ tiến trình từ '{from_stage}' đến '{to_stage}' trong {results['latency_seconds']}s")
         return results
@@ -652,6 +748,10 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         db_count = self.vector_store.count()
         bm25_exists = bm25_file.exists()
         bm25_size_mb = round(bm25_file.stat().st_size / (1024 * 1024), 2) if bm25_exists else 0.0
+        graph_rel = self.config.get("paths", {}).get("graph_index_file", "database/graph_index.pkl")
+        graph_file = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+        graph_exists = graph_file.exists()
+        graph_size_mb = round(graph_file.stat().st_size / (1024 * 1024), 2) if graph_exists else 0.0
 
         return {
             "stages": {
@@ -660,6 +760,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 "chunked": {"path": str(chunked_dir.relative_to(BASE_DIR)), "chunk_count": chunk_count},
                 "vectordb": {"path": "database/vector_db", "vector_count": db_count},
                 "indexed_data": {"path": "database/bm25_index.pkl", "exists": bm25_exists, "size_mb": bm25_size_mb},
+                "graph_data": {"path": str(graph_rel), "exists": graph_exists, "size_mb": graph_size_mb},
             },
             "manifest_tracking": self.manifest.get_stats(),
         }
@@ -810,6 +911,8 @@ def run_ingest_cli(
     to_stage: str = "vectordb",
     clear: bool = False,
     clear_existing: Optional[bool] = None,
+    domain: Optional[str] = None,
+    max_chunks: Optional[int] = None,
 ):
     if clear_existing is not None:
         clear = clear or clear_existing
@@ -818,6 +921,8 @@ def run_ingest_cli(
     if clear:
         print("🗑️  [--clear] Đã bật cờ làm mới: Dữ liệu cũ sẽ bị xóa và nạp lại toàn bộ!")
     print(f"📦 BẮT ĐẦU ĐIỀU PHỐI DỮ LIỆU ĐA CHẶNG: [{from_stage.upper()}] ──> [{to_stage.upper()}]")
+    if domain or max_chunks:
+        print(f"   • Phạm vi thử nghiệm: domain={domain or 'ALL'}, max_chunks={max_chunks or 'ALL'}")
     print("=" * 65)
 
     pipeline = get_ingestion_pipeline()
@@ -827,6 +932,8 @@ def run_ingest_cli(
             to_stage=to_stage,
             clear=clear,
             clear_existing=clear,
+            domain=domain,
+            max_chunks=max_chunks,
         )
     except Exception as e:
         print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
@@ -852,6 +959,14 @@ def run_ingest_cli(
         t = transitions["chunked_to_indexed_data"]
         print(f"  • Chặng [chunked ──> indexed_data] : {t.get('chunks_indexed', 0)} chunks đã lập chỉ mục BM25")
         print(f"    File lưu trữ BM25 index: {t.get('sparse_file')}")
+    if "chunked_to_graph_data" in transitions:
+        t = transitions["chunked_to_graph_data"]
+        print(
+            f"  • Chặng [chunked ──> graph_data]   : {t.get('chunks_indexed', 0)} chunks -> "
+            f"{t.get('entities_count', 0)} entities, {t.get('triples_count', 0)} triples "
+            f"(OpenRouter LLM calls: {t.get('llm_calls', 0)})"
+        )
+        print(f"    File lưu trữ Graph index: {t.get('graph_file')}")
 
     print(f"\n⏱️  Tổng thời gian thực thi: {res.get('latency_seconds', 0)}s")
     print("=" * 65 + "\n")
@@ -874,6 +989,9 @@ def run_ingest_status_cli():
     idx_info = stages.get("indexed_data", {})
     status_str = f"Sẵn sàng ({idx_info.get('size_mb')} MB)" if idx_info.get("exists") else "Chưa tạo"
     print(f"  5. Giai đoạn [INDEXED_DATA]: {status_str} ({idx_info.get('path')})")
+    graph_info = stages.get("graph_data", {})
+    g_status_str = f"Sẵn sàng ({graph_info.get('size_mb')} MB)" if graph_info.get("exists") else "Chưa tạo"
+    print(f"  6. Giai đoạn [GRAPH_DATA]  : {g_status_str} ({graph_info.get('path')})")
 
     print("\n📋 Sổ cái theo dõi chống trùng lặp (Manifest Tracker):")
     print(f"  • Tổng tài liệu đang theo dõi : {manifest.get('total_tracked_documents', 0)}")
@@ -882,6 +1000,7 @@ def run_ingest_status_cli():
     print(f"  • Hoàn thành chặng chunked    : {comp.get('chunked', 0)}")
     print(f"  • Hoàn thành chặng vectordb   : {comp.get('vectordb', 0)}")
     print(f"  • Hoàn thành chặng indexed_data: {comp.get('indexed_data', 0)}")
+    print(f"  • Hoàn thành chặng graph_data  : {comp.get('graph_data', 0)}")
     print(f"  • Lần cập nhật gần nhất       : {manifest.get('last_updated') or 'Chưa có'}")
     print("=" * 65 + "\n")
 

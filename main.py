@@ -59,7 +59,7 @@ def main():
     parser.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
     parser.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
     parser.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
-    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
     parser.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa toàn bộ dữ liệu cũ ở chặng đích (chunked_data, vectordb, BM25 index, manifest) trước khi nạp lại từ đầu")
 
     args = parser.parse_args()
@@ -146,7 +146,14 @@ def main():
             run_ingest_status_cli()
         else:
             from src.pipeline import run_ingest_cli
-            run_ingest_cli(from_stage=args.from_stage, to_stage=args.to_stage, clear=args.clear, clear_existing=args.clear)
+            run_ingest_cli(
+                from_stage=args.from_stage,
+                to_stage=args.to_stage,
+                clear=args.clear,
+                clear_existing=args.clear,
+                domain=args.domain,
+                max_chunks=args.samples,
+            )
 
     else:
         print("📌 CÁC LỆNH CHÍNH ĐỂ SỬ DỤNG HỆ THỐNG:")
@@ -175,7 +182,8 @@ def main():
         print("\n📌 Các thao tác đơn chặng:")
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
-        print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data\n")
+        print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data")
+        print("  • Xây dựng GraphRAG Vector Index:    python main.py --ingest --from chunked --to graph_data\n")
         print(" 8. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
 
 if __name__ == "__main__":

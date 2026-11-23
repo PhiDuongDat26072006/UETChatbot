@@ -38,8 +38,7 @@ logger = get_logger("retrieval")
 
 class UETRetriever:
     """
-    Bộ điều phối truy xuất ngữ cảnh hoàn chỉnh (Hybrid Retrieval & Reranking Engine).
-    Kết nối song song BM25 Search và Vector Search, dung hợp RRF, Rerank và trích xuất Top-K.
+    Bộ điều phối truy xuất ngữ cảnh đa tầng (BM25 + Vector + GraphRAG -> RRF -> MMR -> Rerank).
     """
 
     def __init__(
@@ -49,6 +48,7 @@ class UETRetriever:
         reranker: Optional[BaseReranker] = None,
         config: Optional[Dict[str, Any]] = None,
         bm25_index: Optional[BM25Index] = None,
+        graph_index: Optional[Any] = None,
     ):
         """
         Khởi tạo UETRetriever.
@@ -57,6 +57,7 @@ class UETRetriever:
         :param reranker: Mô hình Reranker (nếu None sẽ tự động khởi tạo qua RerankerFactory)
         :param config: Dict cấu hình tham số tùy chỉnh (hoặc tự đọc từ config.yaml)
         :param bm25_index: Chỉ mục đã tạo sẵn (dành cho test/in-memory); production tải từ file.
+        :param graph_index: Chỉ mục GraphRAG (dành cho test/in-memory); production tải từ file.
         """
         self.embedding_model = embedding_model
         self.vector_store = vector_store
@@ -64,6 +65,7 @@ class UETRetriever:
         # Đọc cấu hình từ config.yaml nếu không truyền trực tiếp
         raw_config = config or load_yaml_config()
         retrieval_cfg = raw_config.get("retrieval", {})
+        paths_cfg = raw_config.get("paths", {})
 
         # Tham số theo chuẩn Pipeline
         self.bm25_top_k: int = retrieval_cfg.get("bm25_top_k", 100)
@@ -76,6 +78,15 @@ class UETRetriever:
         self.vector_weight: float = retrieval_cfg.get("vector_weight", 0.6)
         self.default_score_threshold: Optional[float] = retrieval_cfg.get("score_threshold", None)
 
+        # Cấu hình GraphRAG Vector Index
+        self.enable_graph: bool = retrieval_cfg.get("enable_graph", True)
+        self.graph_top_k: int = retrieval_cfg.get("graph_top_k", 50)
+        self.graph_weight: float = retrieval_cfg.get("graph_weight", 0.35)
+        self.graph_max_hops: int = retrieval_cfg.get("graph_max_hops", 2)
+        self.graph_seed_top_m: int = retrieval_cfg.get("graph_seed_top_m", 10)
+        graph_rel = paths_cfg.get("graph_index_file", "database/graph_index.pkl")
+        self._graph_index_path = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+
         # Cấu hình Maximal Marginal Relevance (MMR)
         self.enable_mmr: bool = retrieval_cfg.get("enable_mmr", True)
         self.mmr_lambda: float = retrieval_cfg.get("mmr_lambda", 0.6)
@@ -84,6 +95,7 @@ class UETRetriever:
         # Chỉ sử dụng BM25Index từ src.indexing.sparse.
         # Cho phép dependency injection khi kiểm thử, không xây dựng index trong Retriever.
         self.bm25_index = bm25_index if bm25_index is not None else BM25Index()
+        self.graph_index = graph_index
 
         # Khởi tạo Reranker
         reranker_type = retrieval_cfg.get("reranker_type", "auto")
@@ -98,6 +110,31 @@ class UETRetriever:
         # Chỉ nạp artifact khi không được inject index (ví dụ unit test).
         if bm25_index is None:
             self._load_bm25_index()
+        if graph_index is None and bm25_index is None and self.enable_graph:
+            self._load_graph_index()
+
+    def _load_graph_index(self) -> int:
+        """Đọc chỉ mục GraphRAG từ file nếu đã được build; bỏ qua an toàn nếu chưa có."""
+        if not self._graph_index_path.exists():
+            logger.debug("Chưa có GraphRAG artifact tại '%s'; bỏ qua nhánh Graph.", self._graph_index_path)
+            return 0
+        try:
+            from src.indexing.graph import GraphIndex
+
+            self.graph_index = GraphIndex.load(self._graph_index_path, embedding_model=self.embedding_model)
+            count = self.graph_index.count()
+            logger.info(
+                "Đã nạp GraphRAG artifact '%s' (%s chunks, %s entities, %s triples).",
+                self._graph_index_path,
+                count,
+                self.graph_index.entity_count(),
+                self.graph_index.triple_count(),
+            )
+            return count
+        except (OSError, ValueError, EOFError, ImportError, AttributeError, pickle.UnpicklingError) as error:
+            logger.warning("Không thể nạp GraphRAG artifact '%s': %s", self._graph_index_path, error)
+            self.graph_index = None
+            return 0
 
     def _load_bm25_index(self) -> int:
         """Đọc chỉ mục BM25 đã được UETIndexer tạo; không build lại trong Retrieval."""
@@ -161,6 +198,7 @@ class UETRetriever:
 
         # 1.2. Nhánh Query Embedding & Vector Search
         vector_results: List[RetrievedContext] = []
+        query_vector = None
         try:
             query_vector = self.embedding_model.embed_query(query)
             vector_results = self.vector_store.search(
@@ -170,7 +208,26 @@ class UETRetriever:
             )
             logger.debug(f"[Vector Search] Thu được {len(vector_results)} kết quả.")
         except Exception as e:
-            logger.warning(f"Lỗi nhánh Vector Search: {e}. Vẫn tiếp tục với BM25 Search.")
+            logger.warning(f"Lỗi nhánh Vector Search: {e}. Vẫn tiếp tục với BM25/Graph Search.")
+
+        # 1.3. Nhánh GraphRAG Vector Index (0-LLM lúc truy vấn)
+        graph_results: List[RetrievedContext] = []
+        if self.enable_graph and self.graph_index is not None and self.graph_index.count() > 0:
+            try:
+                if query_vector is None:
+                    query_vector = self.embedding_model.embed_query(query)
+                q_vec_list = getattr(query_vector, "vector", None) if query_vector is not None else None
+                graph_results = self.graph_index.search(
+                    query=query_text,
+                    query_vector=q_vec_list,
+                    top_k=self.graph_top_k,
+                    seed_top_m=self.graph_seed_top_m,
+                    max_hops=self.graph_max_hops,
+                    filters=active_filters,
+                )
+                logger.debug(f"[GraphRAG] Thu được {len(graph_results)} kết quả.")
+            except Exception as e:
+                logger.warning(f"Lỗi nhánh GraphRAG Search: {e}. Vẫn tiếp tục với BM25 + Vector.")
 
         # =====================================================================
         # BƯỚC 2: HYBRID SEARCH FUSION -> ~100 CANDIDATE CHUNKS
@@ -182,10 +239,12 @@ class UETRetriever:
             rrf_k=self.rrf_k,
             bm25_weight=self.bm25_weight,
             vector_weight=self.vector_weight,
+            graph_results=graph_results,
+            graph_weight=self.graph_weight,
         )
 
         if not candidate_chunks:
-            logger.warning("Không tìm thấy đoạn văn bản nào từ cả 2 nhánh BM25 và Vector Search.")
+            logger.warning("Không tìm thấy đoạn văn bản nào từ BM25, Vector và GraphRAG Search.")
             return []
 
         # =====================================================================
