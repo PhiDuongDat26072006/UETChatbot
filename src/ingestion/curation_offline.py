@@ -12,7 +12,8 @@ from .curation_yaml import safe_normalize_url, sync_overrides_yaml, sync_site_se
 from .identity import source_id
 from .storage import Storage, atomic_bytes, now, writer_lock
 
-OFFLINE_SUFFIXES = {".pdf", ".html", ".htm"}
+OFFLINE_SUFFIXES = {".pdf", ".html", ".htm", ".docx"}
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def sanitize_offline_filename(filename: str) -> str:
@@ -23,7 +24,7 @@ def sanitize_offline_filename(filename: str) -> str:
     suffix = parsed.suffix.lower()
     if suffix not in OFFLINE_SUFFIXES:
         raise ValueError(
-            f"Unsupported file type: {suffix or 'none'}; allowed: .pdf, .html, .htm"
+            f"Unsupported file type: {suffix or 'none'}; allowed: .pdf, .docx, .html, .htm"
         )
     ascii_stem = unicodedata.normalize(
         "NFKD", parsed.stem.replace("đ", "d").replace("Đ", "D")
@@ -59,18 +60,17 @@ def fetch_offline_or_http(fetcher, url: str, allowed_fn, data_dir) -> dict:
         ):
             raise FileNotFoundError(f"Offline document not found: {rel_name}")
         body = local_path.read_bytes()
-        is_pdf = local_path.suffix.lower() == ".pdf" or body.startswith(b"%PDF-")
+        sfx = local_path.suffix.lower()
+        is_pdf = sfx == ".pdf" or body.startswith(b"%PDF-")
+        is_docx = sfx == ".docx"
+        mime = "application/pdf" if is_pdf else (_DOCX_MIME if is_docx else "text/html; charset=utf-8")
         return {
             "requested_url": url,
             "final_url": url,
             "status_code": 200,
-            "headers": {
-                "content-type": (
-                    "application/pdf" if is_pdf else "text/html; charset=utf-8"
-                )
-            },
+            "headers": {"content-type": mime},
             "body": body,
-            "encoding": "binary" if is_pdf else "utf-8",
+            "encoding": "binary" if (is_pdf or is_docx) else "utf-8",
         }
     return fetcher.fetch(url, allowed_fn)
 
@@ -104,7 +104,8 @@ def scan_offline_docs(data_dir, site="OTHER", profile_dir=None) -> dict:
             if sid in sources:
                 existing += 1
                 continue
-            kind = "pdf" if path.suffix.lower() == ".pdf" else "html"
+            sfx = path.suffix.lower()
+            kind = "pdf" if sfx == ".pdf" else ("office" if sfx == ".docx" else "html")
             sources[sid] = DataSource(
                 source_id=sid,
                 source_type="web",
@@ -151,7 +152,8 @@ def upload_offline_doc(
 
     uri = safe_normalize_url(f"https://uet.vnu.edu.vn/offline/{safe_name}", profile)
     sid = source_id(uri)
-    kind = "pdf" if PurePosixPath(safe_name).suffix.lower() == ".pdf" else "html"
+    sfx = PurePosixPath(safe_name).suffix.lower()
+    kind = "pdf" if sfx == ".pdf" else ("office" if sfx == ".docx" else "html")
     storage = Storage(data_dir)
     with writer_lock(storage.root):
         sources = storage.records("sources", site)

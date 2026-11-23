@@ -5,7 +5,12 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 from src.base import DataSource
 from .config.profiles import load_profiles
-from .crawler.policy import resource_type
+from .crawler.policy import is_accepted_type, resource_type
+from .curation_dedup import (
+    dedup_url_key,
+    deduplicate_all_sites,
+    deduplicate_site,
+)
 from .curation_helpers import compute_site_state, load_corpus_policies, topic_info
 from .curation_ingest import run_incremental_ingest
 from .curation_offline import (
@@ -33,6 +38,9 @@ __all__ = [
     "upload_offline_doc",
     "get_processed_document",
     "run_incremental_ingest",
+    "dedup_url_key",
+    "deduplicate_site",
+    "deduplicate_all_sites",
 ]
 
 
@@ -271,8 +279,8 @@ def set_sources_decision(
             kind = resource_type(uri)
             if decision == "listing" and kind != "html":
                 raise ValueError(f"Only HTML URLs can be listing: {uri}")
-            if decision == "accepted" and kind not in {"html", "pdf"}:
-                raise ValueError(f"Only HTML and PDF URLs can be accepted: {uri}")
+            if decision == "accepted" and not is_accepted_type(uri):
+                raise ValueError(f"Only HTML, PDF, and DOCX URLs can be accepted: {uri}")
             meta = rec.setdefault("metadata", {})
             meta.update(
                 decision=decision,
@@ -317,6 +325,12 @@ def add_manual_urls(
 
     with writer_lock(storage.root):
         sources, batch_seen, timestamp = storage.records("sources", site), {}, now()
+        known_keys = {
+            dedup_url_key(r["uri"], profile): r
+            for r in sources.values()
+            if r.get("metadata", {}).get("decision") != "alias"
+        }
+        batch_keys = {}
         for raw_url in urls:
             raw_str = str(raw_url or "").strip()
             if not raw_str:
@@ -331,15 +345,18 @@ def add_manual_urls(
                 invalid.append({"uri": norm, "error": f"Host {parts.netloc} does not belong to {site}"})
                 continue
             kind = resource_type(norm)
-            if kind == "asset" or (decision == "listing" and kind != "html") or (decision == "accepted" and kind not in {"html", "pdf"}):
+            if kind == "asset" or (decision == "listing" and kind != "html") or (decision == "accepted" and not is_accepted_type(norm)):
                 invalid.append({"uri": norm, "error": f"Resource type '{kind}' is incompatible with decision '{decision}'"})
                 continue
             sid = source_id(norm)
-            if sid in sources or sid in batch_seen:
-                existing_dec = sources[sid].get("metadata", {}).get("decision") if sid in sources else batch_seen[sid]
-                duplicates.append({"uri": norm, "source_id": sid, "existing_decision": existing_dec})
+            ukey = dedup_url_key(norm, profile)
+            if sid in sources or sid in batch_seen or ukey in known_keys or ukey in batch_keys:
+                existing_rec = sources.get(sid) or known_keys.get(ukey)
+                existing_dec = existing_rec.get("metadata", {}).get("decision") if existing_rec else (batch_seen.get(sid) or batch_keys.get(ukey))
+                duplicates.append({"uri": norm, "source_id": existing_rec["source_id"] if existing_rec else sid, "existing_decision": existing_dec})
                 continue
             batch_seen[sid] = decision
+            batch_keys[ukey] = decision
             sources[sid] = DataSource(
                 source_id=sid,
                 source_type="web",

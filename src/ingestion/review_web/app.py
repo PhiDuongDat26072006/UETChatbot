@@ -7,7 +7,7 @@ import binascii
 from pathlib import Path, PurePosixPath
 import threading
 from typing import Any, Literal, Optional
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 import webbrowser
 
 from bs4 import BeautifulSoup
@@ -24,6 +24,8 @@ from ..crawler.parser import metadata as extract_page_metadata
 from ..crawler.policy import resource_type
 from ..curation import (
     add_manual_urls,
+    deduplicate_all_sites,
+    deduplicate_site,
     get_all_sites_summary,
     get_processed_document,
     list_site_sources,
@@ -32,10 +34,12 @@ from ..curation import (
     set_sources_decision,
     upload_offline_doc,
 )
-from ..curation_offline import fetch_offline_or_http
+from ..curation_offline import OFFLINE_SUFFIXES, fetch_offline_or_http
+from ..curation_yaml import safe_normalize_url
 from ..downloader.http import HTMLFetcher
+from ..extractor.document.docx_native import extract_docx
 from ..extractor.html.extractor import extract_html
-from ..identity import canonicalize_url
+from ..identity import canonicalize_url, source_id
 from ..storage import Storage
 from .jobs import IngestJobManager, JobConflictError
 
@@ -69,6 +73,11 @@ class OfflineUploadRequest(BaseModel):
 
 class IncrementalIngestRequest(BaseModel):
     sites: Optional[list[str]] = Field(default=None)
+
+
+class DedupAllRequest(BaseModel):
+    sites: Optional[list[str]] = Field(default=None)
+    cross_site: bool = True
 
 
 def _curation_http_error(exc: Exception, *, unknown_site_is_404: bool = True) -> HTTPException:
@@ -176,6 +185,32 @@ def _inspect_live_source(data_dir: Path, profile_dir: Path | None, site: str, so
     final_url = page.get("final_url") or uri
     status_code = page.get("status_code", 200)
     mime = (page.get("headers") or {}).get("content-type", "").split(";")[0].strip().lower()
+    is_docx = (
+        mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        or final_url.lower().endswith(".docx")
+    )
+    if is_docx:
+        try:
+            extracted_docx = extract_docx(body)
+        except Exception:
+            extracted_docx = {}
+        clean_docx = (extracted_docx.get("content") or "").strip()
+        excerpt = clean_docx[:PREVIEW_EXCERPT_CHARS].rstrip()
+        if len(clean_docx) > PREVIEW_EXCERPT_CHARS:
+            excerpt += "..."
+        stem = PurePosixPath(unquote(urlsplit(final_url).path)).stem
+        title = (
+            extracted_docx.get("title")
+            or source.get("metadata", {}).get("title")
+            or stem.replace("-", " ").replace("_", " ").strip()
+            or "DOCX Document"
+        )
+        return {
+            "uri": uri, "final_url": final_url, "status_code": status_code,
+            "is_pdf": False, "is_docx": True, "content_length": len(body), "title": title,
+            "published_at": None, "excerpt": excerpt, "pdf_links": [], "error": None,
+        }
+
     is_pdf = (
         page.get("encoding") == "binary"
         or mime == "application/pdf"
@@ -192,7 +227,7 @@ def _inspect_live_source(data_dir: Path, profile_dir: Path | None, site: str, so
         )
         return {
             "uri": uri, "final_url": final_url, "status_code": status_code,
-            "is_pdf": True, "content_length": len(body), "title": title,
+            "is_pdf": True, "is_docx": False, "content_length": len(body), "title": title,
             "published_at": None, "excerpt": "", "pdf_links": [], "error": None,
         }
 
@@ -221,6 +256,27 @@ def _inspect_live_source(data_dir: Path, profile_dir: Path | None, site: str, so
     }
 
 
+def _auto_scan_offline_if_needed(data_dir: Path, profile_dir: Path | None) -> None:
+    offline_dir = data_dir / "offline_docs"
+    if not offline_dir.is_dir():
+        return
+    files = [p for p in offline_dir.iterdir() if p.is_file() and p.suffix.lower() in OFFLINE_SUFFIXES]
+    if not files:
+        return
+    other_prof = load_profiles(profile_dir).get("OTHER")
+    if not other_prof:
+        return
+    existing = Storage(data_dir).records("sources", "OTHER")
+    if any(
+        source_id(safe_normalize_url(f"https://uet.vnu.edu.vn/offline/{quote(p.name, safe='._-~')}", other_prof)) not in existing
+        for p in files
+    ):
+        try:
+            scan_offline_docs(data_dir, profile_dir=profile_dir)
+        except RuntimeError:
+            pass
+
+
 def create_review_app(
     data_dir: str | Path | None = None,
     profile_dir: str | Path | None = None,
@@ -230,6 +286,7 @@ def create_review_app(
     resolved_data = Path(data_dir) if data_dir is not None else DEFAULT_DATA_DIR
     resolved_profiles = Path(profile_dir) if profile_dir is not None else None
     resolved_overrides = Path(overrides_path) if overrides_path is not None else None
+    _auto_scan_offline_if_needed(resolved_data, resolved_profiles)
     job_manager = IngestJobManager(resolved_data, resolved_profiles, resolved_overrides)
 
     app = FastAPI(title="UET Ingestion Review UI", version="1.0.0")
@@ -254,6 +311,7 @@ def create_review_app(
 
     @app.get("/api/sites")
     def api_sites():
+        _auto_scan_offline_if_needed(resolved_data, resolved_profiles)
         return get_all_sites_summary(resolved_data, resolved_profiles)
 
     @app.get("/api/sites/{site}/sources")
@@ -305,6 +363,32 @@ def create_review_app(
             )
         except (ValueError, RuntimeError) as exc:
             raise _curation_http_error(exc) from exc
+
+    @app.post("/api/sites/{site}/dedup")
+    def api_site_dedup(site: str):
+        try:
+            return deduplicate_site(
+                resolved_data,
+                site,
+                profile_dir=resolved_profiles,
+                overrides_path=resolved_overrides,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _curation_http_error(exc) from exc
+
+    @app.post("/api/dedup")
+    def api_dedup_all(body: Optional[DedupAllRequest] = None):
+        req = body or DedupAllRequest()
+        try:
+            return deduplicate_all_sites(
+                resolved_data,
+                sites=req.sites,
+                cross_site=req.cross_site,
+                profile_dir=resolved_profiles,
+                overrides_path=resolved_overrides,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _curation_http_error(exc, unknown_site_is_404=False) from exc
 
     @app.get("/api/sites/{site}/preview/{source_id}")
     def api_site_preview(site: str, source_id: str):

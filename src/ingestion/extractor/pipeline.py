@@ -1,6 +1,7 @@
 """Raw HTML -> validated ProcessedData, without network access or file writes."""
 
 import json
+from pathlib import Path
 from src.base import ProcessedData
 from ..identity import digest
 from ..config.settings import PROCESSOR_VERSION
@@ -19,6 +20,35 @@ def processing_key(raw_record, profile):
 
 
 def process_raw(raw, profile, raw_path=None):
+    is_docx = str(raw.source_uri).lower().endswith(".docx") or (raw_path is not None and raw_path.suffix.lower() == ".docx")
+    if is_docx and raw_path and raw_path.exists():
+        from .document.docx_native import extract_docx
+
+        docx_res = extract_docx(raw_path)
+        title = raw.title or docx_res.get("title") or raw.source_uri
+        quality = {
+            "status": "accepted",
+            "paragraph_count": docx_res["metadata"]["paragraph_count"],
+            "extraction_method": "docx_native",
+            "reasons": [],
+        }
+        metadata = {
+            **raw.metadata,
+            **docx_res["metadata"],
+            "quality": quality,
+            "source_uri": raw.source_uri,
+            "processor_version": PROCESSOR_VERSION,
+            "profile_version": profile["version"],
+        }
+        document = ProcessedData(
+            id=raw.metadata["source_id"],
+            raw_data_id=raw.id,
+            title=title,
+            content=docx_res["content"],
+            metadata=metadata,
+        )
+        return document, quality
+
     is_pdf = raw.metadata.get("resource_type") == "pdf" or str(raw.source_uri).lower().endswith(".pdf")
     if is_pdf and raw_path and raw_path.exists():
         from .document.pdf_native import extract_pdf, scan_pdf

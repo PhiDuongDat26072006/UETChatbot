@@ -63,6 +63,9 @@ scope:
 #   - ^/(category|tag|author)(/|$)
 #   - (?:^|/)page(?:/|$)
 discovery:
+  watch_urls:
+  - https://fat.uet.vnu.edu.vn/tin-tuc
+  - https://fat.uet.vnu.edu.vn/tin-moi-nhat
   start_urls:
   - https://fat.uet.vnu.edu.vn/
   link_selectors:

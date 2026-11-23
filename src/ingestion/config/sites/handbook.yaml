@@ -8,6 +8,10 @@ seeds:
   # --- CORE SCOPE (Quy định khen thưởng trên handbook.uet.vnu.edu.vn) ---
   - https://handbook.uet.vnu.edu.vn/uploads/Quy_dinh_khen_thuong_tai_Truong_DHCN_2023_c076747f20.pdf
   - https://handbook.uet.vnu.edu.vn/uploads/Signed_Dieu_chinh_quy_dinh_khen_thuong_2025_b30f9699e1.pdf
+  - https://handbook.uet.vnu.edu.vn/hoc-phi
+  - https://handbook.uet.vnu.edu.vn/hoc-bong
+  - https://handbook.uet.vnu.edu.vn/lich-su-truyen-thong
+  - https://handbook.uet.vnu.edu.vn/lien-he
 
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn trang Sổ tay sinh viên) ---
   # - https://handbook.uet.vnu.edu.vn/
@@ -51,6 +55,9 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  watch_urls:
+    - https://handbook.uet.vnu.edu.vn/
+    - https://handbook.uet.vnu.edu.vn/sinh-vien
   start_urls:
     - https://handbook.uet.vnu.edu.vn/
   link_selectors:

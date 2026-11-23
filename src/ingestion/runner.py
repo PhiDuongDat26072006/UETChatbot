@@ -211,20 +211,25 @@ def run_ingestion_serial(
                                     and local_path.is_file()
                                 ):
                                     body = local_path.read_bytes()
-                                    is_pdf_file = local_path.suffix.lower() == ".pdf" or body.startswith(b"%PDF-")
+                                    sfx = local_path.suffix.lower()
+                                    is_pdf_file = sfx == ".pdf" or body.startswith(b"%PDF-")
+                                    is_docx_file = sfx == ".docx"
+                                    mime = (
+                                        "application/pdf"
+                                        if is_pdf_file
+                                        else (
+                                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                            if is_docx_file
+                                            else "text/html; charset=utf-8"
+                                        )
+                                    )
                                     page = {
                                         "requested_url": source.uri,
                                         "final_url": source.uri,
                                         "status_code": 200,
-                                        "headers": {
-                                            "content-type": (
-                                                "application/pdf"
-                                                if is_pdf_file
-                                                else "text/html; charset=utf-8"
-                                            )
-                                        },
+                                        "headers": {"content-type": mime},
                                         "body": body,
-                                        "encoding": "binary" if is_pdf_file else "utf-8",
+                                        "encoding": "binary" if (is_pdf_file or is_docx_file) else "utf-8",
                                     }
                                     return source, page, None
                             if (
@@ -297,12 +302,23 @@ def run_ingestion_serial(
                                     site, source.source_id, "raw", status="completed"
                                 )
                             else:
+                                is_docx = page["final_url"].lower().endswith(".docx") or source.uri.lower().endswith(".docx")
                                 is_pdf = (
                                     source.metadata.get("resource_type") == "pdf"
                                     or page.get("encoding") == "binary"
                                     or page["final_url"].lower().endswith(".pdf")
                                 )
-                                if is_pdf:
+                                if is_docx:
+                                    from pathlib import PurePosixPath
+
+                                    clean_name = (
+                                        PurePosixPath(unquote(urlsplit(page["final_url"]).path))
+                                        .stem.replace("-", " ")
+                                        .replace("_", " ")
+                                        .strip()
+                                    )
+                                    meta = {"title": clean_name, "resource_type": "office"}
+                                elif is_pdf:
                                     from pathlib import PurePosixPath
 
                                     clean_name = (

@@ -103,6 +103,12 @@
           </svg>
           <span>Upload tài liệu Local</span>
         </button>
+        <button type="button" id="btn-dedup-all" class="btn btn-secondary btn-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>Khử trùng Toàn bộ Site</span>
+        </button>
         <button type="button" id="btn-ingest-all" class="btn btn-primary btn-full">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="6 3 20 12 6 21 6 3"></polygon>
@@ -171,7 +177,13 @@
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <span>Upload Local PDF/HTML</span>
+            <span>Upload Local PDF/DOCX/HTML</span>
+          </button>
+          <button type="button" id="btn-dedup-site" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span>Khử trùng Site này</span>
           </button>
           <button type="button" id="btn-ingest-site" class="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -475,7 +487,7 @@
       <div class="modal-header">
         <div>
           <h2 id="modal-upload-title" class="modal-title">Upload tài liệu Local</h2>
-          <p class="modal-subtitle">Hỗ trợ tệp .pdf, .html, .htm (lưu vào offline_docs)</p>
+          <p class="modal-subtitle">Hỗ trợ tệp .pdf, .docx, .html, .htm (lưu vào offline_docs)</p>
         </div>
         <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-upload-doc" aria-label="Đóng">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -484,15 +496,15 @@
         </button>
       </div>
       <form id="form-upload-doc" class="modal-body">
-        <div id="upload-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả tệp PDF hoặc HTML">
-          <input type="file" id="upload-file-input" class="hidden-input" accept=".pdf,.html,.htm" />
+        <div id="upload-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả tệp PDF, DOCX hoặc HTML">
+          <input type="file" id="upload-file-input" class="hidden-input" accept=".pdf,.docx,.html,.htm" />
           <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
             <line x1="12" y1="3" x2="12" y2="15"></line>
           </svg>
           <div class="dropzone-text">Kéo thả tệp vào đây hoặc nhấn để chọn tệp</div>
-          <div id="upload-file-info" class="dropzone-file-info">Chưa chọn tệp nào (.pdf, .html, .htm)</div>
+          <div id="upload-file-info" class="dropzone-file-info">Chưa chọn tệp nào (.pdf, .docx, .html, .htm)</div>
         </div>
         <div class="form-group">
           <label for="upload-decision" class="form-label">Trạng thái ban đầu</label>

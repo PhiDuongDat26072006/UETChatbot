@@ -213,8 +213,9 @@ class Storage:
         sha = digest(page["body"])
         identifier = raw_id(source.source_id, sha)
         is_pdf = source.metadata.get("resource_type") == "pdf" or source.uri.lower().endswith(".pdf")
-        extension = ".pdf" if is_pdf else ".html"
-        folder = "pdf" if is_pdf else "html"
+        is_docx = source.uri.lower().endswith(".docx")
+        extension = ".pdf" if is_pdf else (".docx" if is_docx else ".html")
+        folder = "pdf" if is_pdf else ("docx" if is_docx else "html")
         relative = (
             Path("raw_data")
             / site

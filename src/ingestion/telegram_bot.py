@@ -4,33 +4,51 @@ from __future__ import annotations
 
 from html import escape
 import logging
+import re
 import time
 from urllib.parse import urlsplit
 import requests
 from src.base import DataSource
+from .cloudflare_sync import load_cloudflare_config, pull_from_cloudflare, push_to_cloudflare
 from .config.profiles import load_profiles
 from .crawler.parser import parse_page
 from .crawler.policy import in_discovery_scope, resource_type
-from .curation import (
-    get_all_sites_summary, list_site_sources, run_incremental_ingest, set_sources_decision,
-)
+from .curation import dedup_url_key, get_all_sites_summary, list_site_sources, run_incremental_ingest, set_sources_decision
+from .curation_dedup import deduplicate_all_sites
 from .curation_helpers import load_corpus_policies, topic_info
 from .curation_yaml import ordered_site_names
 from .downloader.http import HTMLFetcher
 from .identity import normalize_site_url, source_id
 from .storage import Storage, now, writer_lock
 from .telegram_client import (
-    TelegramClient, _clip, _format_source_card, _format_status_html,
-    _parse_callback, load_telegram_config, save_telegram_config,
+    BOT_HELP_HTML, TelegramClient, _clip, _format_dedup_html, _format_ingest_html, _format_pull_html, _format_push_html,
+    _format_source_card, _format_status_html, _format_watch_html, _parse_callback, _parse_sync_args, _review_button_markup, load_telegram_config, save_telegram_config,
 )
 from .utils import completion_map
 
 log = logging.getLogger(__name__)
-__all__ = [
-    "TelegramClient", "load_telegram_config", "save_telegram_config",
-    "setup_telegram_bot", "send_test_status", "run_daily_category_watch",
-    "send_watch_notification", "process_telegram_update", "run_telegram_polling",
-]
+__all__ = ["TelegramClient", "load_telegram_config", "save_telegram_config", "setup_telegram_bot", "send_test_status", "run_daily_category_watch", "send_watch_notification", "process_telegram_update", "run_telegram_polling"]
+_BAD_LINK_CHARS = ('"', "'", "\u201d", "\u2019", "<", ">")
+_BAD_LINK_TOKENS = ("%E2%80%9D", "%E2%80%99", "%22", "%3C", "%3E")
+_PAGINATION_RE = re.compile(r"(?:^|/)page/\d+(?:/|$)|[?&](?:page|paged)=\d+", re.I)
+
+
+def _register_menu(client: TelegramClient) -> None:
+    try:
+        client.set_my_commands()
+    except Exception:
+        pass
+
+
+def _push_cf_safe(data_dir, *, sites, source_ids, force=False, profile_dir=None) -> dict | None:
+    cf_cfg = load_cloudflare_config(data_dir)
+    if not (cf_cfg["url"] and cf_cfg["sync_secret"]):
+        return None
+    try:
+        res = push_to_cloudflare(data_dir, sites=sites, source_ids=source_ids, force=force, profile_dir=profile_dir)
+        return {"status": "ok", "total_sent": res["total_sent"], "changed": res["changed"], "url": res["url"]}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc), "url": cf_cfg["url"]}
 
 
 def setup_telegram_bot(data_dir, token=None, chat_id=None, wait_seconds: int = 60, profile_dir=None) -> dict:
@@ -55,11 +73,8 @@ def setup_telegram_bot(data_dir, token=None, chat_id=None, wait_seconds: int = 6
         if not target_chat:
             raise TimeoutError(f"Chua nhan duoc tin nhan /start toi @{bot_username} trong {wait_seconds}s")
     config_file = save_telegram_config(data_dir, cfg["bot_token"], target_chat, bot_username, owner_name)
-    client.send_message(
-        target_chat,
-        f"<b>Ket noi thanh cong voi @{escape(bot_username)}</b>\nDung /status, /pending, /watch, /ingest.\n\n"
-        + _format_status_html(get_all_sites_summary(data_dir, profile_dir)),
-    )
+    _register_menu(client)
+    client.send_message(target_chat, f"<b>Kết nối thành công với @{escape(bot_username)}</b>\nDùng /commands để xem danh sách lệnh.\n\n" + _format_status_html(get_all_sites_summary(data_dir, profile_dir)))
     return {"status": "ok", "bot_username": bot_username, "chat_id": target_chat, "owner_name": owner_name, "config_file": str(config_file)}
 
 
@@ -71,41 +86,40 @@ def send_test_status(data_dir, token=None, chat_id=None, profile_dir=None) -> di
     return {"status": "sent", "chat_id": cfg["chat_id"], "message_id": res.get("message_id")}
 
 
-def run_daily_category_watch(data_dir, sites=None, profile_dir=None, max_entry_urls_per_site: int = 25, timeout: int = 15) -> dict:
+def run_daily_category_watch(
+    data_dir, sites=None, profile_dir=None, max_entry_urls_per_site: int = 25, timeout: int = 15, sync_cloudflare: bool = True
+) -> dict:
     profiles = load_profiles(profile_dir)
     selected = [s for s in ordered_site_names(profiles) if (not sites or s in sites) and s != "OTHER"]
-    storage = Storage(data_dir)
-    policies = load_corpus_policies(profiles)
-    entry_jobs = []
+    storage, policies, entry_jobs, entry_keys = Storage(data_dir), load_corpus_policies(profiles), [], set()
     for site in selected:
         profile = profiles[site]
-        sources = storage.records("sources", site)
-        raw_entries = list(profile.get("discovery", {}).get("start_urls", [])) + [
-            r["uri"] for r in sources.values() if r.get("metadata", {}).get("decision") == "listing"
-        ]
+        disc = profile.get("discovery", {})
+        raw_entries = list(disc.get("watch_urls") or []) or (
+            list(disc.get("start_urls", [])) + [r["uri"] for r in storage.records("sources", site).values() if r.get("metadata", {}).get("decision") == "listing"]
+        )
         seen_entry, site_entries = set(), []
         for raw_u in raw_entries:
             try:
                 norm_u = normalize_site_url(raw_u, profile)
             except ValueError:
                 continue
-            if norm_u in seen_entry or resource_type(norm_u) != "html" or urlsplit(norm_u).path.startswith("/offline/"):
+            if norm_u in seen_entry or resource_type(norm_u) != "html" or urlsplit(norm_u).path.startswith("/offline/") or _PAGINATION_RE.search(norm_u):
                 continue
             seen_entry.add(norm_u)
+            entry_keys.add(dedup_url_key(norm_u, profile))
             site_entries.append((site, norm_u))
             if len(site_entries) >= max_entry_urls_per_site:
                 break
         entry_jobs.extend(site_entries)
 
-    fetcher = HTMLFetcher(timeout=timeout, retries=1, delay=0.1)
-    fetched_pages, errors = [], []
+    fetcher, fetched_pages, errors = HTMLFetcher(timeout=timeout, retries=1, delay=0.1), [], []
 
     def _fetch_one(job):
         site_name, entry_url = job
         prof = profiles[site_name]
         try:
-            page = fetcher.fetch(entry_url, lambda u: in_discovery_scope(u, prof) and resource_type(u) == "html")
-            return page, None
+            return fetcher.fetch(entry_url, lambda u: in_discovery_scope(u, prof) and resource_type(u) == "html"), None
         except Exception as exc:
             return None, str(exc)
 
@@ -114,93 +128,84 @@ def run_daily_category_watch(data_dir, sites=None, profile_dir=None, max_entry_u
             for (site_name, entry_url), (page, err) in completion_map(_fetch_one, entry_jobs, min(12, len(entry_jobs))):
                 if err:
                     errors.append({"site": site_name, "url": entry_url, "error": err})
-                    continue
-                if resource_type(page["final_url"]) != "html" or page.get("encoding") == "binary":
-                    continue
-                html = page["body"].decode(page.get("encoding") or "utf-8", errors="replace")
-                _, links = parse_page(html, page["final_url"], profiles[site_name])
-                fetched_pages.append((site_name, page["final_url"], links))
+                elif resource_type(page["final_url"]) == "html" and page.get("encoding") != "binary":
+                    html = page["body"].decode(page.get("encoding") or "utf-8", errors="replace")
+                    _, links = parse_page(html, page["final_url"], profiles[site_name])
+                    fetched_pages.append((site_name, page["final_url"], links))
     finally:
         fetcher.close()
 
     by_site: dict[str, list[dict]] = {}
     new_pending_total = 0
     with writer_lock(storage.root):
-        storage = Storage(data_dir)
-        discovered_ts = now()
-        known_by_site = {s: set(storage.records("sources", s).keys()) for s in selected}
+        storage, discovered_ts = Storage(data_dir), now()
+        global_known_ids = {sid for s in profiles for sid in storage.records("sources", s)}
+        global_known_keys = set(entry_keys) | {
+            dedup_url_key(r["uri"], profiles[s]) for s in profiles for r in storage.records("sources", s).values()
+        }
         with storage.batched():
             for site_name, parent_url, links in fetched_pages:
-                prof = profiles[site_name]
-                known = known_by_site[site_name]
-                corp = policies.get(site_name)
+                prof, corp = profiles[site_name], policies.get(site_name)
+                global_known_keys.add(dedup_url_key(parent_url, prof))
                 for link in links:
                     target = link["url"]
-                    upper_t = target.upper()
-                    if any(ch in target for ch in ('"', "'", "\u201d", "\u2019", "<", ">")) or any(
-                        tok in upper_t for tok in ("%E2%80%9D", "%E2%80%99", "%22", "%3C", "%3E")
-                    ):
+                    if any(ch in target for ch in _BAD_LINK_CHARS) or any(tok in target.upper() for tok in _BAD_LINK_TOKENS) or _PAGINATION_RE.search(target):
                         continue
                     kind = resource_type(target)
-                    if kind == "asset":
+                    sid, target_key = source_id(target), dedup_url_key(target, prof)
+                    if kind == "asset" or sid in global_known_ids or target_key in global_known_keys or not in_discovery_scope(target, prof):
                         continue
-                    sid = source_id(target)
-                    if sid in known or not in_discovery_scope(target, prof):
-                        continue
-                    known.add(sid)
-                    src = DataSource(
-                        source_id=sid, source_type="web", uri=target,
-                        metadata={
-                            "site": site_name, "faculty": site_name, "resource_type": kind,
-                            "discovered_from": parent_url, "link_text": link.get("link_text", ""),
-                            "crawl_depth": 1, "decision": "pending",
-                            "decision_reason": "daily_watch_pending", "discovered_at": discovered_ts,
-                        },
-                    )
+                    global_known_ids.add(sid)
+                    global_known_keys.add(target_key)
+                    meta = {
+                        "site": site_name, "faculty": site_name, "resource_type": kind, "discovered_from": parent_url,
+                        "link_text": link.get("link_text", ""), "crawl_depth": 1, "decision": "pending",
+                        "decision_reason": "daily_watch_pending", "discovered_at": discovered_ts,
+                    }
+                    src = DataSource(source_id=sid, source_type="web", uri=target, metadata=meta)
                     storage.save_source(src)
                     hint, prio = topic_info(src.model_dump(mode="json"), corp)
                     by_site.setdefault(site_name, []).append({
-                        "source_id": sid, "uri": target, "resource_type": kind,
-                        "link_text": link.get("link_text", ""), "discovered_from": parent_url,
-                        "topic_hint": hint, "topic_priority": prio,
+                        "source_id": sid, "uri": target, "resource_type": kind, "link_text": link.get("link_text", ""),
+                        "discovered_from": parent_url, "topic_hint": hint, "topic_priority": prio,
                     })
                     new_pending_total += 1
         for site_name in by_site:
             by_site[site_name].sort(key=lambda x: (-x["topic_priority"], x["uri"]))
 
-    return {
-        "checked_sites": len(selected), "fetched_category_pages": len(fetched_pages),
-        "new_pending_total": new_pending_total, "by_site": by_site, "errors": errors,
-    }
+    new_sids = [it["source_id"] for items in by_site.values() for it in items]
+    cf_sync = _push_cf_safe(data_dir, sites=list(by_site.keys()), source_ids=new_sids, profile_dir=profile_dir) if sync_cloudflare and new_sids else None
+
+    result = {"checked_sites": len(selected), "fetched_category_pages": len(fetched_pages), "new_pending_total": new_pending_total, "by_site": by_site, "errors": errors}
+    if cf_sync is not None:
+        result["cloudflare_sync"] = cf_sync
+    return result
 
 
-def send_watch_notification(
-    data_dir, watch_result: dict, token=None, chat_id=None, max_cards: int = 10, client: TelegramClient | None = None
-) -> dict:
+def send_watch_notification(data_dir, watch_result: dict, token=None, chat_id=None, max_cards: int = 10, client: TelegramClient | None = None) -> dict:
     cfg = load_telegram_config(data_dir, token, chat_id)
     target_chat = str(chat_id if chat_id is not None else cfg["chat_id"]).strip()
     if not target_chat:
         raise ValueError("Missing chat_id; run telegram --setup first")
     bot = client or TelegramClient(cfg["bot_token"])
-    lines = [
-        "<b>Bao cao Quet Danh muc Hang ngay</b>",
-        f"Da kiem tra <b>{watch_result['fetched_category_pages']}</b> trang ({watch_result['checked_sites']} site) | Link Pending moi: <b>{watch_result['new_pending_total']}</b>",
-    ]
-    for site_name, items in watch_result["by_site"].items():
-        lines.append(f"- <code>{escape(site_name)}</code>: +{len(items)} link moi")
-    if watch_result["errors"]:
-        lines.append(f"- Loi ket noi: {len(watch_result['errors'])} trang danh muc")
-    if watch_result["new_pending_total"] == 0:
-        lines.append("Khong co tai lieu moi hom nay.")
-    bot.send_message(target_chat, "\n".join(lines))
-    ranked = [(item["topic_priority"], site_name, item) for site_name, items in watch_result["by_site"].items() for item in items]
-    ranked.sort(key=lambda x: (-x[0], x[1], x[2]["uri"]))
-    sent_cards = 0
-    for _, site_name, item in ranked[: max(0, int(max_cards))]:
-        card_text, markup = _format_source_card(site_name, item)
-        bot.send_message(target_chat, card_text, reply_markup=markup)
-        sent_cards += 1
-    return {"status": "notified", "new_pending_total": watch_result["new_pending_total"], "cards_sent": sent_cards}
+    cf_url = (watch_result.get("cloudflare_sync") or {}).get("url") or load_cloudflare_config(data_dir).get("url")
+    bot.send_message(target_chat, _format_watch_html(watch_result), reply_markup=_review_button_markup(cf_url))
+    ranked = sorted(((it["topic_priority"], s, it) for s, items in watch_result["by_site"].items() for it in items), key=lambda x: (-x[0], x[1], x[2]["uri"]))
+    cards = ranked[: max(0, int(max_cards))]
+    for _, site_name, item in cards:
+        bot.send_message(target_chat, *_format_source_card(site_name, item))
+    return {"status": "notified", "new_pending_total": watch_result["new_pending_total"], "cards_sent": len(cards)}
+
+
+def _run_cmd_and_reply(cmd: str, client: TelegramClient, chat_id: str, err_label: str, err_code: str, fn, formatter, with_review_btn: bool = False) -> str:
+    try:
+        res = fn()
+    except (ValueError, RuntimeError, requests.RequestException) as exc:
+        client.send_message(chat_id, f"Lỗi {err_label}: {escape(str(exc))}")
+        return err_code
+    markup = _review_button_markup(res.get("url")) if with_review_btn else None
+    client.send_message(chat_id, formatter(res), reply_markup=markup)
+    return cmd
 
 
 def process_telegram_update(client: TelegramClient, update: dict, data_dir, allowed_chat_id: str, profile_dir=None) -> str | None:
@@ -211,30 +216,29 @@ def process_telegram_update(client: TelegramClient, update: dict, data_dir, allo
             return None
         parsed = _parse_callback(cb.get("data", ""))
         if not parsed:
-            client.answer_callback_query(cb["id"], "Du lieu nut khong hop le")
+            client.answer_callback_query(cb["id"], "Dữ liệu nút không hợp lệ")
             return None
         site, sid, dec = parsed
         try:
             res = set_sources_decision(data_dir, site, [sid], dec, profile_dir=profile_dir)
-            note = f"Da cap nhat {res['updated']} muc -> {dec.upper()}"
+            note = f"Đã cập nhật {res['updated']} mục -> {dec.upper()}"
         except (ValueError, RuntimeError) as exc:
-            client.answer_callback_query(cb["id"], f"Loi: {_clip(str(exc), 150)}")
+            client.answer_callback_query(cb["id"], f"Lỗi: {_clip(str(exc), 150)}")
             return "callback_error"
         client.answer_callback_query(cb["id"], note)
         prev = escape(msg.get("text") or f"[{site}] {sid}")
-        client.edit_message_text(chat_id, msg["message_id"], f"{prev}\n\n<b>=> Trang thai moi: [{dec.upper()}]</b>", reply_markup={"inline_keyboard": []})
+        client.edit_message_text(chat_id, msg["message_id"], f"{prev}\n\n<b>=> Trạng thái mới: [{dec.upper()}]</b>", reply_markup={"inline_keyboard": []})
+        _push_cf_safe(data_dir, sites=[site], source_ids=[sid], force=True, profile_dir=profile_dir)
         return f"callback:{site}:{dec}"
 
     msg = update.get("message") or {}
-    chat_id = str((msg.get("chat") or {}).get("id") or "")
-    text = (msg.get("text") or "").strip()
+    chat_id, text = str((msg.get("chat") or {}).get("id") or ""), (msg.get("text") or "").strip()
     if chat_id != str(allowed_chat_id) or not text.startswith("/"):
         return None
     parts = text.split()
-    cmd = parts[0].split("@", 1)[0].lower()
-    args = parts[1:]
-    if cmd in {"/start", "/help"}:
-        client.send_message(chat_id, "<b>UET Ingestion Bot</b>\n/status - Thong ke 14 site\n/pending [SITE] [N] - Gui N link cho duyet (mac dinh UET 5)\n/watch [SITE...] - Quet danh muc tim link moi\n/ingest [SITE...] - Tai &amp; parse link Accepted Queued")
+    cmd, args = parts[0].split("@", 1)[0].lower(), parts[1:]
+    if cmd in {"/start", "/help", "/commands", "/list", "/menu"}:
+        client.send_message(chat_id, BOT_HELP_HTML)
     elif cmd == "/status":
         client.send_message(chat_id, _format_status_html(get_all_sites_summary(data_dir, profile_dir)))
     elif cmd == "/pending":
@@ -243,25 +247,31 @@ def process_telegram_update(client: TelegramClient, update: dict, data_dir, allo
         try:
             data = list_site_sources(data_dir, site, status="pending", sort="priority", page=1, page_size=count, profile_dir=profile_dir)
         except (ValueError, KeyError) as exc:
-            client.send_message(chat_id, f"Loi site <code>{escape(site)}</code>: {escape(str(exc))}")
+            client.send_message(chat_id, f"Lỗi site <code>{escape(site)}</code>: {escape(str(exc))}")
             return "pending_error"
         if not data["items"]:
-            client.send_message(chat_id, f"Site <code>{escape(site)}</code> khong con link Pending.")
+            client.send_message(chat_id, f"Site <code>{escape(site)}</code> không còn link Pending.")
         for item in data["items"]:
             card_text, markup = _format_source_card(site, item)
             client.send_message(chat_id, card_text, reply_markup=markup)
     elif cmd == "/watch":
-        client.send_message(chat_id, "Dang quet danh muc tim link moi...")
+        client.send_message(chat_id, "Đang quét trang tin tức / thông báo (depth = 1)...")
         watch_res = run_daily_category_watch(data_dir, sites=[a.upper() for a in args] or None, profile_dir=profile_dir)
         send_watch_notification(data_dir, watch_res, chat_id=chat_id, client=client)
+    elif cmd == "/pull":
+        sites, status_filter, dry_run = _parse_sync_args(args)
+        return _run_cmd_and_reply(cmd, client, chat_id, "/pull Cloudflare", "pull_error", lambda: pull_from_cloudflare(data_dir, sites=sites, status_filter=status_filter, dry_run=dry_run, profile_dir=profile_dir), _format_pull_html)
+    elif cmd == "/push":
+        sites, status_filter, _ = _parse_sync_args(args)
+        return _run_cmd_and_reply(cmd, client, chat_id, "/push Cloudflare", "push_error", lambda: push_to_cloudflare(data_dir, sites=sites, status_filter=status_filter, profile_dir=profile_dir), _format_push_html, with_review_btn=True)
+    elif cmd == "/dedup":
+        cross_site = "--no-cross-site" not in [a.lower() for a in args]
+        sites = [a.upper() for a in args if a.lower() != "--no-cross-site"] or None
+        return _run_cmd_and_reply(cmd, client, chat_id, "/dedup", "dedup_error", lambda: deduplicate_all_sites(data_dir, sites=sites, cross_site=cross_site, profile_dir=profile_dir), _format_dedup_html)
     elif cmd == "/ingest":
-        try:
-            report = run_incremental_ingest(data_dir, sites=[a.upper() for a in args] or None, profile_dir=profile_dir)
-        except (ValueError, RuntimeError) as exc:
-            client.send_message(chat_id, f"Khong the chay ingest: {escape(str(exc))}")
-            return "ingest_error"
-        tot = {k: sum(s.get(k, 0) for s in report["sites"].values()) for k in ("downloaded", "processed_saved", "skipped", "new_pending", "rejected_preserved", "errors")}
-        client.send_message(chat_id, f"<b>Incremental Ingest ({escape(report['status'])})</b>\nDownloaded: {tot['downloaded']} | Processed: {tot['processed_saved']} | Skipped: {tot['skipped']}\nNew Pending: {tot['new_pending']} | Rejected giu nguyen: {tot['rejected_preserved']} | Errors: {tot['errors']}")
+        return _run_cmd_and_reply(cmd, client, chat_id, "ingest", "ingest_error", lambda: run_incremental_ingest(data_dir, sites=[a.upper() for a in args] or None, profile_dir=profile_dir), _format_ingest_html)
+    else:
+        client.send_message(chat_id, f"Lệnh không hợp lệ: <code>{escape(cmd)}</code>\n\n{BOT_HELP_HTML}")
     return cmd
 
 
@@ -270,8 +280,8 @@ def run_telegram_polling(data_dir, token=None, chat_id=None, profile_dir=None) -
     if not cfg["chat_id"]:
         raise ValueError("Missing chat_id; run telegram --setup first")
     client = TelegramClient(cfg["bot_token"])
-    me = client.get_me()
-    offset = None
+    me, offset = client.get_me(), None
+    _register_menu(client)
     log.info("Telegram polling started for @%s (chat_id=%s)", me.get("username"), cfg["chat_id"])
     while True:
         try:

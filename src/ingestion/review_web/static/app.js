@@ -4,7 +4,7 @@
   const THEME_STORAGE_KEY = "uet_review_theme";
   const ACTIVE_SITE_STORAGE_KEY = "uet_review_active_site";
   const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
-  const ALLOWED_UPLOAD_EXTS = [".pdf", ".html", ".htm"];
+  const ALLOWED_UPLOAD_EXTS = [".pdf", ".docx", ".html", ".htm"];
 
   const ICONS = {
     check:
@@ -43,6 +43,7 @@
       page_size: 50
     },
     selectedIds: new Set(),
+    lastCheckedSid: null,
     loadingSites: false,
     loadingSources: false,
     pendingUploadFile: null,
@@ -73,6 +74,7 @@
     globalOffline: document.getElementById("global-offline"),
     btnOfflineScan: document.getElementById("btn-offline-scan"),
     btnSidebarUpload: document.getElementById("btn-sidebar-upload"),
+    btnDedupAll: document.getElementById("btn-dedup-all"),
     btnIngestAll: document.getElementById("btn-ingest-all"),
     siteCountPill: document.getElementById("site-count-pill"),
     siteList: document.getElementById("site-list"),
@@ -82,6 +84,7 @@
     btnRefresh: document.getElementById("btn-refresh"),
     btnOpenAddUrls: document.getElementById("btn-open-add-urls"),
     btnOpenUpload: document.getElementById("btn-open-upload"),
+    btnDedupSite: document.getElementById("btn-dedup-site"),
     btnIngestSite: document.getElementById("btn-ingest-site"),
 
     ingestBanner: document.getElementById("ingest-banner"),
@@ -231,7 +234,7 @@
     if (!res.ok) {
       const err = new Error(
         (data && (data.detail?.message || data.detail || data.error || data.message)) ||
-          `HTTP ${res.status}`
+        `HTTP ${res.status}`
       );
       err.status = res.status;
       err.payload = data;
@@ -478,6 +481,7 @@
   async function loadSources() {
     if (!state.activeSite) return;
     state.loadingSources = true;
+    state.lastCheckedSid = null;
     renderTableLoading();
 
     const params = new URLSearchParams();
@@ -758,6 +762,71 @@
     el.bulkCountText.textContent = `Đã chọn ${formatNumber(count)} mục`;
   }
 
+  function toggleRowSelection(sid, { force = null, rangeSelect = false } = {}) {
+    if (!sid) return;
+    const nextChecked =
+      force !== null ? Boolean(force) : rangeSelect ? true : !state.selectedIds.has(sid);
+    const affectedIds = [sid];
+
+    if (rangeSelect) {
+      let anchorSid =
+        state.lastCheckedSid &&
+        state.selectedIds.has(state.lastCheckedSid) &&
+        state.items.some((i) => i.source_id === state.lastCheckedSid)
+          ? state.lastCheckedSid
+          : null;
+
+      if (!anchorSid) {
+        for (let idx = state.items.length - 1; idx >= 0; idx -= 1) {
+          const itemSid = state.items[idx].source_id;
+          if (state.selectedIds.has(itemSid) && itemSid !== sid) {
+            anchorSid = itemSid;
+            break;
+          }
+        }
+      }
+
+      if (anchorSid && anchorSid !== sid) {
+        const startIdx = state.items.findIndex((i) => i.source_id === anchorSid);
+        const endIdx = state.items.findIndex((i) => i.source_id === sid);
+        if (startIdx >= 0 && endIdx >= 0) {
+          const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+          affectedIds.length = 0;
+          for (let idx = lo; idx <= hi; idx += 1) {
+            affectedIds.push(state.items[idx].source_id);
+          }
+        }
+      }
+    }
+
+    affectedIds.forEach((id) => {
+      if (nextChecked) {
+        state.selectedIds.add(id);
+      } else {
+        state.selectedIds.delete(id);
+      }
+    });
+
+    if (nextChecked) {
+      state.lastCheckedSid = sid;
+    } else if (state.lastCheckedSid === sid) {
+      const remaining = [...state.items].reverse().find((i) => state.selectedIds.has(i.source_id));
+      state.lastCheckedSid = remaining ? remaining.source_id : null;
+    }
+
+    const affectedSet = new Set(affectedIds);
+    el.sourcesTbody.querySelectorAll("tr[data-sid]").forEach((row) => {
+      const rowSid = row.getAttribute("data-sid");
+      if (!affectedSet.has(rowSid)) return;
+      row.classList.toggle("is-selected", nextChecked);
+      const cb = row.querySelector(".row-checkbox");
+      if (cb) cb.checked = nextChecked;
+    });
+
+    syncSelectAllCheckbox();
+    syncBulkBar();
+  }
+
   function renderPagination() {
     const total = state.totalFiltered;
     const page = state.filters.page;
@@ -942,13 +1011,76 @@
     }
   }
 
+  async function handleDedupSite() {
+    if (!state.activeSite) return;
+    const site = state.activeSite;
+    el.btnDedupSite.disabled = true;
+    el.btnDedupAll.disabled = true;
+    try {
+      const res = await apiFetch(`/api/sites/${encodeURIComponent(site)}/dedup`, {
+        method: "POST"
+      });
+      const merged = Number(res.duplicates_merged || 0);
+      const remain = Number(res.remaining_active || 0);
+      if (merged > 0) {
+        showToast(
+          `Khử trùng ${site}: đã gộp ${formatNumber(merged)} URL trùng, còn ${formatNumber(remain)} nguồn`,
+          "success",
+          5500
+        );
+      } else {
+        showToast(`Site ${site}: không phát hiện URL trùng lặp`, "info");
+      }
+      state.selectedIds.clear();
+      syncBulkBar();
+      await Promise.all([loadSites(), loadSources()]);
+    } catch (err) {
+      showToast(`Khử trùng ${site} thất bại: ${err.message}`, "error");
+    } finally {
+      el.btnDedupSite.disabled = false;
+      el.btnDedupAll.disabled = false;
+    }
+  }
+
+  async function handleDedupAll() {
+    el.btnDedupAll.disabled = true;
+    el.btnDedupSite.disabled = true;
+    try {
+      const res = await apiFetch("/api/dedup", {
+        method: "POST",
+        body: JSON.stringify({ cross_site: true })
+      });
+      const totalMerged = Number(res.total_merged || 0);
+      const perSite = Number(res.per_site_merged || 0);
+      const crossSite = Number(res.cross_site_merged || 0);
+      const remain = Number(res.remaining_active || 0);
+      if (totalMerged > 0) {
+        showToast(
+          `Khử trùng Toàn bộ Site: đã gộp ${formatNumber(totalMerged)} link trùng (Trong từng site: ${formatNumber(perSite)}, Xuyên site: ${formatNumber(crossSite)}), còn ${formatNumber(remain)} nguồn`,
+          "success",
+          6000
+        );
+      } else {
+        showToast("Toàn hệ thống: không phát hiện link trùng lặp", "info");
+      }
+      state.selectedIds.clear();
+      syncBulkBar();
+      await Promise.all([loadSites(), loadSources()]);
+    } catch (err) {
+      showToast(`Khử trùng toàn hệ thống thất bại: ${err.message}`, "error");
+    } finally {
+      el.btnDedupAll.disabled = false;
+      el.btnDedupSite.disabled = false;
+    }
+  }
+
   /* ========================================================================
      UPLOAD LOCAL DOCUMENT (FileReader.readAsDataURL -> pure base64 JSON)
      ======================================================================== */
   function openUploadModal() {
     state.pendingUploadFile = null;
     el.uploadFileInput.value = "";
-    el.uploadFileInfo.textContent = "Chưa chọn tệp nào (.pdf, .html, .htm)";
+    el.uploadFileInfo.textContent = "Chưa chọn tệp nào (.pdf, .docx, .html, .htm)";
     el.uploadDecision.value = "pending";
     el.btnSubmitUpload.disabled = true;
     openModal("modal-upload-doc");
@@ -959,7 +1091,7 @@
     const lowerName = file.name.toLowerCase();
     const validExt = ALLOWED_UPLOAD_EXTS.some((ext) => lowerName.endsWith(ext));
     if (!validExt) {
-      showToast("Chỉ hỗ trợ tệp .pdf, .html hoặc .htm", "error");
+      showToast("Chỉ hỗ trợ tệp .pdf, .docx, .html hoặc .htm", "error");
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
@@ -1034,7 +1166,7 @@
       const data = await apiFetch(
         `/api/sites/${encodeURIComponent(state.activeSite)}/preview/${encodeURIComponent(sourceId)}`
       );
-      if (data.is_pdf) {
+      if (data.is_pdf || data.is_docx) {
         el.previewBtnListing.classList.add("hidden");
       }
 
@@ -1067,32 +1199,31 @@
             <div class="inspect-section-title">Tệp PDF / Đính kèm phát hiện (${pdfLinks.length})</div>
             <ul class="pdf-links-list">
               ${pdfLinks
-                .map((link) => {
-                  const linkHref = safeHttpUrl(link.url);
-                  return `
+          .map((link) => {
+            const linkHref = safeHttpUrl(link.url);
+            return `
                     <li class="pdf-link-item">
                       <div>
                         <div class="pdf-link-text">${escapeHtml(link.link_text || "Tài liệu PDF")}</div>
-                        <div class="pdf-link-url">${
-                          linkHref
-                            ? `<a href="${escapeHtml(linkHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.url)}</a>`
-                            : escapeHtml(link.url || "")
-                        }</div>
+                        <div class="pdf-link-url">${linkHref
+                ? `<a href="${escapeHtml(linkHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.url)}</a>`
+                : escapeHtml(link.url || "")
+              }</div>
                       </div>
-                      ${
-                        linkHref
-                          ? `<button type="button" class="btn btn-secondary btn-xs" data-preview-add-url="${escapeHtml(linkHref)}">+ Thêm</button>`
-                          : ""
-                      }
+                      ${linkHref
+                ? `<button type="button" class="btn btn-secondary btn-xs" data-preview-add-url="${escapeHtml(linkHref)}">+ Thêm</button>`
+                : ""
+              }
                     </li>
                   `;
-                })
-                .join("")}
+          })
+          .join("")}
             </ul>
           </div>
         `
         : "";
 
+      const docKindLabel = data.is_pdf ? "PDF" : (data.is_docx ? "DOCX" : "HTML");
       const excerptText = data.is_pdf
         ? "Tài liệu dạng PDF (không trích xuất văn bản live; chọn Accept để tải và parse PDF qua pipeline)."
         : data.excerpt || "(Không có nội dung trích đoạn)";
@@ -1109,7 +1240,7 @@
           </div>
           <div class="inspect-meta-item">
             <div class="inspect-meta-label">HTTP / Loại</div>
-            <div class="inspect-meta-val">${escapeHtml(data.status_code ?? "-")} · ${data.is_pdf ? "PDF" : "HTML"} · ${formatBytes(data.content_length || 0)}</div>
+            <div class="inspect-meta-val">${escapeHtml(data.status_code ?? "-")} · ${docKindLabel} · ${formatBytes(data.content_length || 0)}</div>
           </div>
           <div class="inspect-meta-item">
             <div class="inspect-meta-label">Final URL</div>
@@ -1414,6 +1545,8 @@
     el.btnSidebarUpload.addEventListener("click", openUploadModal);
     el.btnOpenUpload.addEventListener("click", openUploadModal);
     el.btnOpenAddUrls.addEventListener("click", openAddUrlsModal);
+    el.btnDedupAll.addEventListener("click", handleDedupAll);
+    el.btnDedupSite.addEventListener("click", handleDedupSite);
     el.btnIngestAll.addEventListener("click", () => startIncrementalIngest(null));
     el.btnIngestSite.addEventListener("click", () => {
       if (state.activeSite) startIncrementalIngest([state.activeSite]);
@@ -1534,6 +1667,8 @@
           state.selectedIds.delete(item.source_id);
         }
       });
+      state.lastCheckedSid =
+        check && state.items.length ? state.items[state.items.length - 1].source_id : null;
       renderTable();
       syncBulkBar();
     });
@@ -1543,41 +1678,68 @@
       if (!cb) return;
       const sid = cb.getAttribute("data-sid");
       if (!sid) return;
-      if (cb.checked) {
-        state.selectedIds.add(sid);
-      } else {
-        state.selectedIds.delete(sid);
-      }
-      const row = cb.closest("tr");
-      if (row) row.classList.toggle("is-selected", cb.checked);
-      syncSelectAllCheckbox();
-      syncBulkBar();
+      toggleRowSelection(sid, { force: cb.checked });
     });
 
     el.sourcesTbody.addEventListener("click", (evt) => {
       const btn = evt.target.closest("[data-action]");
-      if (!btn) return;
-      const action = btn.getAttribute("data-action");
-      const sid = btn.getAttribute("data-sid");
-      if (!sid) return;
+      if (btn) {
+        const action = btn.getAttribute("data-action");
+        const sid = btn.getAttribute("data-sid");
+        if (!sid) return;
 
-      if (action === "decision") {
-        const decision = btn.getAttribute("data-decision");
-        if (decision) updateDecision([sid], decision);
-      } else if (action === "preview") {
-        openPreviewModal(sid);
-      } else if (action === "processed") {
-        openProcessedModal(sid);
-      } else if (action === "reingest") {
-        startReingest(sid);
-      } else if (action === "remove") {
-        openRemoveModal([sid]);
+        if (action === "decision") {
+          const decision = btn.getAttribute("data-decision");
+          if (decision) updateDecision([sid], decision);
+        } else if (action === "preview") {
+          openPreviewModal(sid);
+        } else if (action === "processed") {
+          openProcessedModal(sid);
+        } else if (action === "reingest") {
+          startReingest(sid);
+        } else if (action === "remove") {
+          openRemoveModal([sid]);
+        }
+        return;
       }
+
+      const isRange = Boolean(evt.ctrlKey || evt.metaKey || evt.shiftKey);
+      const checkbox = evt.target.closest(".row-checkbox");
+      if (checkbox) {
+        if (isRange) {
+          evt.preventDefault();
+          toggleRowSelection(checkbox.getAttribute("data-sid"), {
+            force: true,
+            rangeSelect: true
+          });
+        }
+        return;
+      }
+
+      if (evt.target.closest("a, button, input, select, textarea, label")) {
+        return;
+      }
+
+      const selectionText = (window.getSelection && window.getSelection().toString()) || "";
+      if (!isRange && selectionText.trim().length > 0) {
+        return;
+      }
+
+      const row = evt.target.closest("tr[data-sid]");
+      if (!row) return;
+      if (isRange && window.getSelection) {
+        window.getSelection().removeAllRanges();
+      }
+      toggleRowSelection(row.getAttribute("data-sid"), {
+        force: evt.ctrlKey || evt.metaKey ? true : null,
+        rangeSelect: isRange
+      });
     });
 
     // Bulk bar actions
     el.btnClearSelection.addEventListener("click", () => {
       state.selectedIds.clear();
+      state.lastCheckedSid = null;
       renderTable();
       syncBulkBar();
     });

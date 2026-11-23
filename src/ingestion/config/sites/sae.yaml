@@ -51,6 +51,8 @@ scope:
 #   - ^/(category|tag|author|page)(/|$)
 #   - -c\d+\.html$
 discovery:
+  watch_urls:
+  - https://sae.uet.vnu.edu.vn/tin-tuc-l3.html
   start_urls:
   - https://sae.uet.vnu.edu.vn/
   link_selectors:

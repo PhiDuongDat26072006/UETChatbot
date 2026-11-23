@@ -1057,6 +1057,10 @@ a:hover {
   border-bottom: none;
 }
 
+.source-table tbody tr[data-sid] {
+  cursor: pointer;
+}
+
 .source-table tbody tr:hover {
   background-color: var(--bg-hover);
 }
@@ -1071,9 +1075,17 @@ a:hover {
 }
 
 .col-check {
-  width: 38px;
+  width: 42px;
   text-align: center;
   vertical-align: middle !important;
+}
+
+#select-all-checkbox,
+.row-checkbox {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--primary);
 }
 
 .col-title {

@@ -6,8 +6,62 @@ version: 2
 # ==============================================================================
 seeds:
   # --- CORE SCOPE (Điểm chuẩn & Văn bản hướng dẫn tuyển sinh 2026) ---
-  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/diem-chuan-cac-nganh/
-  - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/van-ban-huong-dan/
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/1868_Quy-che-tuyen-sinh-DHCQ-tai-DHQGHN_2025.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/ND-179-ndcp-cap-hoc-bong-KH-co-ban-CN-chien-luoc.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Thong-tin-tuyen-sinh-DHCQ-nam-2026-cap-nhat.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/category/tu-van-tuyen-sinh/fanpage/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cho-em-hoi-la-truong-minh-co-xet-he-lien-thong-len-khong-a-em-cam-on/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-du-dinh-thi-vao-truong-nhung-em-khong-biet-truong-co-dao-tao-nganh-an-toan-thong-tin-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-quan-tam-den-nganh-thi-diem-cong-nghe-vu-tru-tuong-lai-nganh-nay-the-nao-co-hoi-lam-viec-tai-nhung-don-vi-nao/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-rat-ham-mo-truong-dai-hoc-cong-nghe-tu-lau-roi-a-mai-sau-em-muon-lam-cong-viec-la-lap-trinh-de-viet-phan-mem-cho-cac-cong-ty-doanh-nghiep-lam-ben-phan-kinh-te-de-ho-giam-bot-cong-doan-trong-cong-v/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/hoc-nganh-cong-nghe-nong-nghiep-ra-lam-viec-o-dau/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/khoa-cong-nghe-hang-khong-vu-tru-dao-tao-nhung-cong-viec-nhu-the-nao-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/nganh-cong-nghe-nong-nghiep-dao-tao-tai-truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-co-gi-khac-voi-cac-nganh-nong-nghiep-dang-duoc-dao-tao-tai-cac-don-vi-khac/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/sinh-vien-hoc-nganh-cong-nghe-nong-nghiep-duoc-thuc-hanh-thuc-tap-o-dau/
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Huong-dan-tuyen-sinh-Dai-hoc-Cao-dang-cua-Bo-GDDT.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/cho-em-hoi-neu-em-truot-nv1-thi-sang-nv2-em-co-duoc-xet-ngang-voi-cac-ban-la-nv1-ko-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/neu-e-dang-ky-nganh-cong-nghe-thong-tin-cua-truong-dai-hoc-cong-nghe-thi-em-se-duoc-dao-tao-ve-mang-gi-vay-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/nganh-nao-cua-truong-hoc-ve-an-ninh-mang-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/nha-truong-xet-tuyen-thi-uu-tien-diem-hay-uu-tien-nguyen-vong-truoc-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-dang-phan-van-giua-nganh-cntt-va-cntt-dinh-huong-nhat-ban-khong-biet-hai-nganh-nay-khac-nhau-nhu-the-nao-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-muon-dang-ki-dang-ki-hai-nganh-thi-nhu-nao-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-muon-dang-ky-nganh-cong-nghe-thong-tin-va-em-muon-hoi-mot-vai-thong-tin-ve-nganh-nay-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-muon-hoc-ve-lap-trinh-ios-thi-nen-dang-ky-khoa-nao-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-muon-hoi-la-tuyen-sinh-nganh-ky-thuat-robot-thi-diem-chuan-bang-voi-ky-thuat-may-tinh-hay-sao-vay/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/em-muon-tim-hieu-ve-truong-minh-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/neu-em-chua-biet-gi-ve-lap-trinh-thi-co-hoc-duoc-nganh-cong-nghe-thong-tin-khong-a-em-dang-hoc-khoi-a1-nhung-tieng-anh-cua-em-cung-khong-duoc-tot-lam-vay-co-hoc-duoc-cong-nghe-thong-tin-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/nha-truong-cho-em-hoi-chuyen-nganh-vat-li-ki-thuat-dao-tao-ve-nhung-gi-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/nha-truong-cho-em-hoi-hien-tai-tinh-trang-sinh-vien-hoc-xong-co-viec-lam-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/nha-truong-cho-em-hoi-la-nganh-cong-nghe-thong-tin-cua-truong-minh-co-lay-nguyen-vong-2-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/o-to-dang-ki-du-thi-1-va-2-e-voi-qua-nen-nho-ban-e-ghi-ho-1-to-va-e-ghi-1-to-nen-chu-nhin-khac-nhau-nhung-van-cung-mau-muc-a-thi-e-hoi-nhu-the-co-bi-lam-sao-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-e-hoi-sao-k-co-ma-nganh-a-dang-ki-theo-ma-nhom-nganh-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-em-ho%cc%89i-trong-phieu-dang-ki-xet-tuye%cc%89n-tha%cc%89ng-cu%cc%89a-bo%cc%a3-gddt-nhu-hinh-dinh-kem-o%cc%89-thong-tin-so-7-va-so/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-em-hoi-cac-nganh-clc-thuong-lay-diem-thap-hon-binh-thuong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-em-hoi-neu-do-vao-truong-voi-ket-qua-thi-thptqg-thi-co-phai-thi-them-ki-thi-nao-nua-ko-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-em-hoi-nganh-ki-thuat-xay-dung-giao-thong-cua-truong-dao-tao-ve-ben-gi-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-em-hoi-truong-dai-hoc-cong-nghe-dhqghn-co-dao-tao-co-dien-tu-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thua-thay-co-ma-truong-va-ma-nganh-cntt-cua-truong-la-gi-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/truong-co-khoa-dien-tu-vien-thong-khong-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/612/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/em-khong-biet-gi-ve-tin-hoc-nhung-lai-thich-nganh-cntt-thi-em-co-theo-hoc-duoc-khong/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/hoc-nganh-ky-thuat-nang-luong-khi-ra-truong-lam-gi/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/hoc-xong-nganh-cong-nghe-ky-thuat-xay-dung-giao-thong-ra-truong-lam-viec-o-dau/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/lop-11-em-dat-giai-ba-mon-tin-hoc-ky-thi-hoc-sinh-gioi-cap-quoc-gia-lop-12-em-chi-duoc-giai-khuyen-khich-co-duoc-tuyen-thang-vao-nganh-cong-nghe-thong-tin-khong/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/nha-truong-co-ky-tuc-xa-cho-sinh-vien-ngoai-tinh-o-khong/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/thua-co-khi-dang-ky-xet-tuyen-em-duoc-quyen-dang-ky-may-nguyen-vong/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/cau-hoi-thuong-gap/thua-thay-co-em-duoc-giai-3-qg-cuoc-thi-khoa-hoc-ky-thuat-cap-quoc-gia-do-bo-gddt-to-chuc-thi-duoc-tuyen-thang-nhung-khoa-nao-a/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/nha-truong-cho-em-hoi-la-khi-ma-em-duoc-tuyen-thang-roi-ay-a-thi-em-muon-thi-vao-cac-lop-chat-luong-cao-thi-phai-thi-bang-mon-gi-a-vi-du-nhu-toan-voi-ly-chang-han/
+  - https://tuyensinh.uet.vnu.edu.vn/tu-van-tuyen-sinh/thay-co-cho-e-hoi-ma-nganh-cong-nghe-thong-tin-la-gi-vay-a/
+  - https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/co-hoi-viec-lam/sinh-vien-nganh-co-ky-thuat-sau-khi-tot-nghiep-lam-viec-tai-dau/
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/995_QD_BGDDT-Moet.-Phe-duyet-DS-chuong-trinh-tai-nang-.signed.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Moet-179-Chuan-CTDT-tai-nang-2627-bgddt.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/Moet.-Phe-duyet-DS-CTDT-tham-gia-CT-phat-trien-nguon-nhan-luc-ban-dan-2030.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/wp-content/images/ban-hanh-QD-Chuong-trinh-taiof-nang-995_QD_BGDDT.signed.pdf
+  - https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/giao-su-trong-top-100-nha-khoa-hoc-dung-dau-the-gioi-dan-dat-lop-tre-viet/
+  - https://tuyensinh.uet.vnu.edu.vn/nganh-theo-khoa/khoa-cong-nghe-thong-tin/dinh-huong-nghe-nghiep-va-co-hoi-viec-lam-nganh-truyen-thong-va-mang-may-tinh/
+  - https://tuyensinh.uet.vnu.edu.vn/nganh-theo-khoa/nganh-cong-nghe-nong-nghiep-lua-chon-phat-trien-tuong-lai-tu-xu-huong-tat-yeu-va-the-manh-cua-dat-nuoc/
+  - https://tuyensinh.uet.vnu.edu.vn/nganh-theo-khoa/so-huu-tam-bang-ky-su-robot-nhieu-co-hoi-viec-lam-hap-dan-tai-cac-cong-ty-trong-nuoc-va-quoc-te/
+  - https://tuyensinh.uet.vnu.edu.vn/ban-nen-biet/nganh-ky-su-cong-nghe-hang-khong-vu-tru-duoc-dao-tao-nhu-the-nao/
 
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn cổng tuyển sinh) ---
   # - https://tuyensinh.uet.vnu.edu.vn/
@@ -76,6 +130,9 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
+  watch_urls:
+    - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
+    - https://tuyensinh.uet.vnu.edu.vn/category/ban-nen-biet/tin-tong-hop/
   start_urls:
     - https://tuyensinh.uet.vnu.edu.vn/
     - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/diem-chuan-cac-nganh/

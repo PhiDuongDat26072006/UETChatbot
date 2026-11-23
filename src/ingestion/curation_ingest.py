@@ -14,6 +14,7 @@ from .config.profiles import load_profiles
 from .config.settings import load_runtime
 from .crawler.parser import parse_page
 from .crawler.policy import discovery_verdict, in_discovery_scope, resource_type
+from .curation_dedup import dedup_url_key
 from .curation_offline import fetch_offline_or_http
 from .curation_yaml import ordered_site_names
 from .identity import source_id
@@ -32,13 +33,15 @@ def _record_discovered_links(
     links, parent_url, depth, site, profile, storage, seen_ids, site_stats, progress
 ):
     existing = storage.records("sources", site)
+    known_keys = {dedup_url_key(r["uri"], profile) for r in existing.values()}
     for link in links:
         target = link["url"]
         kind = resource_type(target)
         if kind == "asset":
             continue
         child_sid = source_id(target)
-        if child_sid in seen_ids or child_sid in existing:
+        target_key = dedup_url_key(target, profile)
+        if child_sid in seen_ids or child_sid in existing or target_key in known_keys:
             prev = existing.get(child_sid, {})
             if prev.get("metadata", {}).get("decision") == "rejected":
                 site_stats["rejected_preserved"] += 1
@@ -46,6 +49,7 @@ def _record_discovered_links(
             seen_ids.add(child_sid)
             continue
         seen_ids.add(child_sid)
+        known_keys.add(target_key)
         verdict, why = discovery_verdict(target, profile)
         if verdict == "pending":
             site_stats["new_pending"] += 1
@@ -144,7 +148,20 @@ def _apply_download_result(
         or page.get("encoding") == "binary"
         or page["final_url"].lower().endswith(".pdf")
     )
-    if is_pdf:
+    is_docx = page["final_url"].lower().endswith(".docx") or source.uri.lower().endswith(".docx")
+    if is_docx:
+        clean_name = (
+            PurePosixPath(unquote(urlsplit(page["final_url"]).path))
+            .stem.replace("-", " ")
+            .replace("_", " ")
+            .strip()
+        )
+        parsed_meta = {
+            "title": clean_name or source.metadata.get("title"),
+            "resource_type": "office",
+        }
+        links = []
+    elif is_pdf:
         clean_name = (
             PurePosixPath(unquote(urlsplit(page["final_url"]).path))
             .stem.replace("-", " ")

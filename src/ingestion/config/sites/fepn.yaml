@@ -54,6 +54,9 @@ scope:
 #   listing_patterns:
 #   - ^/(category|tag|author|page)(/|$)
 discovery:
+  watch_urls:
+  - https://fepn.uet.vnu.edu.vn/tin-tuc
+  - https://fepn.uet.vnu.edu.vn/thong-tin/thong-bao
   start_urls:
   - https://fepn.uet.vnu.edu.vn/
   link_selectors:

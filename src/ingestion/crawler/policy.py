@@ -60,6 +60,14 @@ def resource_type(url):
     return ATTACHMENTS.get(suffix, "asset" if suffix in ASSETS else "html")
 
 
+def is_docx(url):
+    return PurePosixPath(urlsplit(url).path).suffix.lower() == ".docx"
+
+
+def is_accepted_type(url):
+    return resource_type(url) in {"html", "pdf"} or is_docx(url)
+
+
 def has_blocked_fragment(url, profile):
     """Check before canonicalization, which deliberately removes all fragments."""
     fragment = unquote(urlsplit(url).fragment).casefold()
@@ -89,7 +97,7 @@ def in_discovery_scope(url, profile):
     path = unquote(p.path).rstrip("/") or "/"
     path_lower = path.casefold()
     if p.path.startswith("/offline/"):
-        return resource_type(url) in {"html", "pdf"}
+        return is_accepted_type(url)
     if p.netloc.lower() not in scope["hosts"]:
         return False
     if resource_type(url) == "asset":
@@ -201,10 +209,10 @@ def is_listing(url, profile):
 
 def automatic_evaluate(url, profile, metadata=None):
     kind = resource_type(url)
-    if kind == "pdf":
+    if kind == "pdf" or is_docx(url):
         if not automatic_in_scope(url, profile):
             return "rejected", "outside_scope"
-        return "accepted", "pdf_document"
+        return "accepted", "docx_document" if is_docx(url) else "pdf_document"
     if kind != "html":
         return "deferred" if kind != "asset" else "rejected", kind
     if not automatic_in_scope(url, profile):

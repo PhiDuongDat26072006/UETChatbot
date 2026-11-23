@@ -68,7 +68,7 @@ def attach(profiles, path=None):
             if url in rules:
                 raise ValueError(f"Duplicate normalized override URL: {url}")
             if rule["decision"] in {"accepted", "listing"}:
-                from .crawler.policy import resource_type
+                from .crawler.policy import is_accepted_type, resource_type
 
                 parts = urlsplit(url)
                 if parts.scheme.lower() not in {"http", "https"} or not parts.netloc:
@@ -78,7 +78,7 @@ def attach(profiles, path=None):
                     raise ValueError(
                         f"{url}: unsupported for HTML listing; use accepted/rejected/pending"
                     )
-                if rule["decision"] == "accepted" and kind not in {"html", "pdf"}:
+                if rule["decision"] == "accepted" and not is_accepted_type(url):
                     raise ValueError(
                         f"{url}: unsupported for ingestion; use deferred or pending"
                     )

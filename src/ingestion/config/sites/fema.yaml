@@ -15,6 +15,11 @@ seeds:
 - https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/cac-bo-mon-va-phong-thi-nghiem/
 - https://fema.uet.vnu.edu.vn/gioi-thieu/co-cau-to-chuc/hoi-dong-khoa-hoc-va-dao-tao/
 - https://fema.uet.vnu.edu.vn/hop-tac/
+- https://fema.uet.vnu.edu.vn/quy-dinh-khcn/
+- https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/2022.10.21_QD-so-3638-QD-DHQGHN-ngay-21.10.2022-vv-ban-hanh-qche-dtao-tien-si-tai-DHQGHN.pdf
+- https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/6.-Quy-dinh-khen-thuong-tai-Truong-DHCN.pdf
+- https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/Quy-che-DTDH-3626-ap-dung-tu-2022.pdf
+- https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/Quy-che-cong-tac-sinh-vien.pdf
 scope:
   hosts:
   - fema.uet.vnu.edu.vn
@@ -55,6 +60,10 @@ scope:
 #   - ^/(category|tag|author)(/|$)
 #   - (?:^|/)page(?:/|$)
 discovery:
+  watch_urls:
+  - https://fema.uet.vnu.edu.vn/tin-tuc/
+  - https://fema.uet.vnu.edu.vn/tin-tuc/thong-bao/
+  - https://fema.uet.vnu.edu.vn/sinh-vien/thong-bao-sinh-vien/
   start_urls:
   - https://fema.uet.vnu.edu.vn/
   link_selectors:

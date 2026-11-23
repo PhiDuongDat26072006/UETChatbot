@@ -3,7 +3,7 @@
 from contextlib import nullcontext
 import threading
 import time
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin
 import requests
 import urllib3
 from ..config.settings import load_runtime
@@ -69,21 +69,30 @@ class HTMLFetcher:
 
         parts = urlsplit(url)
         if parts.path.startswith("/offline/"):
-            rel_name = parts.path.split("/offline/", 1)[1].strip("/")
+            rel_name = unquote(parts.path.split("/offline/", 1)[1]).strip("/")
             repo_root = Path(__file__).resolve().parents[3]
             local_path = repo_root / "data" / "offline_docs" / rel_name
             if local_path.is_file():
                 body = local_path.read_bytes()
-                is_pdf = local_path.suffix.lower() == ".pdf" or body.startswith(b"%PDF-")
+                sfx = local_path.suffix.lower()
+                is_pdf = sfx == ".pdf" or body.startswith(b"%PDF-")
+                is_docx = sfx == ".docx"
+                mime = (
+                    "application/pdf"
+                    if is_pdf
+                    else (
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        if is_docx
+                        else "text/html; charset=utf-8"
+                    )
+                )
                 return {
                     "requested_url": url,
                     "final_url": url,
                     "status_code": 200,
-                    "headers": {
-                        "content-type": "application/pdf" if is_pdf else "text/html; charset=utf-8"
-                    },
+                    "headers": {"content-type": mime},
                     "body": body,
-                    "encoding": "binary" if is_pdf else "utf-8",
+                    "encoding": "binary" if (is_pdf or is_docx) else "utf-8",
                 }
         current = url
         for _ in range(6):
