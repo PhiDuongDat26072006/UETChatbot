@@ -23,8 +23,6 @@ scope:
   exact_paths:
   - /vien-tri-tue-nhan-tao
 discovery:
-  watch_urls:
-  - https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
   start_urls:
   - https://uet.vnu.edu.vn/vien-tri-tue-nhan-tao/
   link_selectors:

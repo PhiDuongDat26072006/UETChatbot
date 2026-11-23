@@ -60,10 +60,6 @@ scope:
 #   - ^/(category|tag|author)(/|$)
 #   - (?:^|/)page(?:/|$)
 discovery:
-  watch_urls:
-  - https://fema.uet.vnu.edu.vn/tin-tuc/
-  - https://fema.uet.vnu.edu.vn/tin-tuc/thong-bao/
-  - https://fema.uet.vnu.edu.vn/sinh-vien/thong-bao-sinh-vien/
   start_urls:
   - https://fema.uet.vnu.edu.vn/
   link_selectors:

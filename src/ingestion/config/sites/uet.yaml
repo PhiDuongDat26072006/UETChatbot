@@ -208,10 +208,6 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
-  watch_urls:
-    - https://uet.vnu.edu.vn/category/tin-tuc/
-    - https://uet.vnu.edu.vn/category/thong-bao/
-    - https://uet.vnu.edu.vn/category/sinh-vien/thong-bao-nguoi-hoc/
   start_urls:
     - https://uet.vnu.edu.vn/
     - https://uet.edu.vn/dao-tao/

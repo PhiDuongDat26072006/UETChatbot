@@ -55,9 +55,6 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
-  watch_urls:
-    - https://handbook.uet.vnu.edu.vn/
-    - https://handbook.uet.vnu.edu.vn/sinh-vien
   start_urls:
     - https://handbook.uet.vnu.edu.vn/
   link_selectors:

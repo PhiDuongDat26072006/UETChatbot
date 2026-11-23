@@ -59,10 +59,6 @@ scope:
 #   - ^/(category|tag|author|page)(/|$)
 #   - ^/\d{4}(/\d{2})?$
 discovery:
-  watch_urls:
-  - https://fet.uet.vnu.edu.vn/category/tin-noi-bat/
-  - https://fet.uet.vnu.edu.vn/category/thong-bao-sinh-vien/
-  - https://fet.uet.vnu.edu.vn/category/su-kien/
   start_urls:
   - https://fet.uet.vnu.edu.vn/
   link_selectors:

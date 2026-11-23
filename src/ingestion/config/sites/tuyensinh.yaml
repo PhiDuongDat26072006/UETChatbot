@@ -130,9 +130,6 @@ scope:
 # DISCOVERY
 # ==============================================================================
 discovery:
-  watch_urls:
-    - https://tuyensinh.uet.vnu.edu.vn/category/tin-tuyen-sinh/
-    - https://tuyensinh.uet.vnu.edu.vn/category/ban-nen-biet/tin-tong-hop/
   start_urls:
     - https://tuyensinh.uet.vnu.edu.vn/
     - https://tuyensinh.uet.vnu.edu.vn/category/tra-cuu/diem-chuan-cac-nganh/

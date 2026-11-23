@@ -13,7 +13,20 @@ from .curation import VALID_DECISIONS, set_sources_decision
 from .curation_helpers import compute_site_state, load_corpus_policies, topic_info
 from .curation_yaml import ordered_site_names
 from .storage import Storage, now, write_json
-from .telegram_client import _read_dotenv
+
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+
+def _read_dotenv() -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not ENV_PATH.is_file():
+        return values
+    for raw_line in ENV_PATH.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            values[k.strip()] = v.strip().strip("'\"")
+    return values
 
 
 def _config_path(data_dir) -> Path:

@@ -121,9 +121,6 @@ scope:
   - respond
   - comments
 discovery:
-  watch_urls:
-  - https://www.fit.uet.vnu.edu.vn/tin-tuc/
-  - https://www.fit.uet.vnu.edu.vn/thong-bao/
   start_urls:
   - https://www.fit.uet.vnu.edu.vn/
   link_selectors:

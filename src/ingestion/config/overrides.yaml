@@ -78,7 +78,7 @@ sites:
         decision: rejected
       https://www.fit.uet.vnu.edu.vn/tin-tuc/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
   IAI:
     urls:
       https://www.facebook.com/groups/uet.tvts/:
@@ -7211,10 +7211,10 @@ sites:
         decision: rejected
       https://fat.uet.vnu.edu.vn/tin-moi-nhat:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fat.uet.vnu.edu.vn/tin-tuc:
         decision: listing
-        note: watch_urls listing
+        note: category listing
   FEMA:
     urls:
       https://fema.uet.vnu.edu.vn/quy-dinh-khcn/:
@@ -7251,13 +7251,13 @@ sites:
         decision: rejected
       https://fema.uet.vnu.edu.vn/sinh-vien/thong-bao-sinh-vien/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fema.uet.vnu.edu.vn/tin-tuc/thong-bao/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fema.uet.vnu.edu.vn/tin-tuc/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
   FEPN:
     urls:
       https://fepn.uet.vnu.edu.vn/dao-tao/nghien-cuu/tong-hop-cac-quy-dinh-va-huong-dan-ve-hoat-dong-khcn-tai-truong-dhcn:
@@ -7280,23 +7280,23 @@ sites:
         decision: rejected
       https://fepn.uet.vnu.edu.vn/tin-tuc:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fepn.uet.vnu.edu.vn/thong-tin/thong-bao:
         decision: listing
-        note: watch_urls listing
+        note: category listing
   FET:
     urls:
       https://fet.uet.vnu.edu.vn/category/su-kien/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fet.uet.vnu.edu.vn/category/thong-bao-sinh-vien/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
       https://fet.uet.vnu.edu.vn/category/tin-noi-bat/:
         decision: listing
-        note: watch_urls listing
+        note: category listing
   SAE:
     urls:
       https://sae.uet.vnu.edu.vn/tin-tuc-l3.html:
         decision: listing
-        note: watch_urls listing
+        note: category listing

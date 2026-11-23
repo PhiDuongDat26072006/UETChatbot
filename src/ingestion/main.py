@@ -70,18 +70,6 @@ def build_parser():
     migrate = commands.add_parser("migrate-pending", help="Migrate non-accepted/non-alias sources to pending")
     migrate.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
     migrate.add_argument("--profile-dir", type=Path)
-    tg = commands.add_parser("telegram", help="Telegram notification and curation bot")
-    tg.add_argument("--token", help="Telegram Bot Token from @BotFather")
-    tg.add_argument("--chat-id", help="Target Telegram chat ID")
-    tg.add_argument("--setup", action="store_true", help="Verify token, detect chat ID on /start, and save config")
-    tg.add_argument("--test", action="store_true", help="Send a test status message to Telegram")
-    tg.add_argument("--watch", action="store_true", help="Run daily category watch and notify new pending links")
-    tg.add_argument("--listen", action="store_true", help="Run interactive long-polling Telegram bot")
-    tg.add_argument("--wait-seconds", type=positive, default=60, help="Wait timeout for --setup /start detection")
-    tg.add_argument("--max-cards", type=positive, default=10, help="Max inline approval cards sent by --watch")
-    tg.add_argument("--sites", nargs="+", type=str.upper)
-    tg.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
-    tg.add_argument("--profile-dir", type=Path)
     dedup = commands.add_parser("dedup", help="Deduplicate sources per-site and across all sites")
     dedup.add_argument("--sites", nargs="+", type=str.upper)
     dedup.add_argument("--no-cross-site", action="store_true", help="Only deduplicate inside each site")
@@ -107,16 +95,8 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command == "telegram" and not (args.setup or args.test or args.watch or args.listen):
-        parser.error("Choose one of --setup, --test, --watch, or --listen")
     if args.command == "cloudflare" and not (args.setup or args.push or args.pull):
         parser.error("Choose at least one of --setup, --push, or --pull")
-    if args.command == "telegram":
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(message)s",
-            force=True,
-        )
     if args.command == "ingest":
         from .runner import STAGES
 
@@ -164,53 +144,7 @@ def main(argv=None):
                 open_browser=args.open_browser,
             )
             return 0
-        if args.command == "telegram":
-            from .telegram_bot import (
-                run_daily_category_watch,
-                run_telegram_polling,
-                send_test_status,
-                send_watch_notification,
-                setup_telegram_bot,
-            )
-
-            if args.setup:
-                result = setup_telegram_bot(
-                    args.data_dir,
-                    token=args.token,
-                    chat_id=args.chat_id,
-                    wait_seconds=args.wait_seconds,
-                    profile_dir=args.profile_dir,
-                )
-            elif args.test:
-                result = send_test_status(
-                    args.data_dir,
-                    token=args.token,
-                    chat_id=args.chat_id,
-                    profile_dir=args.profile_dir,
-                )
-            elif args.watch:
-                watch_res = run_daily_category_watch(
-                    args.data_dir,
-                    sites=args.sites,
-                    profile_dir=args.profile_dir,
-                )
-                notif = send_watch_notification(
-                    args.data_dir,
-                    watch_res,
-                    token=args.token,
-                    chat_id=args.chat_id,
-                    max_cards=args.max_cards,
-                )
-                result = {"watch": watch_res, "notification": notif}
-            else:
-                run_telegram_polling(
-                    args.data_dir,
-                    token=args.token,
-                    chat_id=args.chat_id,
-                    profile_dir=args.profile_dir,
-                )
-                return 0
-        elif args.command == "migrate-pending":
+        if args.command == "migrate-pending":
             from .curation import migrate_non_accepted_to_pending
 
             result = migrate_non_accepted_to_pending(args.data_dir, args.profile_dir)
