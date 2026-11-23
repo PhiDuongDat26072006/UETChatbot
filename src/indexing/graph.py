@@ -30,7 +30,6 @@ if str(BASE_DIR) not in sys.path:
 
 from src.base import BaseEmbeddingModel, DataChunk, RetrievedContext
 from src.indexing.chunks import normalize_chunks
-from src.indexing.sparse import tokenize
 from src.utils.helpers import get_logger
 
 logger = get_logger("indexing.graph")
@@ -115,19 +114,223 @@ Văn bản:
 """
 
 
+_CANONICAL_ENTITY_ALIASES: Dict[str, str] = {
+    "uet": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "đhcn": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "đại học công nghệ": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đại học công nghệ": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đh công nghệ": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đại học công nghệ - đhqghn": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đại học công nghệ đhqghn": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đại học công nghệ - đại học quốc gia hà nội": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "trường đại học công nghệ - đhqghn (uet)": "Trường Đại học Công nghệ - ĐHQGHN (UET)",
+    "đhqghn": "Đại học Quốc gia Hà Nội (ĐHQGHN)",
+    "vnu": "Đại học Quốc gia Hà Nội (ĐHQGHN)",
+    "đại học quốc gia hà nội": "Đại học Quốc gia Hà Nội (ĐHQGHN)",
+    "đại học quốc gia hà nội (đhqghn)": "Đại học Quốc gia Hà Nội (ĐHQGHN)",
+    "fit": "Khoa Công nghệ Thông tin (FIT)",
+    "khoa cntt": "Khoa Công nghệ Thông tin (FIT)",
+    "khoa công nghệ thông tin": "Khoa Công nghệ Thông tin (FIT)",
+    "khoa công nghệ thông tin (fit)": "Khoa Công nghệ Thông tin (FIT)",
+    "fet": "Khoa Điện tử Viễn thông (FET)",
+    "khoa đtvt": "Khoa Điện tử Viễn thông (FET)",
+    "khoa điện tử viễn thông": "Khoa Điện tử Viễn thông (FET)",
+    "khoa điện tử - viễn thông": "Khoa Điện tử Viễn thông (FET)",
+    "khoa điện tử viễn thông (fet)": "Khoa Điện tử Viễn thông (FET)",
+    "fema": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "khoa chkttđh": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "khoa cơ học kỹ thuật và tự động hóa": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "khoa cơ học kỹ thuật & tự động hóa": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "khoa cơ học kỹ thuật và tự động hóa (fema)": "Khoa Cơ học kỹ thuật và Tự động hóa (FEMA)",
+    "fepn": "Khoa Vật lý kỹ thuật và Công nghệ Nano (FEPN)",
+    "khoa vlkt&cnnn": "Khoa Vật lý kỹ thuật và Công nghệ Nano (FEPN)",
+    "khoa vật lý kỹ thuật và công nghệ nano": "Khoa Vật lý kỹ thuật và Công nghệ Nano (FEPN)",
+    "khoa vật lý kỹ thuật và công nghệ nano (fepn)": "Khoa Vật lý kỹ thuật và Công nghệ Nano (FEPN)",
+    "fat": "Khoa Công nghệ Nông nghiệp (FAT)",
+    "khoa cnnn": "Khoa Công nghệ Nông nghiệp (FAT)",
+    "khoa công nghệ nông nghiệp": "Khoa Công nghệ Nông nghiệp (FAT)",
+    "khoa công nghệ nông nghiệp (fat)": "Khoa Công nghệ Nông nghiệp (FAT)",
+    "fce": "Khoa Công nghệ Xây dựng - Giao thông (FCE)",
+    "khoa công nghệ xây dựng - giao thông": "Khoa Công nghệ Xây dựng - Giao thông (FCE)",
+    "khoa công nghệ xây dựng giao thông": "Khoa Công nghệ Xây dựng - Giao thông (FCE)",
+    "khoa công nghệ xây dựng - giao thông (fce)": "Khoa Công nghệ Xây dựng - Giao thông (FCE)",
+    "iai": "Viện Trí tuệ nhân tạo (IAI)",
+    "viện trí tuệ nhân tạo": "Viện Trí tuệ nhân tạo (IAI)",
+    "viện công nghệ trí tuệ nhân tạo": "Viện Trí tuệ nhân tạo (IAI)",
+    "viện trí tuệ nhân tạo (iai)": "Viện Trí tuệ nhân tạo (IAI)",
+    "sae": "Khoa Hàng không Vũ trụ (SAE)",
+    "khoa hàng không vũ trụ": "Khoa Hàng không Vũ trụ (SAE)",
+    "viện công nghệ hàng không vũ trụ": "Khoa Hàng không Vũ trụ (SAE)",
+    "khoa hàng không vũ trụ (sae)": "Khoa Hàng không Vũ trụ (SAE)",
+    "handbook": "Sổ tay sinh viên UET (HANDBOOK)",
+    "sổ tay sinh viên uet": "Sổ tay sinh viên UET (HANDBOOK)",
+    "gpa": "Điểm trung bình chung (GPA)",
+    "điểm tbc": "Điểm trung bình chung (GPA)",
+    "điểm trung bình chung": "Điểm trung bình chung (GPA)",
+    "điểm trung bình chung tích lũy": "Điểm trung bình chung (GPA)",
+    "điểm trung bình chung học kỳ": "Điểm trung bình chung (GPA)",
+    "điểm trung bình chung toàn khóa": "Điểm trung bình chung (GPA)",
+    "điểm trung bình chung (gpa)": "Điểm trung bình chung (GPA)",
+    "đrl": "Điểm rèn luyện",
+    "điểm rèn luyện": "Điểm rèn luyện",
+    "kết quả rèn luyện": "Điểm rèn luyện",
+    "kltn": "Khóa luận tốt nghiệp",
+    "khóa luận tốt nghiệp": "Khóa luận tốt nghiệp",
+    "cảnh báo học tập": "Cảnh báo học vụ",
+    "cảnh báo học vụ": "Cảnh báo học vụ",
+    "chuẩn đầu ra ngoại ngữ": "Chuẩn đầu ra ngoại ngữ",
+    "chuẩn đầu ra về ngoại ngữ": "Chuẩn đầu ra ngoại ngữ",
+    "vstep": "VSTEP",
+    "vstep.3-5": "VSTEP",
+    "vstep 3-5": "VSTEP",
+    "ielts": "IELTS",
+    "toeic": "TOEIC",
+    "toefl": "TOEFL",
+    "toefl itp": "TOEFL ITP",
+    "toefl ibt": "TOEFL iBT",
+    "jlpt": "JLPT",
+    "aptis": "Aptis",
+    "vnu-test": "VNU-TEST",
+}
+
+_DOC_PREFIX_STRIP_RE = re.compile(
+    r"^(?:quyết\s+định|nghị\s+quyết|thông\s+báo|kế\s+hoạch|hướng\s+dẫn|công\s+văn|quy\s+định|qđ|vb)(?:\s+số)?\s+(\d{1,5}/(?:QĐ|NQ|TB|KH|HD|CV)-[A-ZĐƠƯĂÂÊÔ0-9\-]+)\b.*$",
+    re.IGNORECASE,
+)
+
+_REL_ASCII_PREFIX_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("SUA_DOI", "BO_SUNG", "THAY_THE"), "SỬA_ĐỔI_BỔ_SUNG"),
+    (("CAN_CU", "DUA_TREN"), "CĂN_CỨ"),
+    (("YEU_CAU", "DIEU_KIEN", "CAN_CO", "BAT_BUOC"), "YÊU_CẦU_ĐIỀU_KIỆN"),
+    (("TRUC_THUOC",), "TRỰC_THUỘC"),
+    (("THUOC",), "THUỘC_ĐƠN_VỊ"),
+    (("BAO_GOM", "CHUA_NOI_DUNG"), "BAO_GỒM"),
+    (("PHU_TRACH", "CHU_TRI", "GIANG_DAY"), "PHỤ_TRÁCH"),
+    (("QUY_DINH", "AP_DUNG", "BAN_HANH", "XET_"), "QUY_ĐỊNH_VỀ"),
+    (("LIEN_QUAN",), "LIÊN_QUAN_ĐẾN"),
+)
+
+_RELATION_WEIGHTS: Dict[str, float] = {
+    "SỬA_ĐỔI_BỔ_SUNG": 1.35,
+    "CĂN_CỨ": 1.30,
+    "YÊU_CẦU_ĐIỀU_KIỆN": 1.25,
+    "QUY_ĐỊNH_VỀ": 1.15,
+    "BAO_GỒM": 1.10,
+    "PHỤ_TRÁCH": 1.10,
+    "TRỰC_THUỘC": 0.95,
+    "THUỘC_ĐƠN_VỊ": 0.85,
+    "LIÊN_QUAN_ĐẾN": 0.85,
+}
+
+_ENTITY_TYPE_WEIGHTS: Dict[str, float] = {
+    "REGULATION": 1.25,
+    "COURSE": 1.25,
+    "ARTICLE": 1.15,
+    "CERTIFICATE": 1.15,
+    "PERSON": 1.15,
+    "CONCEPT": 1.00,
+    "DEPARTMENT": 0.95,
+    "FACULTY": 0.70,
+}
+
+
+def _strip_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFD", text)
+    no_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return no_marks.replace("đ", "d").replace("Đ", "D")
+
+
+_WRAP_PAIRS: Tuple[Tuple[str, str], ...] = (
+    ("(", ")"),
+    ("[", "]"),
+    ("{", "}"),
+    ('"', '"'),
+    ("'", "'"),
+    ("“", "”"),
+    ("‘", "’"),
+)
+_GRAPH_WORD_RE = re.compile(
+    r"\d{1,5}/(?:qđ|nq|tb|kh|hd|cv)-[a-zđơưăâêô0-9\-]+|[a-z0-9à-ỹđ]+",
+    re.IGNORECASE,
+)
+_BREADCRUMB_ARTICLE_COLON_RE = re.compile(
+    r"^((?:Điều|Khoản|Chương|Mục)\s+[IVXLCDM\d]+(?:\s*,\s*(?:Điều|Khoản|Chương|Mục)\s+[IVXLCDM\d]+)?)\s*:.*$",
+    re.IGNORECASE,
+)
+
+
+def _graph_tokenize(text: str) -> Set[str]:
+    """Lightweight sub-millisecond tokenizer (unigrams + bigrams) for Graph entity matching."""
+    norm = unicodedata.normalize("NFC", str(text or "")).casefold()
+    words = _GRAPH_WORD_RE.findall(norm)
+    if not words:
+        return set()
+    tokens: Set[str] = set()
+    for i, w in enumerate(words):
+        is_stop = w in _VN_STOP_BOUNDARY and not any(c.isdigit() for c in w)
+        if not is_stop and (len(w) >= 2 or w.isdigit()):
+            tokens.add(w)
+        if i + 1 < len(words):
+            nxt = words[i + 1]
+            nxt_stop = nxt in _VN_STOP_BOUNDARY and not any(c.isdigit() for c in nxt)
+            if not (is_stop and nxt_stop):
+                tokens.add(f"{w}_{nxt}")
+    return tokens
+
+
 def clean_entity_name(name: str) -> str:
-    """Chuẩn hóa tên hiển thị của thực thể."""
+    """Chuẩn hóa tên hiển thị của thực thể mà vẫn bảo toàn dấu ngoặc cân bằng như (UET)."""
     text = unicodedata.normalize("NFC", str(name or ""))
-    text = text.strip(" \t\r\n\"'“”‘’[](){}<>.,;:-–—")
+    changed = True
+    while changed and text:
+        changed = False
+        stripped = text.strip(" \t\r\n.,;:-–—")
+        if stripped != text:
+            text = stripped
+            changed = True
+        for left, right in _WRAP_PAIRS:
+            if len(text) >= 2 and text.startswith(left) and text.endswith(right):
+                if left != right or text.count(left) >= 2:
+                    text = text[len(left):-len(right)]
+                    changed = True
+            elif left == right:
+                if text.count(left) % 2 == 1:
+                    if text.startswith(left):
+                        text = text[len(left):]
+                        changed = True
+                    elif text.endswith(right):
+                        text = text[:-len(right)]
+                        changed = True
+            else:
+                if text.startswith(left) and text.count(left) > text.count(right):
+                    text = text[len(left):]
+                    changed = True
+                elif text.endswith(right) and text.count(right) > text.count(left):
+                    text = text[:-len(right)]
+                    changed = True
     text = re.sub(r"\s+", " ", text).strip()
     if len(text) > 120:
         text = text[:120].rsplit(" ", 1)[0].strip() or text[:120]
     return text
 
 
+def canonicalize_entity_name(name: str, etype: str = "") -> str:
+    """Gộp các biến thể viết tắt/từ đồng nghĩa UET về tên thực thể chuẩn duy nhất."""
+    cleaned = clean_entity_name(name)
+    if not cleaned:
+        return ""
+    m_doc = _DOC_PREFIX_STRIP_RE.match(cleaned)
+    if m_doc:
+        return m_doc.group(1).upper()
+    alias = _CANONICAL_ENTITY_ALIASES.get(cleaned.casefold())
+    if alias:
+        return alias
+    return cleaned
+
+
 def normalize_entity_id(name: str) -> str:
-    """Tạo định danh bất biến cho thực thể từ tên chuẩn hóa."""
-    cleaned = clean_entity_name(name).casefold()
+    """Tạo định danh bất biến cho thực thể từ tên đã chuẩn hóa đồng nghĩa."""
+    cleaned = canonicalize_entity_name(name).casefold()
     cleaned = re.sub(r"[^\w]+", "_", cleaned, flags=re.UNICODE)
     return cleaned.strip("_")
 
@@ -150,7 +353,30 @@ def _normalize_relation(rel: str) -> str:
     text = unicodedata.normalize("NFC", str(rel or "LIÊN_QUAN_ĐẾN")).strip().upper()
     text = re.sub(r"\s+", "_", text)
     text = re.sub(r"[^\w]+", "_", text, flags=re.UNICODE).strip("_")
-    return text or "LIÊN_QUAN_ĐẾN"
+    if not text:
+        return "LIÊN_QUAN_ĐẾN"
+    ascii_rel = _strip_accents(text).upper()
+    for prefixes, target in _REL_ASCII_PREFIX_RULES:
+        if any(ascii_rel.startswith(p) for p in prefixes):
+            return target
+    return text
+
+
+def _canonicalize_triple(tr: Dict[str, str]) -> Optional[Dict[str, str]]:
+    h_type = str(tr.get("head_type") or "CONCEPT").upper()
+    t_type = str(tr.get("tail_type") or "CONCEPT").upper()
+    head = canonicalize_entity_name(str(tr.get("head") or ""), h_type)
+    tail = canonicalize_entity_name(str(tr.get("tail") or ""), t_type)
+    rel = _normalize_relation(str(tr.get("relation") or "LIÊN_QUAN_ĐẾN"))
+    if not head or not tail or normalize_entity_id(head) == normalize_entity_id(tail):
+        return None
+    return {
+        "head": head,
+        "head_type": h_type,
+        "relation": rel,
+        "tail": tail,
+        "tail_type": t_type,
+    }
 
 
 def _classify_sentence_relation(sentence_lower: str) -> str:
@@ -169,10 +395,13 @@ def _classify_sentence_relation(sentence_lower: str) -> str:
     return "LIÊN_QUAN_ĐẾN"
 
 
+_VALID_EXTRACTION_MODES = ("hybrid", "regex_only", "llm_only")
+
+
 class HybridGraphExtractor:
     """
     Bộ trích xuất Đồ thị Tri thức lai (Rule-based Academic Regex + OpenRouter Tencent Hy4 LLM).
-    Tầng Regex chạy 0đ trên toàn bộ corpus; tầng LLM có Disk Cache & lọc domain cốt lõi.
+    Hỗ trợ 3 chế độ độc lập: extraction_mode = "hybrid" | "regex_only" | "llm_only".
     """
 
     def __init__(
@@ -184,7 +413,12 @@ class HybridGraphExtractor:
         llm_domains: Optional[List[str]] = None,
         max_llm_chunks: Optional[int] = None,
         cache_path: Optional[Path] = None,
+        extraction_mode: str = "hybrid",
     ):
+        mode = str(extraction_mode or "hybrid").strip().lower()
+        if mode not in _VALID_EXTRACTION_MODES:
+            raise ValueError(f"Unsupported extraction_mode '{extraction_mode}'. Choose from {_VALID_EXTRACTION_MODES}.")
+        self.extraction_mode = mode
         self.llm_client = llm_client
         self.enable_llm_extraction = enable_llm_extraction
         self.llm_provider = llm_provider
@@ -224,7 +458,7 @@ class HybridGraphExtractor:
         found: Dict[str, Dict[str, str]] = {}
 
         def _add(name: str, etype: str) -> None:
-            cleaned = clean_entity_name(name)
+            cleaned = canonicalize_entity_name(name, etype)
             if len(cleaned) < 2:
                 return
             eid = normalize_entity_id(cleaned)
@@ -271,7 +505,12 @@ class HybridGraphExtractor:
         segments: List[str] = []
         for seg in str(raw_bc).split(">"):
             cleaned = clean_entity_name(seg)
-            if cleaned and not re.fullmatch(r"Trang\s+\d+", cleaned, flags=re.IGNORECASE):
+            if not cleaned or re.fullmatch(r"Trang\s+\d+", cleaned, flags=re.IGNORECASE):
+                continue
+            m_art = _BREADCRUMB_ARTICLE_COLON_RE.match(cleaned)
+            if m_art:
+                cleaned = clean_entity_name(m_art.group(1))
+            if cleaned:
                 segments.append(cleaned)
         return segments
 
@@ -284,7 +523,7 @@ class HybridGraphExtractor:
         seen_triples: Set[Tuple[str, str, str]] = set()
 
         def _register_entity(name: str, etype: str) -> Optional[Dict[str, str]]:
-            cleaned = clean_entity_name(name)
+            cleaned = canonicalize_entity_name(name, etype)
             eid = normalize_entity_id(cleaned)
             if not eid or len(cleaned) < 2:
                 return None
@@ -410,18 +649,9 @@ class HybridGraphExtractor:
         for item in parsed:
             if not isinstance(item, dict):
                 continue
-            head = clean_entity_name(str(item.get("head") or ""))
-            tail = clean_entity_name(str(item.get("tail") or ""))
-            rel = _normalize_relation(str(item.get("relation") or "LIÊN_QUAN_ĐẾN"))
-            if not head or not tail or normalize_entity_id(head) == normalize_entity_id(tail):
-                continue
-            valid.append({
-                "head": head,
-                "head_type": str(item.get("head_type") or "CONCEPT").upper(),
-                "relation": rel,
-                "tail": tail,
-                "tail_type": str(item.get("tail_type") or "CONCEPT").upper(),
-            })
+            canon = _canonicalize_triple(item)
+            if canon is not None:
+                valid.append(canon)
         return valid
 
     def extract_llm(self, chunk: DataChunk) -> List[Dict[str, str]]:
@@ -429,7 +659,12 @@ class HybridGraphExtractor:
         content_hash = hashlib.sha256((chunk.text or "").encode("utf-8", errors="replace")).hexdigest()
         cached_entry = self._llm_cache.get(chunk.chunk_id)
         if isinstance(cached_entry, dict) and cached_entry.get("hash") == content_hash:
-            return list(cached_entry.get("triples") or [])
+            res: List[Dict[str, str]] = []
+            for raw_tr in (cached_entry.get("triples") or []):
+                canon = _canonicalize_triple(raw_tr)
+                if canon is not None:
+                    res.append(canon)
+            return res
 
         if not self._is_llm_eligible(chunk):
             return []
@@ -453,22 +688,20 @@ class HybridGraphExtractor:
             logger.warning(f"Lỗi gọi LLM trích xuất Graph cho chunk {chunk.chunk_id}: {exc}")
             return []
 
-    def extract(self, chunk: DataChunk) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-        """Kết hợp bóc tách Regex và OpenRouter Hy4 LLM (nếu được bật hoặc có cache)."""
-        entities, triples = self.extract_rules(chunk)
-        llm_triples = self.extract_llm(chunk)
-        if not llm_triples:
-            return entities, triples
-
-        entities_map = {e["id"]: e for e in entities}
+    @staticmethod
+    def _merge_triples(
+        base_entities: List[Dict[str, str]],
+        base_triples: List[Dict[str, str]],
+        extra_triples: List[Dict[str, str]],
+    ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+        entities_map = {e["id"]: e for e in base_entities}
+        triples = list(base_triples)
         seen = {
             (normalize_entity_id(t["head"]), t["relation"], normalize_entity_id(t["tail"]))
             for t in triples
         }
-
-        for lt in llm_triples:
-            hid = normalize_entity_id(lt["head"])
-            tid = normalize_entity_id(lt["tail"])
+        for lt in extra_triples:
+            hid, tid = normalize_entity_id(lt["head"]), normalize_entity_id(lt["tail"])
             if not hid or not tid or hid == tid:
                 continue
             entities_map.setdefault(hid, {"id": hid, "name": lt["head"], "type": lt["head_type"]})
@@ -477,8 +710,17 @@ class HybridGraphExtractor:
             if sig not in seen:
                 seen.add(sig)
                 triples.append(lt)
-
         return list(entities_map.values()), triples
+
+    def extract(self, chunk: DataChunk) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+        """Trích xuất thực thể & triples theo extraction_mode (hybrid / regex_only / llm_only)."""
+        if self.extraction_mode == "regex_only":
+            return self.extract_rules(chunk)
+        llm_triples = self.extract_llm(chunk)
+        if self.extraction_mode == "llm_only":
+            return self._merge_triples([], [], llm_triples)
+        entities, triples = self.extract_rules(chunk)
+        return self._merge_triples(entities, triples, llm_triples) if llm_triples else (entities, triples)
 
 
 class GraphIndex:
@@ -503,6 +745,7 @@ class GraphIndex:
         embed_batch_size: int = 256,
         cache_path: Optional[Path] = None,
         extractor: Optional[HybridGraphExtractor] = None,
+        extraction_mode: str = "hybrid",
     ):
         self.chunks: List[DataChunk] = normalize_chunks(list(chunks))
         self.embedding_model = embedding_model
@@ -518,12 +761,15 @@ class GraphIndex:
         self.entity_ids: List[str] = []
         self.entity_texts: List[str] = []
         self.entity_vectors: Optional[np.ndarray] = None
+        self.entity_idf: Dict[str, float] = {}
+        self.entity_idf_array: Optional[np.ndarray] = None
         self.triple_records: List[Dict[str, Any]] = []
         self.triple_vectors: Optional[np.ndarray] = None
         self.token_to_entities: Dict[str, List[str]] = defaultdict(list)
         self.entity_tokens: Dict[str, Set[str]] = {}
         self.chunk_to_entities: Dict[str, List[str]] = defaultdict(list)
         self.chunk_to_triples: Dict[str, List[int]] = defaultdict(list)
+        self.doc_chunk_neighbors: Dict[str, List[str]] = {}
 
         if not self.chunks:
             self.token_to_entities = {}
@@ -539,6 +785,7 @@ class GraphIndex:
             llm_domains=llm_domains,
             max_llm_chunks=max_llm_chunks,
             cache_path=cache_path,
+            extraction_mode=extraction_mode,
         )
 
         self._build_graph(active_extractor)
@@ -624,9 +871,27 @@ class GraphIndex:
             for eid in self.entity_ids
         ]
 
+        total_docs = max(1, len(self.chunks))
+        idf_denom = max(math.log(total_docs + 1.0), 1e-6)
+        self.entity_idf = {}
+        for eid in self.entity_ids:
+            node = self.graph.nodes[eid]
+            df = max(1, len(node.get("chunks", ())))
+            raw_idf = max(0.0, math.log((total_docs + 1.0) / (df + 0.5)) / idf_denom)
+            type_w = _ENTITY_TYPE_WEIGHTS.get(str(node.get("type") or "CONCEPT"), 1.0)
+            self.entity_idf[eid] = round(min(1.35, max(0.15, raw_idf * type_w)), 4)
+
+        self.entity_idf_array = (
+            np.asarray([self.entity_idf[eid] for eid in self.entity_ids], dtype=np.float32)
+            if self.entity_ids
+            else None
+        )
+
+        self._build_doc_neighbors()
+
         for eid in self.entity_ids:
             name = self.graph.nodes[eid]["name"]
-            toks = set(tokenize(name))
+            toks = _graph_tokenize(name)
             self.entity_tokens[eid] = toks
             for tok in toks:
                 self.token_to_entities[tok].append(eid)
@@ -639,6 +904,27 @@ class GraphIndex:
             f"Đã dựng Knowledge Graph: {len(self.chunks)} chunks -> "
             f"{len(self.entity_ids)} entities, {len(self.triple_records)} triples."
         )
+
+    def _build_doc_neighbors(self) -> None:
+        doc_groups: Dict[str, List[Tuple[int, int, str]]] = defaultdict(list)
+        for idx, chunk in enumerate(self.chunks):
+            doc_id = chunk.document_id or (chunk.metadata or {}).get("document_id")
+            if not doc_id:
+                continue
+            c_idx = chunk.chunk_index if chunk.chunk_index is not None else (chunk.metadata or {}).get("chunk_index", idx)
+            doc_groups[str(doc_id)].append((int(c_idx), idx, chunk.chunk_id))
+
+        neighbors: Dict[str, List[str]] = defaultdict(list)
+        for entries in doc_groups.values():
+            if len(entries) < 2:
+                continue
+            entries.sort(key=lambda item: (item[0], item[1]))
+            for pos, (_, _, cid) in enumerate(entries):
+                if pos > 0:
+                    neighbors[cid].append(entries[pos - 1][2])
+                if pos + 1 < len(entries):
+                    neighbors[cid].append(entries[pos + 1][2])
+        self.doc_chunk_neighbors = dict(neighbors)
 
     @staticmethod
     def _l2_normalize_array(arr: np.ndarray) -> np.ndarray:
@@ -687,25 +973,40 @@ class GraphIndex:
             ent_mat = np.zeros((len(self.entity_ids), dim), dtype=np.float32)
             for idx, eid in enumerate(self.entity_ids):
                 cids = self.graph.nodes[eid].get("chunks", ())
-                vecs = [valid_vecs[cid] for cid in cids if cid in valid_vecs]
-                if vecs:
-                    mean_vec = np.mean(vecs, axis=0)
-                    ent_mat[idx] = mean_vec
-                    entity_vec_map[eid] = mean_vec
+                acc = np.zeros(dim, dtype=np.float32)
+                cnt = 0
+                for cid in cids:
+                    v = valid_vecs.get(cid)
+                    if v is not None:
+                        acc += v
+                        cnt += 1
+                if cnt > 0:
+                    acc /= float(cnt)
+                    ent_mat[idx] = acc
+                    entity_vec_map[eid] = acc
             self.entity_vectors = self._l2_normalize_array(ent_mat)
 
         if self.triple_records:
             tr_mat = np.zeros((len(self.triple_records), dim), dtype=np.float32)
             for idx, tr in enumerate(self.triple_records):
-                parts = [valid_vecs[cid] for cid in tr["chunk_ids"] if cid in valid_vecs]
+                acc = np.zeros(dim, dtype=np.float32)
+                cnt = 0
+                for cid in tr["chunk_ids"]:
+                    v = valid_vecs.get(cid)
+                    if v is not None:
+                        acc += v
+                        cnt += 1
                 h_vec = entity_vec_map.get(tr["head_id"])
-                t_vec = entity_vec_map.get(tr["tail_id"])
                 if h_vec is not None:
-                    parts.append(h_vec)
+                    acc += h_vec
+                    cnt += 1
+                t_vec = entity_vec_map.get(tr["tail_id"])
                 if t_vec is not None:
-                    parts.append(t_vec)
-                if parts:
-                    tr_mat[idx] = np.mean(parts, axis=0)
+                    acc += t_vec
+                    cnt += 1
+                if cnt > 0:
+                    acc /= float(cnt)
+                    tr_mat[idx] = acc
             self.triple_vectors = self._l2_normalize_array(tr_mat)
 
         logger.info(
@@ -822,6 +1123,18 @@ class GraphIndex:
                 return False
         return True
 
+    def _max_edge_relation_weight(self, u: str, v: str) -> float:
+        best = 1.0
+        found = False
+        for src, dst in ((u, v), (v, u)):
+            if self.graph.has_edge(src, dst):
+                for rel in self.graph[src][dst].get("relations", ()):
+                    w = _RELATION_WEIGHTS.get(rel, 1.0)
+                    if not found or w > best:
+                        best = w
+                        found = True
+        return best if found else 1.0
+
     def search(
         self,
         query: str,
@@ -830,13 +1143,14 @@ class GraphIndex:
         seed_top_m: int = 10,
         max_hops: int = 2,
         hop_decay: float = 0.65,
+        adjacent_alpha: float = 0.18,
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[RetrievedContext]:
         """
-        Truy xuất 0-LLM trên Graph Vector Index:
-        1. Vector similarity (query_vector vs entity_vectors & triple_vectors) + Lexical overlap.
-        2. Lan truyền kích hoạt 1-2 hops trên NetworkX Graph.
-        3. Tổng hợp điểm cho chunk_id (có điểm thưởng multi-entity bridging) và gắn graph_triples.
+        Truy xuất 0-LLM trên Graph Vector Index (tối ưu hóa IDF + Co-Activation + Adjacent Smoothing):
+        1. Vector similarity (nhân Entity IDF & Relation Weight) + Lexical token matching (tăng trọng số thực thể hiếm).
+        2. Lan truyền kích hoạt 1-2 hops theo trọng số quan hệ & IDF nút đích.
+        3. Tổng hợp điểm chunk (Entity IDF + Edge Co-Activation Bonus + Bridging) và làm mượt cấu trúc liền kề.
         """
         clean_query = (query or "").strip()
         if top_k <= 0 or not self.chunks or not self.entity_ids or not clean_query:
@@ -860,22 +1174,59 @@ class GraphIndex:
         entity_scores: Dict[str, float] = defaultdict(float)
         triple_chunk_bonus: Dict[str, float] = defaultdict(float)
         activated_triple_indices: Dict[int, float] = {}
+        entity_idf = getattr(self, "entity_idf", {})
+        idf_arr = getattr(self, "entity_idf_array", None)
 
-        # 1a. Vector search trên Entities
+        # 1a. Lexical token matching (nhanh < 0.1ms, nhân Entity IDF + boost thực thể hiếm khớp hoàn toàn)
+        q_tokens = _graph_tokenize(clean_query)
+        ent_hits: Dict[str, int] = defaultdict(int)
+        if q_tokens:
+            for q_tok in q_tokens:
+                for eid in self.token_to_entities.get(q_tok, ()):
+                    ent_hits[eid] += 1
+            for eid, hit_count in ent_hits.items():
+                denom = max(1, len(self.entity_tokens.get(eid, ())))
+                overlap_ratio = hit_count / denom
+                idf = entity_idf.get(eid, 1.0)
+                exact_rare_boost = 1.25 if (overlap_ratio >= 0.99 and idf >= 0.75) else 1.0
+                lex_score = (0.45 * overlap_ratio + 0.1 * min(hit_count, 3)) * idf * exact_rare_boost
+                entity_scores[eid] += lex_score
+
+        # 1b. Vector search trên Entities (gating COURSE/CERTIFICATE không khớp lexical & chống lạm phát df=1 cùng chunk)
         if (
             q_vec_arr is not None
             and self.entity_vectors is not None
             and self.entity_vectors.shape[1] == q_vec_arr.shape[0]
         ):
             sims = self.entity_vectors @ q_vec_arr
-            k_ent = min(max(seed_top_m * 2, 1), len(sims))
-            top_indices = np.argpartition(sims, -k_ent)[-k_ent:]
-            for idx in top_indices:
-                sim = float(sims[idx])
-                if sim > 0.0:
-                    entity_scores[self.entity_ids[int(idx)]] += sim
+            weighted_sims = np.maximum(sims, 0.0) * (
+                idf_arr if (idf_arr is not None and idf_arr.shape[0] == sims.shape[0]) else 1.0
+            )
+            k_cand = min(max(seed_top_m * 4, 20), len(weighted_sims))
+            top_indices = np.argpartition(weighted_sims, -k_cand)[-k_cand:]
+            ranked_vec_indices = sorted(
+                (int(i) for i in top_indices if float(weighted_sims[int(i)]) > 0.0),
+                key=lambda i: float(weighted_sims[i]),
+                reverse=True,
+            )
+            df1_chunk_counts: Dict[str, int] = defaultdict(int)
+            for idx in ranked_vec_indices:
+                eid = self.entity_ids[idx]
+                w_sim = float(weighted_sims[idx])
+                node = self.graph.nodes[eid]
+                etype = str(node.get("type") or "")
+                has_lex = ent_hits.get(eid, 0) > 0
+                if etype in {"COURSE", "CERTIFICATE"} and not has_lex:
+                    w_sim *= 0.25
+                chunks_set = node.get("chunks", ())
+                if not has_lex and len(chunks_set) == 1:
+                    only_cid = next(iter(chunks_set))
+                    if df1_chunk_counts[only_cid] >= 2:
+                        continue
+                    df1_chunk_counts[only_cid] += 1
+                entity_scores[eid] += w_sim
 
-        # 1b. Vector search trên Triples
+        # 1c. Vector search trên Triples (nhân trọng số quan hệ & endpoint IDF)
         if (
             q_vec_arr is not None
             and self.triple_vectors is not None
@@ -889,46 +1240,45 @@ class GraphIndex:
                 if sim > 0.0:
                     t_idx = int(idx)
                     tr = self.triple_records[t_idx]
-                    activated_triple_indices[t_idx] = sim
-                    entity_scores[tr["head_id"]] += 0.5 * sim
-                    entity_scores[tr["tail_id"]] += 0.5 * sim
+                    rel_w = _RELATION_WEIGHTS.get(tr["relation"], 1.0)
+                    h_idf = entity_idf.get(tr["head_id"], 1.0)
+                    t_idf = entity_idf.get(tr["tail_id"], 1.0)
+                    tr_score = sim * rel_w
+                    activated_triple_indices[t_idx] = tr_score
+                    entity_scores[tr["head_id"]] += 0.5 * tr_score * h_idf
+                    entity_scores[tr["tail_id"]] += 0.5 * tr_score * t_idf
                     for cid in tr["chunk_ids"]:
-                        triple_chunk_bonus[cid] += 0.35 * sim
-
-        # 1c. Lexical token matching (nhận diện chính xác mã môn, số quyết định, tên riêng)
-        q_tokens = set(tokenize(clean_query))
-        if q_tokens:
-            ent_hits: Dict[str, int] = defaultdict(int)
-            for q_tok in q_tokens:
-                for eid in self.token_to_entities.get(q_tok, ()):
-                    ent_hits[eid] += 1
-            for eid, hit_count in ent_hits.items():
-                denom = max(1, len(self.entity_tokens.get(eid, ())))
-                overlap_ratio = hit_count / denom
-                entity_scores[eid] += 0.45 * overlap_ratio + 0.1 * min(hit_count, 3)
+                        triple_chunk_bonus[cid] += 0.35 * tr_score * (0.5 + 0.25 * (h_idf + t_idf))
 
         if not entity_scores and not triple_chunk_bonus:
             return []
+
+        total_chunks = len(self.chunks)
+        max_hub_df = max(250, int(0.12 * total_chunks)) if total_chunks >= 50 else total_chunks + 1
 
         top_seeds = heapq.nlargest(seed_top_m, entity_scores.items(), key=lambda item: item[1])
         activated_entities: Dict[str, float] = dict(top_seeds)
         frontier: Dict[str, float] = dict(top_seeds)
 
-        # 2. Multi-hop Spreading Activation
+        # 2. Multi-hop Spreading Activation (bỏ qua super-node > max_hub_df để chống bùng nổ độ trễ & nhiễu)
         for hop in range(1, max(0, max_hops) + 1):
             if not frontier:
                 break
             decay = hop_decay ** hop
             next_frontier: Dict[str, float] = {}
             for u, u_score in frontier.items():
-                if not self.graph.has_node(u):
+                if not self.graph.has_node(u) or len(self.graph.nodes[u].get("chunks", ())) > max_hub_df:
                     continue
                 neighbors = set(self.graph.successors(u)) | set(self.graph.predecessors(u))
                 if not neighbors:
                     continue
                 damping = 1.0 / math.sqrt(len(neighbors))
-                prop = u_score * decay * damping
                 for v in neighbors:
+                    if len(self.graph.nodes[v].get("chunks", ())) > max_hub_df:
+                        continue
+                    rel_w = self._max_edge_relation_weight(u, v)
+                    v_idf = entity_idf.get(v, 1.0)
+                    prop = u_score * decay * damping * rel_w * v_idf
                     prev = activated_entities.get(v, 0.0)
                     if prop > prev:
                         activated_entities[v] = prop
@@ -939,35 +1289,87 @@ class GraphIndex:
             else:
                 frontier = next_frontier
 
-        # 3. Tổng hợp điểm cho từng chunk
+        # 3. Tổng hợp điểm cho từng chunk (lọc bỏ fanout từ super-node & tính Co-Activation trên top pool)
         chunk_scores: Dict[str, float] = defaultdict(float)
         chunk_matched_entities: Dict[str, List[Tuple[str, float]]] = defaultdict(list)
+
+        def _add_entity_chunks(eid: str, contrib: float, limit: Optional[int] = None) -> None:
+            cids = self.graph.nodes[eid].get("chunks", ())
+            if limit is not None and len(cids) > limit:
+                cids = list(cids)[:limit]
+            for cid in cids:
+                chunk_scores[cid] += contrib
+                chunk_matched_entities[cid].append((eid, contrib))
 
         for eid, e_score in activated_entities.items():
             if not self.graph.has_node(eid):
                 continue
-            for cid in self.graph.nodes[eid].get("chunks", ()):
-                chunk_scores[cid] += e_score
-                chunk_matched_entities[cid].append((eid, e_score))
+            node_chunks = self.graph.nodes[eid].get("chunks", ())
+            if len(node_chunks) > max_hub_df:
+                continue
+            _add_entity_chunks(eid, e_score * entity_idf.get(eid, 1.0))
 
         for cid, bonus in triple_chunk_bonus.items():
             chunk_scores[cid] += bonus
 
+        if not chunk_scores and activated_entities:
+            best_eid, best_score = max(activated_entities.items(), key=lambda item: item[1])
+            if self.graph.has_node(best_eid):
+                _add_entity_chunks(best_eid, best_score * entity_idf.get(best_eid, 1.0), limit=max(1, top_k * 4))
+
         if not chunk_scores:
             return []
 
-        # Multi-entity bridging bonus & lọc metadata
+        if filters:
+            filtered_items = [
+                (cid, score)
+                for cid, score in chunk_scores.items()
+                if cid in self.chunk_id_to_idx and self._matches_filters(self.chunks[self.chunk_id_to_idx[cid]], filters)
+            ]
+        else:
+            filtered_items = [(cid, score) for cid, score in chunk_scores.items() if cid in self.chunk_id_to_idx]
+
+        if not filtered_items:
+            return []
+
+        top_base_chunks = heapq.nlargest(max(top_k * 4, 200), filtered_items, key=lambda item: item[1])
+        pre_smooth_scores: Dict[str, float] = {}
+        for cid, base_score in top_base_chunks:
+            co_scores: List[float] = []
+            for t_idx in self.chunk_to_triples.get(cid, ()):
+                tr = self.triple_records[t_idx]
+                h_score = activated_entities.get(tr["head_id"], 0.0)
+                t_score = activated_entities.get(tr["tail_id"], 0.0)
+                if h_score > 0.0 and t_score > 0.0:
+                    rel_w = _RELATION_WEIGHTS.get(tr["relation"], 1.0)
+                    co_scores.append(0.45 * math.sqrt(h_score * t_score) * rel_w)
+            co_bonus = sum(sorted(co_scores, reverse=True)[:3])
+            matched_cnt = len(chunk_matched_entities.get(cid, ()))
+            bridge_bonus = 0.25 * min(3, max(0, matched_cnt - 1))
+            pre_smooth_scores[cid] = base_score + co_bonus + bridge_bonus
+
+        if not pre_smooth_scores:
+            return []
+
+        # 4. Adjacent Structural Smoothing (lan tỏa điểm nhẹ sang chunk +/- 1 cùng văn bản)
+        doc_neighbors = getattr(self, "doc_chunk_neighbors", {})
+        smoothed_scores: Dict[str, float] = dict(pre_smooth_scores)
+        if adjacent_alpha > 0.0 and doc_neighbors:
+            smooth_pool = heapq.nlargest(max(top_k, seed_top_m * 3), pre_smooth_scores.items(), key=lambda item: item[1])
+            for cid, base_val in smooth_pool:
+                delta = adjacent_alpha * base_val
+                for nbr_cid in doc_neighbors.get(cid, ()):
+                    smoothed_scores[nbr_cid] = smoothed_scores.get(nbr_cid, 0.0) + delta
+
         final_scores: List[Tuple[str, float]] = []
-        for cid, base_score in chunk_scores.items():
+        for cid, score in smoothed_scores.items():
             idx = self.chunk_id_to_idx.get(cid)
             if idx is None:
                 continue
             chunk = self.chunks[idx]
             if not self._matches_filters(chunk, filters):
                 continue
-            matched_cnt = len(chunk_matched_entities.get(cid, ()))
-            bridge_bonus = 0.25 * max(0, matched_cnt - 1)
-            final_scores.append((cid, base_score + bridge_bonus))
+            final_scores.append((cid, score))
 
         if not final_scores:
             return []

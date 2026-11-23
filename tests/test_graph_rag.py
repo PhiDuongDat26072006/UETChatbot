@@ -15,7 +15,14 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.base import BaseEmbeddingModel, BaseVectorStore, DataChunk, RetrievedContext, UserQuery
-from src.indexing.graph import GraphIndex, HybridGraphExtractor, normalize_entity_id
+from src.indexing.graph import (
+    GraphIndex,
+    HybridGraphExtractor,
+    _normalize_relation,
+    canonicalize_entity_name,
+    clean_entity_name,
+    normalize_entity_id,
+)
 from src.indexing.sparse import BM25Index
 from src.llm.llm_client import UETLLMClient
 from src.prompts.prompt_templates import UETPromptAugmenter
@@ -178,12 +185,12 @@ def test_openrouter_client_and_llm_extractor_cache(tmp_path):
 
         assert mock_post.call_count == 1
         assert extractor.llm_calls_count == 1
-        assert not any(t["relation"] == "YEU_CAU_GPA" for t in triples_hb_2)
+        assert not any(t["tail"] == "GPA từ 3.60" for t in triples_hb_2)
         call_kwargs = mock_post.call_args.kwargs
         assert call_kwargs["json"]["model"] == "tencent/hy4-flash"
         assert call_kwargs["headers"]["Authorization"] == "Bearer sk-or-test-key"
-        assert any(t["relation"] == "YEU_CAU_GPA" for t in triples_hb)
-        assert not any(t["relation"] == "YEU_CAU_GPA" for t in triples_uet)
+        assert any(t["relation"] == "YÊU_CẦU_ĐIỀU_KIỆN" and t["tail"] == "GPA từ 3.60" for t in triples_hb)
+        assert not any(t["tail"] == "GPA từ 3.60" for t in triples_uet)
 
         # Second extractor instance must hit persistent graph cache without HTTP call
         extractor_reloaded = HybridGraphExtractor(
@@ -194,7 +201,7 @@ def test_openrouter_client_and_llm_extractor_cache(tmp_path):
         )
         _, triples_cached = extractor_reloaded.extract(hb_chunk)
         assert mock_post.call_count == 1
-        assert any(t["relation"] == "YEU_CAU_GPA" for t in triples_cached)
+        assert any(t["relation"] == "YÊU_CẦU_ĐIỀU_KIỆN" and t["tail"] == "GPA từ 3.60" for t in triples_cached)
 
 
 def test_graph_index_vector_multihop_save_load(tmp_path):
@@ -440,3 +447,121 @@ def test_graph_index_reuses_chromadb_vectors_without_loading_embedder(tmp_path):
     reloaded = GraphIndex.load(out_pkl)
     assert reloaded.vector_store is None
     assert reloaded.entity_vectors.shape == index.entity_vectors.shape
+
+
+def test_entity_and_relation_canonicalization():
+    assert clean_entity_name("Trường Đại học Công nghệ - ĐHQGHN (UET)") == "Trường Đại học Công nghệ - ĐHQGHN (UET)"
+    assert clean_entity_name("“Thủ khoa ngành học”") == "Thủ khoa ngành học"
+    assert canonicalize_entity_name("Khoa CNTT") == "Khoa Công nghệ Thông tin (FIT)"
+    assert canonicalize_entity_name("UET") == "Trường Đại học Công nghệ - ĐHQGHN (UET)"
+    assert canonicalize_entity_name("GPA") == "Điểm trung bình chung (GPA)"
+    assert normalize_entity_id("Khoa CNTT") == normalize_entity_id("FIT") == normalize_entity_id("Khoa Công nghệ Thông tin (FIT)")
+    assert normalize_entity_id("Quyết định số 798/QĐ-ĐHQGHN") == normalize_entity_id("798/QĐ-ĐHQGHN")
+    assert normalize_entity_id("GPA") == normalize_entity_id("Điểm trung bình chung") == normalize_entity_id("Điểm trung bình chung tích lũy")
+
+    segs = HybridGraphExtractor._extract_breadcrumb_segments(
+        DataChunk(
+            chunk_id="bc_1",
+            text='[Quyết định 1363/QĐ-ĐHCN > Điều 3, chương II: Quy định về xét “Thủ khoa ngành học”]\nNội dung.',
+            metadata={},
+        )
+    )
+    assert segs == ["Quyết định 1363/QĐ-ĐHCN", "Điều 3, chương II"]
+
+    assert _normalize_relation("YEU_CAU_GPA") == "YÊU_CẦU_ĐIỀU_KIỆN"
+    assert _normalize_relation("DIEU_KIEN_TOI_THIEU") == "YÊU_CẦU_ĐIỀU_KIỆN"
+    assert _normalize_relation("SUA_DOI") == "SỬA_ĐỔI_BỔ_SUNG"
+    assert _normalize_relation("CAN_CU_QUYET_DINH") == "CĂN_CỨ"
+    assert _normalize_relation("THUOC_KHOA") == "THUỘC_ĐƠN_VỊ"
+
+
+def test_entity_idf_and_coactivation_and_adjacent_smoothing():
+    embedder = KeywordVectorEmbedder()
+    chunks = [
+        DataChunk(
+            chunk_id="doc_a_0",
+            document_id="doc_a",
+            chunk_index=0,
+            text="Quyết định 1363/QĐ-ĐHCN quy định điều kiện xét Thủ khoa ngành học tại UET.",
+            metadata={"title": "Quyết định khen thưởng", "faculty": "uet"},
+        ),
+        DataChunk(
+            chunk_id="doc_a_1",
+            document_id="doc_a",
+            chunk_index=1,
+            text="Sinh viên cần giữ kỷ luật và đạt thành tích cao toàn khóa tại UET.",
+            metadata={"title": "Quyết định khen thưởng", "faculty": "uet"},
+        ),
+        DataChunk(
+            chunk_id="doc_b_0",
+            document_id="doc_b",
+            chunk_index=0,
+            text="Hướng dẫn nộp học phí trực tuyến cho sinh viên tại UET.",
+            metadata={"title": "Học phí", "faculty": "uet"},
+        ),
+        DataChunk(
+            chunk_id="doc_c_0",
+            document_id="doc_c",
+            chunk_index=0,
+            text="Giới thiệu quy mô đào tạo chung cho sinh viên mới tại UET.",
+            metadata={"title": "Giới thiệu chung", "faculty": "uet"},
+        ),
+    ]
+    index = GraphIndex(chunks=chunks, embedding_model=embedder)
+
+    uet_id = normalize_entity_id("UET")
+    qd_id = normalize_entity_id("1363/QĐ-ĐHCN")
+    assert index.entity_idf[uet_id] < index.entity_idf[qd_id]
+
+    q = "Quyết định 1363/QĐ-ĐHCN và Thủ khoa ngành học"
+    q_vec = embedder.embed_texts([q])[0]
+    hits = index.search(query=q, query_vector=q_vec, top_k=4, max_hops=2)
+    hit_ids = [h.chunk_id for h in hits]
+    assert hit_ids[0] == "doc_a_0"
+    assert "doc_a_1" in hit_ids
+    assert hit_ids.index("doc_a_1") < hit_ids.index("doc_b_0")
+
+
+def test_extraction_modes(tmp_path):
+    chunk = DataChunk(
+        chunk_id="mode_c1",
+        text="Quyết định 1363/QĐ-ĐHCN áp dụng cho học phần INT3401 về Chuẩn đầu ra ngoại ngữ.",
+        chunk_index=0,
+        metadata={"title": "Quy định", "faculty": "fit"},
+    )
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.json.return_value = {
+        "choices": [{
+            "message": {
+                "content": '[{"head": "Chuẩn đầu ra", "head_type": "CONCEPT", "relation": "YEU_CAU_CHUNG_CHI", "tail": "IELTS 6.5", "tail_type": "CERTIFICATE"}]'
+            }
+        }]
+    }
+
+    with patch("httpx.post", return_value=fake_resp) as mock_post:
+        client = UETLLMClient(provider="openrouter", api_key="sk-or-test", enable_cache=False)
+
+        regex_ext = HybridGraphExtractor(
+            llm_client=client,
+            enable_llm_extraction=True,
+            cache_path=tmp_path / "cache_regex.json",
+            extraction_mode="regex_only",
+        )
+        r_ents, r_triples = regex_ext.extract(chunk)
+        assert mock_post.call_count == 0
+        assert any(e["id"] == normalize_entity_id("INT3401") for e in r_ents)
+        assert not any(t["tail"] == "IELTS 6.5" for t in r_triples)
+
+        llm_ext = HybridGraphExtractor(
+            llm_client=client,
+            enable_llm_extraction=True,
+            cache_path=tmp_path / "cache_llm.json",
+            extraction_mode="llm_only",
+        )
+        l_ents, l_triples = llm_ext.extract(chunk)
+        assert mock_post.call_count == 1
+        assert len(l_triples) == 1
+        assert l_triples[0]["relation"] == "YÊU_CẦU_ĐIỀU_KIỆN"
+        assert l_triples[0]["tail"] == "IELTS 6.5"
+        assert not any(e["id"] == normalize_entity_id("INT3401") for e in l_ents)
