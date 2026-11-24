@@ -350,6 +350,56 @@ class TestRetrievalPipeline(unittest.TestCase):
         # Không lặp header [META: Bảng điểm] của neighbor
         self.assertEqual(res[0].text.count("[META: Bảng điểm]"), 1)
 
+    def test_jina_gpu_effective_batch_scores_all_candidates(self):
+        """Đảm bảo trên CUDA (eff_batch_size=32), mọi ứng viên đều được chấm điểm và không bị bỏ sót [batch_size:eff_batch_size]."""
+        import numpy as np
+        from src.retrieval.reranker import JinaONNXReranker
+
+        ranker = JinaONNXReranker.__new__(JinaONNXReranker)
+        ranker.model_name = "mock-jina"
+        ranker.onnx_filename = "mock.onnx"
+        ranker.max_length = 512
+        ranker.batch_size = 8
+        ranker._active_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        ranker._fallback = HeuristicReranker()
+
+        batch_sizes = []
+
+        class _MockTokenizer:
+            def __call__(self, sentence_pairs, **_kwargs):
+                ids = np.array([[len(pair[1])] for pair in sentence_pairs], dtype=np.int64)
+                mask = np.ones_like(ids)
+                return {"input_ids": ids, "attention_mask": mask}
+
+        class _MockSession:
+            def run(self, _outputs, ort_inputs):
+                lengths = ort_inputs["input_ids"].reshape(-1)
+                batch_sizes.append(len(lengths))
+                logits = np.array([6.0 if int(L) == 16 else -2.0 for L in lengths], dtype=np.float32)
+                return [logits[:, None]]
+
+        ranker._tokenizer = _MockTokenizer()
+        ranker._session = _MockSession()
+
+        candidates = [
+            RetrievedContext(
+                chunk_id=f"c_{i}",
+                text="x" * (i + 1),
+                similarity_score=0.5,
+                rank=i + 1,
+                metadata={"document_id": f"d_{i}"},
+            )
+            for i in range(60)
+        ]
+
+        results = ranker.rerank("truy vấn test", candidates, top_n=60)
+        self.assertEqual(batch_sizes, [32, 28])
+        self.assertEqual(len(results), 60)
+        # c_15 nằm trong vùng [8..31] từng bị bỏ qua khi lỗi; nay phải đứng top 1
+        self.assertEqual(results[0].chunk_id, "c_15")
+        self.assertGreater(results[0].similarity_score, 0.99)
+        self.assertTrue(all(r.similarity_score > 0.1 for r in results))
+
 
 if __name__ == "__main__":
     unittest.main()
