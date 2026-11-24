@@ -125,16 +125,25 @@ class UETPromptAugmenter(BasePromptAugmenter):
             
             search_method = meta.get("search_source")
             if not search_method:
-                if meta.get("bm25_rank") is not None and meta.get("vector_rank") is not None:
-                    search_method = "BM25 & Vector Search"
-                elif meta.get("bm25_rank") is not None:
-                    search_method = "BM25"
-                elif meta.get("vector_rank") is not None:
-                    search_method = "Vector Search"
+                parts: List[str] = []
+                if meta.get("bm25_rank") is not None:
+                    parts.append("BM25")
+                if meta.get("vector_rank") is not None:
+                    parts.append("Vector Search")
+                if meta.get("graph_rank") is not None:
+                    parts.append("GraphRAG")
+                search_method = " & ".join(parts)
             method_info = f" [Nguồn tìm kiếm: {search_method}]" if search_method else ""
 
             header = f"[Tài liệu {i}: {title}{page_info}{score_info}{method_info}]"
-            formatted_parts.append(f"{header}\n{ctx.text.strip()}")
+            graph_triples = meta.get("graph_triples") or []
+            if graph_triples:
+                triples_str = "; ".join(str(t) for t in graph_triples[:5])
+                formatted_parts.append(
+                    f"{header}\n[Quan hệ Đồ thị Tri thức: {triples_str}]\n{ctx.text.strip()}"
+                )
+            else:
+                formatted_parts.append(f"{header}\n{ctx.text.strip()}")
 
         return "\n\n".join(formatted_parts)
 

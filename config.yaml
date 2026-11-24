@@ -7,6 +7,8 @@ paths:
   processed_dir: "data/processed_data"
   vector_db_dir: "database/vector_db"
   bm25_index_file: "database/bm25_index.pkl"
+  graph_index_file: "database/graph_index.pkl"
+  graph_llm_cache_file: "database/graph_llm_cache.json"
   collection_name: "chatbot_collection"
   eval_dataset_dir: "data/eval_data/"
   eval_dataset_file: "data/eval_data/e2e_eval_100_annotated.json"
@@ -71,6 +73,35 @@ retrieval:
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
   merge_contiguous_chunks: true         # Tự động gộp các chunk nối tiếp trong cùng văn bản thành 1 khối
 
+  # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
+  enable_graph: true
+  graph_top_k: 50
+  graph_weight: 0.35
+  graph_max_hops: 2
+  graph_seed_top_m: 10
+
+graph:
+  enable_llm_extraction: true           # Bật gọi OpenRouter Hy4-flash bóc tách sâu bổ sung ngoài tầng Regex
+  llm_provider: "openrouter"
+  llm_model: "tencent/hy4-flash"
+  max_llm_chunks: 5                     # Giới hạn cứng số chunk gọi LLM mỗi lần chạy để test an toàn, tránh đốt quota
+  max_chunks: null                      # Tùy chọn giới hạn tổng số chunk nạp vào graph (null = toàn bộ hoặc theo --samples)
+  llm_domains:                          # Ưu tiên gọi LLM trên các tập dữ liệu quy chế/học vụ cốt lõi (~1.155 chunks)
+    - "handbook"
+    - "tuyensinh"
+    - "fit"
+    - "fet"
+    - "fema"
+    - "fepn"
+    - "fat"
+    - "iai"
+    - "sae"
+    - "studenthub"
+  embed_batch_size: 256
+  max_hops: 2
+  hop_decay: 0.65
+  seed_top_m: 10
+
 llm:
   provider: "groq"             # Nhà cung cấp mặc định ("groq", "sambanova", "gemini")
   model_name: "qwen/qwen3.8-27b"
@@ -94,6 +125,9 @@ llm:
     gemini:
       model: "gemini-3.5-flash"
       delay_seconds: 4.0       # 15 câu/phút
+    openrouter:
+      model: "tencent/hy4-flash"
+      delay_seconds: 1.5       # OpenRouter (Tencent Hy4-flash)
 
 api:
   host: "127.0.0.1"
@@ -123,3 +157,20 @@ prompt:
          + Bảng phải có tiêu đề rõ ràng, các cột cân đối, nội dung từng ô ngắn gọn, dễ nắm bắt.
          + Sau bảng, dùng danh sách gạch đầu dòng (•) hoặc khối trích dẫn (> Lưu ý quan trọng) để nhấn mạnh các lưu ý, điều kiện kèm theo hoặc trường hợp đặc biệt.
     4. NÊU RÕ VĂN BẢN CĂN CỨ: Cuối câu trả lời, luôn ghi rõ nguồn tham khảo: "📌 Căn cứ quy chế: [Tên file / văn bản / số quyết định / trang]".
+
+evaluation:
+  judge:
+    provider: "groq"
+    model: "openai/gpt-oss-120b"
+    candidate_models:
+      - "openai/gpt-oss-120b"
+      - "openai/gpt-oss-20b"
+    fallback_provider: "openrouter"
+    fallback_model: "tencent/hy4-flash"
+    temperature: 0.0
+    max_tokens: 2048
+    reasoning_effort: "low"
+    max_retries: 2
+    delay_seconds: 1.0
+    enable_cache: true
+    cache_file: "database/eval_judge_cache.json"
