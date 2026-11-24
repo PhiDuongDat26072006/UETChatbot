@@ -85,9 +85,12 @@ class UETLLMClient(BaseLLM):
         config = load_yaml_config()
         llm_cfg = config.get("llm", {})
 
-        self.provider = provider or llm_cfg.get("provider", "groq")
-        self._model_name = model_name or llm_cfg.get("model_name", "llama-3.3-70b-versatile")
-        self.candidate_models = list(llm_cfg.get("candidate_models", self.DEFAULT_CONFIGS["groq"]["candidate_models"]))
+        self.provider = provider or llm_cfg.get("provider", "openrouter")
+        self._model_name = model_name or llm_cfg.get("model_name", "tencent/hy4-flash")
+        default_provider_candidates = self.DEFAULT_CONFIGS.get(
+            self.provider, self.DEFAULT_CONFIGS["openrouter"]
+        )["candidate_models"]
+        self.candidate_models = list(llm_cfg.get("candidate_models", default_provider_candidates))
         self.CANDIDATE_MODELS = self.candidate_models
         self.temperature = float(llm_cfg.get("temperature", 0.2))
 
@@ -110,6 +113,9 @@ class UETLLMClient(BaseLLM):
             model_name
             if (model_name and self.provider == "openrouter")
             else openrouter_cfg.get("model", self.DEFAULT_CONFIGS["openrouter"]["model"])
+        )
+        self.openrouter_delay = float(
+            openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
         )
 
         # Khóa tương thích ngược
@@ -414,7 +420,7 @@ class UETLLMClient(BaseLLM):
             "temperature": self.temperature,
         }
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=45.0)
+        resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
         if resp.status_code >= 400:
             err_msg = resp.text
             try:
@@ -486,14 +492,11 @@ class UETLLMClient(BaseLLM):
                 metadata={**cached_meta, "cache_hit": True},
             )
 
-        # 2. Chuỗi gọi Multi-Provider tự bọc lót
+        # 2. Chuỗi gọi Provider (OpenRouter dùng trực tiếp không fallback về các model miễn phí)
         errors: List[str] = []
         if self.provider == "openrouter":
             providers_to_try = [
                 ("openrouter", self._call_openrouter),
-                ("groq", self._call_groq),
-                ("sambanova", self._call_sambanova),
-                ("gemini", self._call_gemini),
             ]
         else:
             providers_to_try = [
@@ -521,10 +524,27 @@ class UETLLMClient(BaseLLM):
                 except Exception as e:
                     err_msg = str(e)
                     errors.append(f"{name}: {err_msg}")
-                    logger.warning(f"Provider {name} gặp sự cố: {err_msg}. Chuyển sang provider dự phòng...")
+                    logger.warning(f"Provider {name} gặp sự cố: {err_msg}. Chuyển sang bước dự phòng...")
 
-            # 3. Tự bọc lót cấp 2: Nếu cả 3 đều bận tức thời, nghỉ 2.5s rồi thử lại lần cuối với Gemini
-            if self.gemini_keys:
+            # 3. Tự bọc lót cấp 2: Nghỉ 2.5s rồi thử lại 1 lần
+            if self.provider == "openrouter" and self.openrouter_keys:
+                try:
+                    logger.info("Đang tự động phục hồi: Thử lại OpenRouter sau 2.5s...")
+                    time.sleep(2.5)
+                    answer, used_model, meta = self._call_openrouter(prompt_text)
+                    if answer:
+                        self._save_to_disk_cache(prompt_text, answer, used_model, meta)
+                        return Response(
+                            query_id=prompt.user_query.query_id,
+                            answer=answer,
+                            sources=prompt.contexts,
+                            model_name=used_model,
+                            latency_seconds=round(timer.elapsed, 3),
+                            metadata=meta,
+                        )
+                except Exception as retry_e:
+                    errors.append(f"openrouter_retry: {retry_e}")
+            elif self.provider != "openrouter" and self.gemini_keys:
                 try:
                     logger.info("Đang tự động phục hồi: Thử lại lần cuối với Gemini sau 2.5s...")
                     time.sleep(2.5)
@@ -542,10 +562,11 @@ class UETLLMClient(BaseLLM):
                 except Exception as retry_e:
                     errors.append(f"gemini_retry: {retry_e}")
 
-            # 4. Fallback khi tất cả provider đều không khả dụng
+            # 4. Fallback khi provider không khả dụng
+            provider_label = "OpenRouter" if self.provider == "openrouter" else "Groq, SambaNova, Gemini"
             fallback_text = (
                 "⚠️ **MÔ HÌNH AI TẠM THỜI TỪ CHỐI DỊCH VỤ**\n\n"
-                f"> Hệ thống đã thử qua các nhà cung cấp (Groq, SambaNova, Gemini) nhưng đều gặp giới hạn hạn mức hoặc sự cố mạng.\n"
+                f"> Hệ thống đã thử qua nhà cung cấp ({provider_label}) nhưng gặp giới hạn hạn mức hoặc sự cố mạng.\n"
                 f"> Chi tiết: {errors[0] if errors else 'Chưa cấu hình API Key trong file .env'}\n\n"
                 "Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau ít phút."
             )
@@ -607,14 +628,16 @@ class UETLLMClient(BaseLLM):
 
         # 2. Cấu hình các Worker
         workers_cfg = []
-        if self.groq_keys:
-            workers_cfg.append(("Groq", self._call_groq, self.DEFAULT_CONFIGS["groq"]["delay"]))
-        if self.sambanova_keys:
-            workers_cfg.append(("SambaNova", self._call_sambanova, self.DEFAULT_CONFIGS["sambanova"]["delay"]))
-        if self.gemini_keys:
-            workers_cfg.append(("Gemini", self._call_gemini, self.DEFAULT_CONFIGS["gemini"]["delay"]))
-        if self.provider == "openrouter" and self.openrouter_keys:
-            workers_cfg.append(("OpenRouter", self._call_openrouter, self.DEFAULT_CONFIGS["openrouter"]["delay"]))
+        if self.provider == "openrouter":
+            if self.openrouter_keys:
+                workers_cfg.append(("OpenRouter", self._call_openrouter, self.openrouter_delay))
+        else:
+            if self.groq_keys:
+                workers_cfg.append(("Groq", self._call_groq, self.DEFAULT_CONFIGS["groq"]["delay"]))
+            if self.sambanova_keys:
+                workers_cfg.append(("SambaNova", self._call_sambanova, self.DEFAULT_CONFIGS["sambanova"]["delay"]))
+            if self.gemini_keys:
+                workers_cfg.append(("Gemini", self._call_gemini, self.DEFAULT_CONFIGS["gemini"]["delay"]))
 
         if not workers_cfg:
             logger.warning("Không có API provider nào sẵn sàng. Chuyển sang fallback tuần tự.")
@@ -686,9 +709,51 @@ class UETLLMClient(BaseLLM):
     # -------------------------------------------------------------------------
 
     def generate_stream(self, prompt: AugmentedPrompt) -> Generator[str, None, None]:
-        """Sinh phản hồi dạng luồng (streaming) qua Groq hoặc SambaNova."""
-        # Thử streaming qua Groq
-        if self.groq_keys:
+        """Sinh phản hồi dạng luồng (streaming) qua OpenRouter (hoặc Groq nếu cấu hình provider='groq')."""
+        if self.provider == "openrouter" and self.openrouter_keys:
+            try:
+                import httpx
+                url = f"{self.DEFAULT_CONFIGS['openrouter']['base_url']}/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.openrouter_keys[0]}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://uet.vnu.edu.vn",
+                    "X-Title": "UETChatbot",
+                }
+                payload = {
+                    "model": self.openrouter_model,
+                    "messages": [{"role": "user", "content": prompt.formatted_prompt}],
+                    "temperature": self.temperature,
+                    "stream": True,
+                }
+                with httpx.Client(timeout=90.0) as client:
+                    with client.stream("POST", url, headers=headers, json=payload) as response:
+                        if response.status_code == 200:
+                            yielded_any = False
+                            for line in response.iter_lines():
+                                line = line.strip()
+                                if not line or not line.startswith("data:"):
+                                    continue
+                                data_str = line[5:].strip()
+                                if data_str == "[DONE]":
+                                    return
+                                try:
+                                    chunk_json = json.loads(data_str)
+                                    delta = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                    if delta:
+                                        yielded_any = True
+                                        yield delta
+                                except Exception:
+                                    continue
+                            if yielded_any:
+                                return
+                        else:
+                            logger.warning(f"Streaming qua OpenRouter trả về mã HTTP {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Streaming qua OpenRouter không thành công: {e}")
+
+        # Thử streaming qua Groq khi provider != 'openrouter'
+        if self.provider != "openrouter" and self.groq_keys:
             try:
                 import httpx
                 url = f"{self.DEFAULT_CONFIGS['groq']['base_url']}/chat/completions"

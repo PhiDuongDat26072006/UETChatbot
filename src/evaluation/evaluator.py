@@ -168,9 +168,9 @@ class UETRagasEvaluator:
 
     def __init__(
         self,
-        model_name: str = "openai/gpt-oss-120b",
+        model_name: str = "tencent/hy4-flash",
         api_key: Optional[str] = None,
-        base_url: str = "https://api.groq.com/openai/v1",
+        base_url: str = "https://openrouter.ai/api/v1",
         embedder: Optional[UETEmbedder] = None,
         max_workers: int = 1,
         timeout: int = 90,
@@ -1210,7 +1210,7 @@ def run_eval_e2e_cli(
     judge_model: Optional[str] = None,
     num_samples: Optional[int] = None,
     top_k: Optional[int] = None,
-    model_name: str = "openai/gpt-oss-120b",
+    model_name: str = "tencent/hy4-flash",
     output_path: Optional[Union[str, Path]] = None,
     delay: float = 1.2,
     generate_only: bool = False,
@@ -1385,7 +1385,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-samples", "--samples", type=int, default=None, dest="num_samples", help="Số lượng mẫu kiểm thử")
     parser.add_argument("--domain", type=str, default=None, help="Lọc theo khoa/đơn vị: fit, fet, fema, sae, handbook, tuyensinh, all")
     parser.add_argument("--top-k", "--top_k", type=int, default=None, dest="top_k", help="Số lượng chunks ngữ cảnh lấy ra")
-    parser.add_argument("--model", type=str, default="openai/gpt-oss-120b", help="Tên mô hình LLM Judge cho Ragas")
+    parser.add_argument("--model", type=str, default="tencent/hy4-flash", help="Tên mô hình LLM Judge cho Ragas")
     parser.add_argument("--delay", type=float, default=1.2, help="Thời gian nghỉ giữa các câu hỏi (giây)")
     parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn file dataset QA kiểm thử")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn lưu kết quả JSON")

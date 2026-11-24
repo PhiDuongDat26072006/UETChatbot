@@ -105,12 +105,12 @@ graph:
   seed_top_m: 10
 
 llm:
-  provider: "groq"             # Nhà cung cấp mặc định ("groq", "sambanova", "gemini")
-  model_name: "qwen/qwen3.8-27b"
+  provider: "openrouter"       # Nhà cung cấp mặc định ("openrouter", "groq", "sambanova", "gemini")
+  model_name: "tencent/hy4-flash"
   candidate_models:
-    - "qwen/qwen3.8-27b"
-    - "openai/gpt-oss-20b"
-    - "llama-3.1-8b-instant"
+    - "tencent/hy4-flash"
+    - "tencent/hy4"
+    - "tencent/hy4-preview"
   temperature: 0.2
   top_k_retrieval: 5
   enable_disk_cache: true
@@ -162,15 +162,15 @@ prompt:
 
 evaluation:
   judge:
-    provider: "groq"
-    model: "openai/gpt-oss-120b"
+    provider: "openrouter"
+    model: "tencent/hy4-flash"
     candidate_models:
-      - "openai/gpt-oss-120b"
-      - "openai/gpt-oss-20b"
-    fallback_provider: "openrouter"
-    fallback_model: "tencent/hy4-flash"
+      - "tencent/hy4-flash"
+      - "tencent/hy4"
+    fallback_provider: "groq"
+    fallback_model: "openai/gpt-oss-120b"
     temperature: 0.0
-    max_tokens: 2048
+    max_tokens: 4096
     reasoning_effort: "low"
     max_retries: 2
     delay_seconds: 1.0
