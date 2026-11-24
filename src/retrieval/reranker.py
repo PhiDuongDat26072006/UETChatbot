@@ -12,7 +12,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from src.base import RetrievedContext
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("reranker")
 
@@ -251,9 +251,15 @@ class JinaONNXReranker(BaseReranker):
         self,
         model_name: str = "jinaai/jina-reranker-v2-base-multilingual",
         onnx_filename: str = "onnx/model.onnx",
-        max_length: int = 512,
-        batch_size: int = 8,
+        max_length: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        providers: Optional[List[str]] = None,
     ):
+        try:
+            cfg = load_yaml_config().get("agent", {}).get("reranker", {})
+        except Exception:
+            cfg = {}
+
         if "/" not in model_name and not Path(model_name).exists():
             repo_id = f"jinaai/{model_name}"
         else:
@@ -261,8 +267,8 @@ class JinaONNXReranker(BaseReranker):
 
         self.model_name = repo_id
         self.onnx_filename = onnx_filename
-        self.max_length = int(max_length)
-        self.batch_size = max(1, int(batch_size))
+        self.max_length = int(max_length) if max_length is not None else int(cfg.get("max_length", 512))
+        self.batch_size = max(1, int(batch_size) if batch_size is not None else int(cfg.get("batch_size", 8)))
         self._session = None
         self._tokenizer = None
         self._active_providers: List[str] = []
@@ -273,7 +279,7 @@ class JinaONNXReranker(BaseReranker):
             from transformers import AutoTokenizer
             from huggingface_hub import hf_hub_download
 
-            logger.info(f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}'...")
+            logger.info(f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}', batch_size={self.batch_size}, max_length={self.max_length}...")
 
             if Path(onnx_filename).is_file():
                 onnx_path = str(Path(onnx_filename).resolve())
@@ -292,41 +298,49 @@ class JinaONNXReranker(BaseReranker):
             except TypeError:
                 self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
 
-            sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
-            sess_options.inter_op_num_threads = 1
-
-            avail_providers = ort.get_available_providers()
-            if "CUDAExecutionProvider" in avail_providers:
+            # Tự động preload CUDA/cuDNN DLLs (Windows ORT >= 1.21 và Linux/Colab) khi ưu tiên GPU
+            req_provs = list(providers or cfg.get("providers", ["CUDAExecutionProvider", "CPUExecutionProvider"]))
+            wants_cuda = any("CUDA" in str(p) for p in req_provs)
+            if wants_cuda:
                 try:
                     import torch  # noqa: F401 - preload CUDA runtime shared libraries on Colab/Linux
                 except Exception:
                     pass
                 if hasattr(ort, "preload_dlls"):
                     try:
-                        ort.preload_dlls()
-                    except Exception:
-                        pass
-                try:
-                    self._session = ort.InferenceSession(
-                        onnx_path,
-                        sess_options=sess_options,
-                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-                    )
-                except Exception as cuda_err:
+                        ort.preload_dlls(cuda=True, cudnn=True)
+                    except Exception as dll_err:
+                        logger.debug(f"Bỏ qua preload_dlls cho ONNX CUDA: {dll_err}")
+
+            available = set(ort.get_available_providers())
+            effective_provs = [p for p in req_provs if p in available]
+            if "CPUExecutionProvider" not in effective_provs:
+                effective_provs.append("CPUExecutionProvider")
+
+            sess_options = ort.SessionOptions()
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
+            sess_options.inter_op_num_threads = 1
+            if effective_provs == ["CPUExecutionProvider"]:
+                sess_options.enable_cpu_mem_arena = False
+
+            try:
+                self._session = ort.InferenceSession(
+                    onnx_path,
+                    sess_options=sess_options,
+                    providers=effective_provs,
+                )
+            except Exception as cuda_err:
+                if effective_provs != ["CPUExecutionProvider"]:
                     logger.warning(f"CUDAExecutionProvider lỗi ({cuda_err}); chuyển sang CPUExecutionProvider.")
+                    sess_options.enable_cpu_mem_arena = False
                     self._session = ort.InferenceSession(
                         onnx_path,
                         sess_options=sess_options,
                         providers=["CPUExecutionProvider"],
                     )
-            else:
-                self._session = ort.InferenceSession(
-                    onnx_path,
-                    sess_options=sess_options,
-                    providers=["CPUExecutionProvider"],
-                )
+                else:
+                    raise
 
             self._active_providers = list(self._session.get_providers())
             logger.info(
@@ -335,7 +349,7 @@ class JinaONNXReranker(BaseReranker):
                 f"batch_size={self.batch_size}, threads={sess_options.intra_op_num_threads})."
             )
         except Exception as e:
-            logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
+            logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Sẽ sử dụng RRF fallback khi rerank.")
             self._session = None
             self._tokenizer = None
 
@@ -349,13 +363,29 @@ class JinaONNXReranker(BaseReranker):
             return []
 
         if self._session is None or self._tokenizer is None:
-            return self._fallback.rerank(query, candidates, top_n=top_n)
+            # D6: Fallback RRF có degraded=True thay vì HeuristicReranker
+            logger.info(f"[D6] Reranker không sẵn sàng. Fallback sang thứ tự RRF (degraded=True).")
+            fallback_results: List[RetrievedContext] = []
+            for rank, cand in enumerate(candidates[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["degraded"] = True
+                meta["rerank_backend"] = "rrf_fallback"
+                fallback_results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=cand.similarity_score,
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+            return fallback_results
 
         try:
             import numpy as np
 
             all_prob_scores: List[float] = [0.0] * len(candidates)
-            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa
+            # Phase 3.1: Length bucketing - sắp xếp theo độ dài văn bản để giảm padding dư thừa
             sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(candidates[idx].text or ""))
             eff_batch_size = (
                 max(self.batch_size, 32)
@@ -395,6 +425,8 @@ class JinaONNXReranker(BaseReranker):
                 meta = dict(cand.metadata) if cand.metadata else {}
                 meta["reranker_name"] = f"jina_onnx_{self.model_name}"
                 meta["rerank_score"] = round(float(score), 4)
+                meta["degraded"] = False
+                meta["rerank_backend"] = "jina_onnx"
                 results.append(
                     RetrievedContext(
                         chunk_id=cand.chunk_id,
@@ -407,8 +439,22 @@ class JinaONNXReranker(BaseReranker):
             logger.info(f"Jina ONNX Reranker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
             return results
         except Exception as err:
-            logger.warning(f"Lỗi chạy Jina ONNX Reranker: {err}. Sử dụng heuristic fallback.")
-            return self._fallback.rerank(query, candidates, top_n=top_n)
+            logger.warning(f"[D6] Lỗi chạy Jina ONNX Reranker: {err}. Giữ thứ tự RRF (degraded=True).")
+            fallback_results = []
+            for rank, cand in enumerate(candidates[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["degraded"] = True
+                meta["rerank_backend"] = "rrf_fallback"
+                fallback_results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=cand.similarity_score,
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+            return fallback_results
 
 
 
@@ -422,12 +468,18 @@ class ViRankerReranker(BaseReranker):
     def __init__(
         self,
         model_name: str = "weights/ViRanker",
-        max_length: int = 512,
-        batch_size: int = 16,
+        max_length: Optional[int] = None,
+        batch_size: Optional[int] = None,
     ):
+        try:
+            from src.utils.helpers import load_yaml_config
+            cfg = load_yaml_config().get("agent", {}).get("reranker", {})
+        except Exception:
+            cfg = {}
+
         self.model_name = model_name
-        self.max_length = max_length
-        self.batch_size = batch_size
+        self.max_length = max_length if max_length is not None else int(cfg.get("max_length", 512))
+        self.batch_size = batch_size if batch_size is not None else int(cfg.get("batch_size", 8))
         self._model = None
         self._tokenizer = None
         self._device = "cpu"
@@ -478,12 +530,15 @@ class ViRankerReranker(BaseReranker):
         try:
             import torch
 
-            pairs = [[query, c.text] for c in candidates]
-            all_scores: List[float] = []
+            # Length bucketing: gom nhóm chunk theo độ dài text để giảm padding thừa trên CPU
+            indexed_cands = list(enumerate(candidates))
+            indexed_cands.sort(key=lambda x: len(x[1].text))
+            all_scores: List[float] = [0.0] * len(candidates)
 
             with torch.no_grad():
-                for i in range(0, len(pairs), self.batch_size):
-                    batch_pairs = pairs[i : i + self.batch_size]
+                for i in range(0, len(indexed_cands), self.batch_size):
+                    batch_indexed = indexed_cands[i : i + self.batch_size]
+                    batch_pairs = [[query, c.text] for _, c in batch_indexed]
                     inputs = self._tokenizer(
                         batch_pairs,
                         padding=True,
@@ -496,9 +551,9 @@ class ViRankerReranker(BaseReranker):
                     logits = outputs.logits.view(-1).float()
                     probs = torch.sigmoid(logits).cpu().numpy().tolist()
                     if isinstance(probs, float):
-                        all_scores.append(probs)
-                    else:
-                        all_scores.extend(probs)
+                        probs = [probs]
+                    for (orig_idx, _), score_val in zip(batch_indexed, probs):
+                        all_scores[orig_idx] = float(score_val)
 
             ranked = list(zip(candidates, all_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
@@ -592,12 +647,15 @@ class VietnameseReranker(BaseReranker):
         try:
             import torch
 
-            pairs = [[query, c.text] for c in candidates]
-            all_scores: List[float] = []
+            # Length bucketing: gom nhóm chunk theo độ dài text để giảm padding thừa trên CPU
+            indexed_cands = list(enumerate(candidates))
+            indexed_cands.sort(key=lambda x: len(x[1].text))
+            all_scores: List[float] = [0.0] * len(candidates)
 
             with torch.no_grad():
-                for i in range(0, len(pairs), self.batch_size):
-                    batch_pairs = pairs[i : i + self.batch_size]
+                for i in range(0, len(indexed_cands), self.batch_size):
+                    batch_indexed = indexed_cands[i : i + self.batch_size]
+                    batch_pairs = [[query, c.text] for _, c in batch_indexed]
                     inputs = self._tokenizer(
                         batch_pairs,
                         padding=True,
@@ -610,9 +668,9 @@ class VietnameseReranker(BaseReranker):
                     logits = outputs.logits.view(-1).float()
                     probs = torch.sigmoid(logits).cpu().numpy().tolist()
                     if isinstance(probs, float):
-                        all_scores.append(probs)
-                    else:
-                        all_scores.extend(probs)
+                        probs = [probs]
+                    for (orig_idx, _), score_val in zip(batch_indexed, probs):
+                        all_scores[orig_idx] = float(score_val)
 
             ranked = list(zip(candidates, all_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
@@ -705,12 +763,15 @@ class PhoRankerReranker(BaseReranker):
         try:
             import torch
 
-            pairs = [[query, c.text] for c in candidates]
-            all_scores: List[float] = []
+            # Length bucketing: gom nhóm chunk theo độ dài text để giảm padding thừa trên CPU
+            indexed_cands = list(enumerate(candidates))
+            indexed_cands.sort(key=lambda x: len(x[1].text))
+            all_scores: List[float] = [0.0] * len(candidates)
 
             with torch.no_grad():
-                for i in range(0, len(pairs), self.batch_size):
-                    batch_pairs = pairs[i : i + self.batch_size]
+                for i in range(0, len(indexed_cands), self.batch_size):
+                    batch_indexed = indexed_cands[i : i + self.batch_size]
+                    batch_pairs = [[query, c.text] for _, c in batch_indexed]
                     inputs = self._tokenizer(
                         batch_pairs,
                         padding=True,
@@ -723,9 +784,9 @@ class PhoRankerReranker(BaseReranker):
                     logits = outputs.logits.view(-1).float()
                     probs = torch.sigmoid(logits).cpu().numpy().tolist()
                     if isinstance(probs, float):
-                        all_scores.append(probs)
-                    else:
-                        all_scores.extend(probs)
+                        probs = [probs]
+                    for (orig_idx, _), score_val in zip(batch_indexed, probs):
+                        all_scores[orig_idx] = float(score_val)
 
             ranked = list(zip(candidates, all_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)

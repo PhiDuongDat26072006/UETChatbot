@@ -31,8 +31,19 @@ if str(_BASE_DIR) not in sys.path:
 
 from src.base import AugmentedPrompt, BaseLLM, Response
 from src.utils.helpers import Timer, get_logger, load_yaml_config
+from src.utils.http_session import HttpSessionManager
+
+import requests
 
 logger = get_logger("llm")
+
+
+class LlmUnavailableError(Exception):
+    """Ném ra khi tất cả các nhà cung cấp LLM đều thất bại (429, 401, hết quota, timeout...). Tuân thủ D12."""
+
+    def __init__(self, message: str, errors: Optional[List[str]] = None):
+        super().__init__(message)
+        self.errors = errors or []
 
 
 class UETLLMClient(BaseLLM):
@@ -43,6 +54,12 @@ class UETLLMClient(BaseLLM):
 
     # Cấu hình mặc định cho từng Provider
     DEFAULT_CONFIGS = {
+        "custom_api": {
+            "model": "gemma-4",
+            "candidate_models": ["gemma-4"],
+            "base_url": "https://multiple-effectively-lived-marketing.trycloudflare.com",
+            "delay": 0.5,
+        },
         "groq": {
             "model": "qwen/qwen3.8-27b",
             "candidate_models": ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"],
@@ -79,21 +96,65 @@ class UETLLMClient(BaseLLM):
         api_key: Optional[str] = None,
         api_keys: Optional[List[str]] = None,
         provider: Optional[str] = None,
-        enable_cache: bool = True,
+        enable_cache: Optional[bool] = None,
         cache_file: Optional[str | Path] = None,
+        custom_api_url: Optional[str] = None,
+        custom_api_model: Optional[str] = None,
+        custom_api_key: Optional[str] = None,
+        session_ttl_s: float = 1800.0,
     ):
         config = load_yaml_config()
         llm_cfg = config.get("llm", {})
+        custom_cfg = llm_cfg.get("custom_api", {})
 
-        self.provider = provider or llm_cfg.get("provider", "openrouter")
-        self._model_name = model_name or llm_cfg.get("model_name", "tencent/hy4-flash")
+        raw_provider = (provider or llm_cfg.get("provider", "openrouter")).strip().lower()
+        self.provider = "custom_api" if raw_provider in ("api", "custom", "custom_api") else raw_provider
+
+        # Cấu hình Custom API (OpenAI-compatible / Cloudflare Tunnel giống tests/test_gemma_host.py)
+        self.custom_api_url = (
+            custom_api_url
+            or os.getenv("LLM_API_BASE_URL")
+            or custom_cfg.get("base_url")
+            or self.DEFAULT_CONFIGS["custom_api"]["base_url"]
+        ).rstrip("/")
+        self.custom_api_model = (
+            custom_api_model
+            or os.getenv("LLM_API_MODEL")
+            or custom_cfg.get("model")
+            or self.DEFAULT_CONFIGS["custom_api"]["model"]
+        )
+        self.custom_api_key = (
+            custom_api_key
+            if custom_api_key is not None
+            else os.getenv("LLM_API_KEY", custom_cfg.get("api_key", ""))
+        )
+        self.custom_api_max_tokens = int(custom_cfg.get("max_tokens", 2048))
+        self.custom_api_connect_timeout_s = float(custom_cfg.get("connect_timeout_s", 10.0))
+        self.custom_api_timeout_s = float(custom_cfg.get("timeout_s", 120.0))
+        self.custom_api_health_path = str(custom_cfg.get("health_path", "/health"))
+        self.custom_api_enable_thinking = bool(custom_cfg.get("enable_thinking", False))
+        self.custom_api_stream = bool(custom_cfg.get("stream", True))
+
+        if model_name:
+            self._model_name = model_name
+        elif self.provider == "custom_api":
+            self._model_name = self.custom_api_model
+        else:
+            self._model_name = llm_cfg.get("model_name", "tencent/hy4-flash")
+
         default_provider_candidates = self.DEFAULT_CONFIGS.get(
             self.provider, self.DEFAULT_CONFIGS["openrouter"]
         )["candidate_models"]
         self.candidate_models = list(llm_cfg.get("candidate_models", default_provider_candidates))
         self.CANDIDATE_MODELS = self.candidate_models
         self.temperature = float(llm_cfg.get("temperature", 0.2))
+        self.json_temperature = float(llm_cfg.get("json_temperature", 0.0))
         self.reasoning_effort = llm_cfg.get("reasoning_effort", "none")
+
+        # Quản lý HTTP Session (Keep-Alive) duy trì xuyên suốt từng phiên trò chuyện
+        ttl_val = float(llm_cfg.get("session_ttl_s", session_ttl_s))
+        self._session_manager = HttpSessionManager(ttl_s=ttl_val)
+        self._session = self._session_manager.default_session
 
         # Nạp API Keys cho các providers
         self.groq_keys = self._load_keys_for_provider(
@@ -119,22 +180,38 @@ class UETLLMClient(BaseLLM):
             openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
         )
 
+        # Tự động nhận diện nếu key trong GROQ_API_KEY là OpenRouter key (sk-or-...)
+        if not self.openrouter_keys:
+            for k in self.groq_keys:
+                if k.startswith("sk-or-") and k not in self.openrouter_keys:
+                    self.openrouter_keys.append(k)
+
         # Khóa tương thích ngược
-        self.api_keys = self.openrouter_keys if self.provider == "openrouter" else self.groq_keys
+        self.api_keys = self.openrouter_keys if self.provider == "openrouter" else (self.groq_keys or self.openrouter_keys)
         self.current_key_index = 0
 
-        # Cấu hình Disk Cache
-        self.enable_cache = enable_cache
+        # Cấu hình Disk Cache (ưu tiên tham số truyền trực tiếp, ngược lại đọc llm.enable_disk_cache từ config.yaml)
+        if enable_cache is not None:
+            self.enable_cache = bool(enable_cache)
+        else:
+            self.enable_cache = bool(llm_cfg.get("enable_disk_cache", False))
+
         if cache_file:
             self.cache_file = Path(cache_file)
         else:
-            self.cache_file = _BASE_DIR / "database" / "llm_cache.json"
+            cfg_cache_file = llm_cfg.get("cache_file")
+            self.cache_file = (_BASE_DIR / cfg_cache_file) if cfg_cache_file else (_BASE_DIR / "database" / "llm_cache.json")
 
         self._cache_lock = threading.Lock()
-        self._init_cache_file()
+        if self.enable_cache:
+            self._init_cache_file()
 
         # Thống kê trạng thái
         active_providers = []
+        if self.provider == "custom_api" and self.custom_api_url:
+            active_providers.append(f"CustomAPI ({self.custom_api_url}, model={self.custom_api_model})")
+        if self.openrouter_keys:
+            active_providers.append(f"OpenRouter ({len(self.openrouter_keys)} keys)")
         if self.groq_keys:
             active_providers.append(f"Groq ({len(self.groq_keys)} keys)")
         if self.sambanova_keys:
@@ -145,9 +222,51 @@ class UETLLMClient(BaseLLM):
             active_providers.append(f"OpenRouter ({len(self.openrouter_keys)} keys)")
 
         if active_providers:
-            logger.info(f"Đã kích hoạt Multi-Provider: {', '.join(active_providers)} | Cache: {self.cache_file.name}")
+            cache_status = self.cache_file.name if self.enable_cache else "OFF"
+            logger.info(
+                f"Đã kích hoạt LLM [{self.provider}]: {', '.join(active_providers)} | "
+                f"Cache: {cache_status} | SessionTTL: {ttl_val}s"
+            )
         else:
-            logger.warning("Chưa tìm thấy API Key nào trong .env. LLM sẽ hoạt động ở chế độ fallback trích đoạn.")
+            logger.warning("Chưa tìm thấy API Key hoặc Custom API URL nào. LLM sẽ hoạt động ở chế độ fallback.")
+
+    # -------------------------------------------------------------------------
+    # HTTP SESSION MANAGEMENT (KEEP-ALIVE PER CONVERSATION)
+    # -------------------------------------------------------------------------
+
+    def get_http_session(self, session_id: Optional[str] = None) -> requests.Session:
+        """Trả về requests.Session() duy trì kết nối Keep-Alive cho phiên trò chuyện tương ứng."""
+        if not session_id:
+            return self._session
+        return self._session_manager.get_session(session_id)
+
+    def close_session(self, session_id: Optional[str]) -> None:
+        """Đóng kết nối HTTP Session của một phiên trò chuyện."""
+        self._session_manager.close_session(session_id)
+
+    def close(self) -> None:
+        """Đóng toàn bộ kết nối HTTP Session đang mở."""
+        self._session_manager.close_all()
+
+    def check_custom_api_health(self, session_id: Optional[str] = None) -> bool:
+        """Kiểm tra GET /health tới Custom LLM API server (giống tests/test_gemma_host.py)."""
+        if not self.custom_api_url:
+            return False
+        try:
+            url = f"{self.custom_api_url}{self.custom_api_health_path}"
+            headers = {"User-Agent": "UET-Chatbot-HealthCheck"}
+            if self.custom_api_key:
+                headers["Authorization"] = f"Bearer {self.custom_api_key}"
+            http_session = self.get_http_session(session_id)
+            resp = http_session.get(url, headers=headers, timeout=(self.custom_api_connect_timeout_s, 10.0))
+            if resp.status_code == 200:
+                logger.info(f"[CustomLLM Health] /health OK (status 200) từ {url}")
+                return True
+            logger.warning(f"[CustomLLM Health] /health trả về status={resp.status_code}")
+            return False
+        except Exception as e:
+            logger.warning(f"[CustomLLM Health] Không thể kết nối tới /health: {e}")
+            return False
 
     # -------------------------------------------------------------------------
     # DISK CACHE MANAGEMENT
@@ -275,15 +394,143 @@ class UETLLMClient(BaseLLM):
         return f"{key[:4]}...{key[-4:]}"
 
     # -------------------------------------------------------------------------
-    # CALL PROVIDERS (GROQ, SAMBANOVA, GEMINI)
+    # CALL PROVIDERS (CUSTOM_API, OPENROUTER, GROQ, SAMBANOVA, GEMINI)
     # -------------------------------------------------------------------------
 
-    def _call_groq(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
-        """Gọi Groq API."""
+    @staticmethod
+    def _iter_sse_deltas(response) -> Generator[Tuple[str, Optional[Dict[str, Any]]], None, None]:
+        """
+        Đọc luồng SSE OpenAI-compatible bằng raw bytes rồi giải mã UTF-8 tường minh
+        (tránh lỗi requests mặc định ISO-8859-1 làm vỡ font tiếng Việt khi server không gửi charset=utf-8).
+        Yield từng cặp (delta_text, usage_or_none).
+        """
+        try:
+            response.encoding = "utf-8"
+        except Exception:
+            pass
+
+        for raw_line in response.iter_lines(decode_unicode=False):
+            if not raw_line:
+                continue
+            if isinstance(raw_line, bytes):
+                line = raw_line.decode("utf-8", errors="replace").strip()
+            else:
+                line = str(raw_line).strip()
+            if not line.startswith("data:"):
+                continue
+            data_str = line[5:].strip()
+            if data_str == "[DONE]":
+                break
+            try:
+                chunk_json = json.loads(data_str)
+                usage = chunk_json.get("usage")
+                choices = chunk_json.get("choices") or []
+                delta = ""
+                if choices:
+                    delta = choices[0].get("delta", {}).get("content") or ""
+                if delta or usage:
+                    yield delta, usage
+            except Exception:
+                continue
+
+    def _call_custom_api(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """
+        Gọi LLM qua Custom OpenAI-compatible API / Cloudflare Tunnel (giống tests/test_gemma_host.py).
+        - Duy trì requests.Session() (Keep-Alive) xuyên suốt phiên trò chuyện theo session_id.
+        - Hỗ trợ chế độ "stream": True kèm giải mã UTF-8 tường minh (tránh timeout tunnel & vỡ font tiếng Việt).
+        """
+        if not self.custom_api_url:
+            raise RuntimeError("Chưa cấu hình llm.custom_api.base_url trong config.yaml hoặc LLM_API_BASE_URL")
+
+        target_model = model or self.custom_api_model
+        url = f"{self.custom_api_url}/v1/chat/completions"
+
+        headers = {"Content-Type": "application/json"}
+        if self.custom_api_key:
+            headers["Authorization"] = f"Bearer {self.custom_api_key}"
+
+        use_stream = self.custom_api_stream
+        payload: Dict[str, Any] = {
+            "model": target_model,
+            "messages": [{"role": "user", "content": prompt_text}],
+            "max_tokens": max_tokens if max_tokens is not None else self.custom_api_max_tokens,
+            "temperature": self.temperature if temperature is None else temperature,
+            "chat_template_kwargs": {"enable_thinking": self.custom_api_enable_thinking},
+        }
+        if use_stream:
+            payload["stream"] = True
+
+        http_session = self.get_http_session(session_id)
+
+        if use_stream:
+            with http_session.post(
+                url,
+                headers=headers,
+                json=payload,
+                stream=True,
+                timeout=(self.custom_api_connect_timeout_s, self.custom_api_timeout_s),
+            ) as resp:
+                if resp.status_code >= 400:
+                    err_msg = resp.text
+                    try:
+                        err_msg = resp.json().get("error", {}).get("message", resp.text)
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"CustomAPI [{resp.status_code}]: {err_msg}")
+
+                content_type = str(getattr(resp, "headers", {}).get("Content-Type", "") or "").lower()
+                if "application/json" in content_type:
+                    data = resp.json()
+                    answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    usage = data.get("usage", {})
+                    return answer.strip(), target_model, {"provider": "custom_api", "streamed": False, "usage": usage}
+
+                parts: List[str] = []
+                usage: Dict[str, Any] = {}
+                for delta, chunk_usage in self._iter_sse_deltas(resp):
+                    if delta:
+                        parts.append(delta)
+                    if chunk_usage:
+                        usage = chunk_usage
+                answer = "".join(parts)
+                return answer.strip(), target_model, {"provider": "custom_api", "streamed": True, "usage": usage}
+
+        resp = http_session.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=(self.custom_api_connect_timeout_s, self.custom_api_timeout_s),
+        )
+        if resp.status_code >= 400:
+            err_msg = resp.text
+            try:
+                err_msg = resp.json().get("error", {}).get("message", resp.text)
+            except Exception:
+                pass
+            raise RuntimeError(f"CustomAPI [{resp.status_code}]: {err_msg}")
+
+        data = resp.json()
+        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+        return answer.strip(), target_model, {"provider": "custom_api", "streamed": False, "usage": usage}
+
+    def _call_groq(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """Gọi Groq API qua persistent requests.Session()."""
         if not self.groq_keys:
             raise RuntimeError("Chưa cấu hình GROQ_API_KEY trong .env")
-
-        import httpx
 
         target_model = model or self.DEFAULT_CONFIGS["groq"]["model"]
         url = f"{self.DEFAULT_CONFIGS['groq']['base_url']}/chat/completions"
@@ -296,10 +543,11 @@ class UETLLMClient(BaseLLM):
         payload = {
             "model": target_model,
             "messages": [{"role": "user", "content": prompt_text}],
-            "temperature": self.temperature,
+            "temperature": self.temperature if temperature is None else temperature,
         }
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=25.0)
+        http_session = self.get_http_session(session_id)
+        resp = http_session.post(url, headers=headers, json=payload, timeout=(10.0, 25.0))
         if resp.status_code >= 400:
             err_msg = resp.text
             try:
@@ -313,12 +561,16 @@ class UETLLMClient(BaseLLM):
         usage = data.get("usage", {})
         return answer.strip(), target_model, {"provider": "groq", "usage": usage}
 
-    def _call_sambanova(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
-        """Gọi SambaNova API (OpenAI-compatible)."""
+    def _call_sambanova(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """Gọi SambaNova API (OpenAI-compatible) qua persistent requests.Session()."""
         if not self.sambanova_keys:
             raise RuntimeError("Chưa cấu hình SAMBANOVA_API_KEY trong .env")
-
-        import httpx
 
         target_model = model or self.DEFAULT_CONFIGS["sambanova"]["model"]
         url = f"{self.DEFAULT_CONFIGS['sambanova']['base_url']}/chat/completions"
@@ -331,10 +583,11 @@ class UETLLMClient(BaseLLM):
         payload = {
             "model": target_model,
             "messages": [{"role": "user", "content": prompt_text}],
-            "temperature": self.temperature,
+            "temperature": self.temperature if temperature is None else temperature,
         }
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+        http_session = self.get_http_session(session_id)
+        resp = http_session.post(url, headers=headers, json=payload, timeout=(10.0, 30.0))
         if resp.status_code >= 400:
             err_msg = resp.text
             try:
@@ -348,27 +601,33 @@ class UETLLMClient(BaseLLM):
         usage = data.get("usage", {})
         return answer.strip(), target_model, {"provider": "sambanova", "usage": usage}
 
-    def _call_gemini(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
-        """Gọi Google Gemini API qua REST endpoint chính thức."""
+    def _call_gemini(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """Gọi Google Gemini API qua persistent requests.Session()."""
         if not self.gemini_keys:
             raise RuntimeError("Chưa cấu hình GEMINI_API_KEY trong .env")
-
-        import httpx
 
         candidate_models = [model] if model else self.DEFAULT_CONFIGS["gemini"].get("candidate_models", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"])
         key = self.gemini_keys[0]
         last_error = ""
+        http_session = self.get_http_session(session_id)
+        eff_temp = self.temperature if temperature is None else temperature
 
         for target_model in candidate_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={key}"
             headers = {"Content-Type": "application/json"}
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "generationConfig": {"temperature": self.temperature},
+                "generationConfig": {"temperature": eff_temp},
             }
 
             try:
-                resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+                resp = http_session.post(url, headers=headers, json=payload, timeout=(10.0, 30.0))
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])
@@ -405,7 +664,13 @@ class UETLLMClient(BaseLLM):
         elif eff_low in ("minimal", "low", "medium", "high"):
             payload["reasoning"] = {"effort": eff_low}
 
-    def _call_openrouter(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+    def _call_openrouter(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
         """Gọi OpenRouter API (OpenAI-compatible, mặc định Tencent Hy4)."""
         if not self.openrouter_keys:
             raise RuntimeError("Chưa cấu hình OPENROUTER_API_KEY trong .env")
@@ -429,7 +694,7 @@ class UETLLMClient(BaseLLM):
         payload: Dict[str, Any] = {
             "model": target_model,
             "messages": [{"role": "user", "content": prompt_text}],
-            "temperature": self.temperature,
+            "temperature": self.temperature if temperature is None else temperature,
         }
         self._apply_openrouter_reasoning(payload)
 
@@ -485,14 +750,32 @@ class UETLLMClient(BaseLLM):
     # CORE GENERATION (SINGLE & FAILOVER)
     # -------------------------------------------------------------------------
 
-    def generate(self, prompt: AugmentedPrompt) -> Response:
+    @staticmethod
+    def _invoke_provider(call_fn, prompt_text: str, model: Optional[str], session_id: Optional[str], temperature: Optional[float]):
+        """Gọi hàm provider an toàn (hỗ trợ cả mock chỉ nhận prompt_text hoặc model)."""
+        try:
+            return call_fn(prompt_text, model=model, session_id=session_id, temperature=temperature)
+        except TypeError:
+            try:
+                return call_fn(prompt_text, model=model)
+            except TypeError:
+                return call_fn(prompt_text)
+
+    def generate(
+        self,
+        prompt: AugmentedPrompt,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ) -> Response:
         """
         Sinh câu trả lời cho một câu hỏi đơn lẻ:
         1. Kiểm tra Disk Cache (nếu có, trả về ngay 0s).
-        2. Nếu chưa có, gọi chuỗi Multi-Provider: Groq -> SambaNova -> Gemini.
+        2. Nếu chưa có, gọi chuỗi Multi-Provider (ưu tiên provider được chọn: custom_api / openrouter / groq / ...),
+           duy trì kết nối HTTP Session theo prompt.user_query.session_id.
         3. Lưu kết quả mới vào Disk Cache.
         """
         prompt_text = prompt.formatted_prompt
+        session_id = getattr(prompt.user_query, "session_id", None) if prompt.user_query else None
 
         # 1. Kiểm tra Disk Cache
         cached = self._get_from_disk_cache(prompt_text)
@@ -515,19 +798,37 @@ class UETLLMClient(BaseLLM):
                 ("openrouter", self._call_openrouter),
             ]
         else:
-            providers_to_try = [
-                ("groq", self._call_groq),
-                ("sambanova", self._call_sambanova),
-                ("gemini", self._call_gemini),
-            ]
+            providers_to_try = []
+            if self.provider in ("custom_api", "api", "custom") and self.custom_api_url:
+                providers_to_try.append(("custom_api", self._call_custom_api))
+            if self.openrouter_keys and self.provider in ("custom_api", "api", "custom"):
+                providers_to_try.append(("openrouter", self._call_openrouter))
+            if self.groq_keys:
+                providers_to_try.append(("groq", self._call_groq))
+            if self.sambanova_keys:
+                providers_to_try.append(("sambanova", self._call_sambanova))
+            if self.gemini_keys:
+                providers_to_try.append(("gemini", self._call_gemini))
+
+            if not providers_to_try:
+                providers_to_try = [
+                    ("groq", self._call_groq),
+                    ("sambanova", self._call_sambanova),
+                    ("gemini", self._call_gemini),
+                ]
 
         with Timer() as timer:
             for name, call_fn in providers_to_try:
                 try:
-                    logger.info(f"Đang gọi mô hình qua {name.upper()}...")
-                    answer, used_model, meta = call_fn(prompt_text)
+                    logger.info(f"Đang gọi mô hình qua {name.upper()} (session={session_id or 'default'})...")
+                    answer, used_model, meta = self._invoke_provider(
+                        call_fn,
+                        prompt_text,
+                        model=model,
+                        session_id=session_id,
+                        temperature=temperature,
+                    )
                     if answer:
-                        # Lưu vào Disk Cache
                         self._save_to_disk_cache(prompt_text, answer, used_model, meta)
                         return Response(
                             query_id=prompt.user_query.query_id,
@@ -547,7 +848,13 @@ class UETLLMClient(BaseLLM):
                 try:
                     logger.info("Đang tự động phục hồi: Thử lại OpenRouter sau 2.5s...")
                     time.sleep(2.5)
-                    answer, used_model, meta = self._call_openrouter(prompt_text)
+                    answer, used_model, meta = self._invoke_provider(
+                        self._call_openrouter,
+                        prompt_text,
+                        model=model,
+                        session_id=session_id,
+                        temperature=temperature,
+                    )
                     if answer:
                         self._save_to_disk_cache(prompt_text, answer, used_model, meta)
                         return Response(
@@ -564,7 +871,13 @@ class UETLLMClient(BaseLLM):
                 try:
                     logger.info("Đang tự động phục hồi: Thử lại lần cuối với Gemini sau 2.5s...")
                     time.sleep(2.5)
-                    answer, used_model, meta = self._call_gemini(prompt_text)
+                    answer, used_model, meta = self._invoke_provider(
+                        self._call_gemini,
+                        prompt_text,
+                        model=model,
+                        session_id=session_id,
+                        temperature=temperature,
+                    )
                     if answer:
                         self._save_to_disk_cache(prompt_text, answer, used_model, meta)
                         return Response(
@@ -578,22 +891,35 @@ class UETLLMClient(BaseLLM):
                 except Exception as retry_e:
                     errors.append(f"gemini_retry: {retry_e}")
 
-            # 4. Fallback khi provider không khả dụng
-            provider_label = "OpenRouter" if self.provider == "openrouter" else "Groq, SambaNova, Gemini"
-            fallback_text = (
-                "⚠️ **MÔ HÌNH AI TẠM THỜI TỪ CHỐI DỊCH VỤ**\n\n"
-                f"> Hệ thống đã thử qua nhà cung cấp ({provider_label}) nhưng gặp giới hạn hạn mức hoặc sự cố mạng.\n"
-                f"> Chi tiết: {errors[0] if errors else 'Chưa cấu hình API Key trong file .env'}\n\n"
-                "Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau ít phút."
+            # 4. Khi tất cả provider đều không khả dụng -> Ném LlmUnavailableError theo D12
+            logger.error(f"[UETLLMClient] Tất cả nhà cung cấp LLM đều thất bại: {errors}")
+            raise LlmUnavailableError(
+                f"Tất cả nhà cung cấp LLM đều thất bại: {errors}",
+                errors=errors,
             )
-            return Response(
-                query_id=prompt.user_query.query_id,
-                answer=fallback_text,
-                sources=prompt.contexts,
-                model_name="multi-provider-fallback",
-                latency_seconds=round(timer.elapsed, 3),
-                metadata={"errors": errors},
-            )
+
+    def generate_json(self, prompt: AugmentedPrompt, model: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Gọi LLM và bóc tách an toàn kết quả JSON (Structured Output).
+        Hỗ trợ markdown codeblock (```json ... ```) và raw JSON object.
+        """
+        try:
+            resp = self.generate(prompt, model=model, temperature=self.json_temperature)
+            text = (resp.answer or "").strip()
+            import re
+            json_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+            if json_block:
+                return json.loads(json_block.group(1))
+
+            first_brace = text.find("{")
+            last_brace = text.rfind("}")
+            if first_brace != -1 and last_brace > first_brace:
+                return json.loads(text[first_brace : last_brace + 1])
+
+            return json.loads(text)
+        except Exception as e:
+            logger.warning(f"[generate_json] Không thể parse JSON từ phản hồi LLM: {e}")
+            return None
 
     # -------------------------------------------------------------------------
     # MULTI-PROVIDER WORKER QUEUE (BATCH EVALUATION)
@@ -647,6 +973,8 @@ class UETLLMClient(BaseLLM):
         if self.provider == "openrouter":
             if self.openrouter_keys:
                 workers_cfg.append(("OpenRouter", self._call_openrouter, self.openrouter_delay))
+        elif self.provider == "custom_api" and self.custom_api_url:
+            workers_cfg.append(("CustomAPI", self._call_custom_api, self.DEFAULT_CONFIGS["custom_api"]["delay"]))
         else:
             if self.groq_keys:
                 workers_cfg.append(("Groq", self._call_groq, self.DEFAULT_CONFIGS["groq"]["delay"]))
@@ -725,8 +1053,42 @@ class UETLLMClient(BaseLLM):
     # -------------------------------------------------------------------------
 
     def generate_stream(self, prompt: AugmentedPrompt) -> Generator[str, None, None]:
-        """Sinh phản hồi dạng luồng (streaming) qua OpenRouter (hoặc Groq nếu cấu hình provider='groq')."""
-        if self.provider == "openrouter" and self.openrouter_keys:
+        """Sinh phản hồi dạng luồng (streaming) qua Custom API, OpenRouter hoặc Groq."""
+        session_id = getattr(prompt.user_query, "session_id", None) if prompt.user_query else None
+        http_session = self.get_http_session(session_id)
+
+        # 1. Thử streaming qua Custom API (nếu đang chọn custom_api)
+        if self.provider in ("custom_api", "api", "custom") and self.custom_api_url:
+            try:
+                url = f"{self.custom_api_url}/v1/chat/completions"
+                headers = {"Content-Type": "application/json"}
+                if self.custom_api_key:
+                    headers["Authorization"] = f"Bearer {self.custom_api_key}"
+                payload: Dict[str, Any] = {
+                    "model": self.custom_api_model,
+                    "messages": [{"role": "user", "content": prompt.formatted_prompt}],
+                    "max_tokens": self.custom_api_max_tokens,
+                    "temperature": self.temperature,
+                    "chat_template_kwargs": {"enable_thinking": self.custom_api_enable_thinking},
+                    "stream": True,
+                }
+                with http_session.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    stream=True,
+                    timeout=(self.custom_api_connect_timeout_s, self.custom_api_timeout_s),
+                ) as response:
+                    if response.status_code == 200:
+                        for delta, _ in self._iter_sse_deltas(response):
+                            if delta:
+                                yield delta
+                        return
+            except Exception as e:
+                logger.warning(f"Streaming qua CustomAPI không thành công: {e}")
+
+        # 2. Thử streaming qua OpenRouter (hỗ trợ tắt reasoning cho hy4-flash)
+        if self.openrouter_keys and (self.provider == "openrouter" or not self.groq_keys):
             try:
                 import httpx
                 url = f"{self.DEFAULT_CONFIGS['openrouter']['base_url']}/chat/completions"
@@ -736,7 +1098,7 @@ class UETLLMClient(BaseLLM):
                     "HTTP-Referer": "https://uet.vnu.edu.vn",
                     "X-Title": "UETChatbot",
                 }
-                payload: Dict[str, Any] = {
+                payload = {
                     "model": self.openrouter_model,
                     "messages": [{"role": "user", "content": prompt.formatted_prompt}],
                     "temperature": self.temperature,
@@ -769,10 +1131,9 @@ class UETLLMClient(BaseLLM):
             except Exception as e:
                 logger.warning(f"Streaming qua OpenRouter không thành công: {e}")
 
-        # Thử streaming qua Groq khi provider != 'openrouter'
+        # 3. Thử streaming qua Groq khi provider != 'openrouter'
         if self.provider != "openrouter" and self.groq_keys:
             try:
-                import httpx
                 url = f"{self.DEFAULT_CONFIGS['groq']['base_url']}/chat/completions"
                 headers = {
                     "Authorization": f"Bearer {self.groq_keys[0]}",
@@ -784,24 +1145,12 @@ class UETLLMClient(BaseLLM):
                     "temperature": self.temperature,
                     "stream": True,
                 }
-                with httpx.Client(timeout=30.0) as client:
-                    with client.stream("POST", url, headers=headers, json=payload) as response:
-                        if response.status_code == 200:
-                            for line in response.iter_lines():
-                                line = line.strip()
-                                if not line or not line.startswith("data:"):
-                                    continue
-                                data_str = line[5:].strip()
-                                if data_str == "[DONE]":
-                                    return
-                                try:
-                                    chunk_json = json.loads(data_str)
-                                    delta = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                                    if delta:
-                                        yield delta
-                                except Exception:
-                                    continue
-                            return
+                with http_session.post(url, headers=headers, json=payload, stream=True, timeout=(10.0, 30.0)) as response:
+                    if response.status_code == 200:
+                        for delta, _ in self._iter_sse_deltas(response):
+                            if delta:
+                                yield delta
+                        return
             except Exception as e:
                 logger.warning(f"Streaming qua Groq không thành công: {e}")
 

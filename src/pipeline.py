@@ -847,6 +847,7 @@ class UETRAGPipeline(BaseRAGPipeline):
 # =========================================================================
 
 _active_rag_pipeline: Optional[UETRAGPipeline] = None
+_active_agentic_rag_pipeline: Optional[Any] = None
 _active_ingestion_pipeline: Optional[UETIngestionPipeline] = None
 
 
@@ -880,6 +881,47 @@ def get_rag_pipeline() -> UETRAGPipeline:
     )
     logger.info("Khởi tạo thành công UETRAGPipeline tích hợp đầy đủ trong src/pipeline.py")
     return _active_rag_pipeline
+
+
+def get_agentic_rag_pipeline() -> Any:
+    """Khởi tạo hoặc lấy Agentic RAG Pipeline (LangGraph State Machine) đang hoạt động."""
+    global _active_agentic_rag_pipeline
+    if _active_agentic_rag_pipeline is not None:
+        return _active_agentic_rag_pipeline
+
+    from src.agent import UETAgenticRAGPipeline
+
+    embedding_model = UETEmbedder()
+    vector_store = UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=embedding_model)
+
+    from src.retrieval import UETRetriever
+
+    prompt_augmenter = UETPromptAugmenter()
+    llm = UETLLMClient()
+    retriever = UETRetriever(embedding_model=embedding_model, vector_store=vector_store)
+
+    _active_agentic_rag_pipeline = UETAgenticRAGPipeline(
+        embedding_model=embedding_model,
+        vector_store=vector_store,
+        prompt_augmenter=prompt_augmenter,
+        llm=llm,
+        retriever=retriever,
+    )
+    logger.info("Khởi tạo thành công UETAgenticRAGPipeline tích hợp LangGraph trong src/pipeline.py")
+    return _active_agentic_rag_pipeline
+
+
+def get_active_pipeline(mode: Optional[str] = None) -> Any:
+    """
+    Lấy pipeline theo cấu hình config.yaml, biến môi trường RAG_MODE hoặc tham số mode ('agentic' hoặc 'modular').
+    Mặc định: 'agentic'.
+    """
+    env_mode = os.environ.get("RAG_MODE")
+    cfg = load_yaml_config()
+    chosen_mode = mode or env_mode or cfg.get("agent", {}).get("mode", "agentic")
+    if chosen_mode == "modular":
+        return get_rag_pipeline()
+    return get_agentic_rag_pipeline()
 
 
 def get_ingestion_pipeline() -> UETIngestionPipeline:

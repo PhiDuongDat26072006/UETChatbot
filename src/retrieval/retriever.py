@@ -74,21 +74,23 @@ class UETRetriever:
         retrieval_cfg = raw_config.get("retrieval", {})
         paths_cfg = raw_config.get("paths", {})
 
-        # Tham số theo chuẩn Pipeline (đảo mặc định ưu tiên BM25 + GraphRAG theo benchmark thực tế)
-        self.bm25_top_k: int = int(retrieval_cfg.get("bm25_top_k", 60))
-        self.vector_top_k: int = int(retrieval_cfg.get("vector_top_k", 60))
-        self.candidate_pool_size: int = int(retrieval_cfg.get("candidate_pool_size", 60))
-        self.rerank_top_n: int = int(retrieval_cfg.get("rerank_top_n", 20))
-        self.default_top_k: int = int(retrieval_cfg.get("final_top_k", 10))
+        # Tham số theo chuẩn Pipeline (ưu tiên BM25 + GraphRAG + Vector 3-way RRF theo benchmark thực tế)
+        self.bm25_top_k: int = int(retrieval_cfg.get("bm25_top_k", 50))
+        self.vector_top_k: int = int(retrieval_cfg.get("vector_top_k", 50))
+        self.candidate_pool_size: int = int(retrieval_cfg.get("candidate_pool_size", 25))
+        self.rerank_top_n: int = int(retrieval_cfg.get("rerank_top_n", 15))
+        self.default_top_k: int = int(retrieval_cfg.get("final_top_k", 5))
         self.fusion_method: str = str(retrieval_cfg.get("fusion_method", "rrf")).lower().strip()
         self.rrf_k: int = int(retrieval_cfg.get("rrf_k", 30))
         self.bm25_weight: float = float(retrieval_cfg.get("bm25_weight", 0.60))
         self.vector_weight: float = float(retrieval_cfg.get("vector_weight", 0.20))
+        self.rerank_weight: float = float(retrieval_cfg.get("rerank_weight", retrieval_cfg.get("rerank_blend_alpha", 0.65)))
+        self.rrf_blend_weight: float = float(retrieval_cfg.get("rrf_blend_weight", round(1.0 - self.rerank_weight, 4)))
         self.default_score_threshold: Optional[float] = retrieval_cfg.get("score_threshold", None)
 
         # Cấu hình GraphRAG Vector Index
         self.enable_graph: bool = bool(retrieval_cfg.get("enable_graph", True))
-        self.graph_top_k: int = int(retrieval_cfg.get("graph_top_k", 60))
+        self.graph_top_k: int = int(retrieval_cfg.get("graph_top_k", 50))
         self.graph_weight: float = float(retrieval_cfg.get("graph_weight", 0.30))
         self.graph_max_hops: int = int(retrieval_cfg.get("graph_max_hops", 2))
         self.graph_seed_top_m: int = int(retrieval_cfg.get("graph_seed_top_m", 10))
@@ -102,6 +104,14 @@ class UETRetriever:
         self.mmr_top_n: int = int(retrieval_cfg.get("mmr_top_n", 40))
         self.mmr_similarity_threshold: float = float(retrieval_cfg.get("mmr_similarity_threshold", 0.0))
         self.mmr_protect_tabular: bool = bool(retrieval_cfg.get("mmr_protect_tabular", True))
+
+        # Cấu hình Soft Faculty Filter (Phase 2.1, D5)
+        agent_retrieval_cfg = raw_config.get("agent", {}).get("retrieval", {})
+        self.shared_faculties: List[str] = agent_retrieval_cfg.get(
+            "shared_faculties", ["uet", "tuyensinh", "handbook"]
+        )
+        self.min_results_after_filter: int = int(agent_retrieval_cfg.get("min_results_after_filter", 10))
+        self.faculty_filter_mode: str = str(agent_retrieval_cfg.get("faculty_filter", "soft")).lower()
 
         # Cấu hình Reranker & Score Blending
         reranker_type = retrieval_cfg.get("reranker_type", "auto")
@@ -277,6 +287,8 @@ class UETRetriever:
         """
         if not reranked_chunks or isinstance(self.reranker, HeuristicReranker) or self.rerank_blend_alpha >= 1.0:
             return reranked_chunks
+        if all((c.metadata or {}).get("degraded") for c in reranked_chunks):
+            return reranked_chunks
 
         alpha = max(0.0, min(1.0, self.rerank_blend_alpha))
         q_years = set(_YEAR_RE.findall(query_text)) if self.enable_entity_anchor_boost else set()
@@ -443,12 +455,36 @@ class UETRetriever:
         active_filters = filters or query.filters
 
         # =====================================================================
-        # BƯỚC 1: SONG SONG BM25 SEARCH, VECTOR SEARCH VÀ GRAPHRAG
+        # BƯỚC 1: XỬ LÝ SOFT FACULTY FILTER & SONG SONG BM25 / VECTOR / GRAPHRAG
         # =====================================================================
+        allowed_faculties = None
+        vector_filters = active_filters
+
+        if active_filters and "faculty" in active_filters and self.faculty_filter_mode != "off":
+            raw_fac = active_filters["faculty"]
+            if isinstance(raw_fac, (list, tuple, set)):
+                fac_list = list(raw_fac)
+            else:
+                fac_list = [raw_fac]
+
+            allowed_faculties = set(fac_list) | set(self.shared_faculties)
+            # Chuẩn hóa filter cho Vector Store (Chroma)
+            if len(allowed_faculties) > 1:
+                vector_filters = dict(active_filters)
+                vector_filters["faculty"] = {"$in": list(allowed_faculties)}
+
+        # 1.1. Nhánh BM25 Search (áp dụng soft faculty filter sau khi tìm)
         bm25_results: List[RetrievedContext] = []
         try:
-            bm25_results = self.bm25_index.search(query=query_text, top_k=self.bm25_top_k)
-            logger.debug(f"[BM25] Thu được {len(bm25_results)} kết quả.")
+            raw_bm25 = self.bm25_index.search(query=query_text, top_k=max(self.bm25_top_k, 50))
+            if allowed_faculties is not None:
+                bm25_results = [
+                    c for c in raw_bm25
+                    if not c.metadata.get("faculty") or c.metadata.get("faculty") in allowed_faculties
+                ][:self.bm25_top_k]
+            else:
+                bm25_results = raw_bm25[:self.bm25_top_k]
+            logger.debug(f"[BM25] Thu được {len(bm25_results)} kết quả (sau lọc soft={allowed_faculties is not None}).")
         except Exception as e:
             logger.warning(f"Lỗi nhánh BM25 Search: {e}. Vẫn tiếp tục với Vector Search.")
 
@@ -459,7 +495,7 @@ class UETRetriever:
             vector_results = self.vector_store.search(
                 query_vector=query_vector,
                 top_k=self.vector_top_k,
-                filters=active_filters,
+                filters=vector_filters,
             )
             logger.debug(f"[Vector Search] Thu được {len(vector_results)} kết quả.")
         except Exception as e:
@@ -482,6 +518,25 @@ class UETRetriever:
                 logger.debug(f"[GraphRAG] Thu được {len(graph_results)} kết quả.")
             except Exception as e:
                 logger.warning(f"Lỗi nhánh GraphRAG Search: {e}. Vẫn tiếp tục với BM25 + Vector.")
+
+        # 1.3. Nới lỏng bộ lọc nếu kết quả sau lọc quá ít (Phase 2.1, D5)
+        if allowed_faculties is not None and (len(bm25_results) + len(vector_results) < self.min_results_after_filter):
+            logger.info(
+                f"[Soft Faculty Filter] Kết quả sau lọc ({len(bm25_results)} BM25 + {len(vector_results)} Vector) "
+                f"< ngưỡng {self.min_results_after_filter}. Tự động nới lỏng bỏ lọc khoa."
+            )
+            try:
+                bm25_results = self.bm25_index.search(query=query_text, top_k=self.bm25_top_k)
+            except Exception:
+                pass
+            try:
+                vector_results = self.vector_store.search(
+                    query_vector=query_vector,
+                    top_k=self.vector_top_k,
+                    filters=None,
+                )
+            except Exception:
+                pass
 
         # =====================================================================
         # BƯỚC 2: HYBRID SEARCH FUSION (RRF hoặc LINEAR)
@@ -508,6 +563,10 @@ class UETRetriever:
                 graph_weight=self.graph_weight,
             )
 
+        # Ghép chunk liền kề (Contiguous Chunk Stitching - Phase 2.4, Q4)
+        if getattr(self, "merge_contiguous_chunks", False) and candidate_chunks:
+            candidate_chunks = self.stitch_contiguous_chunks(candidate_chunks)
+
         if not candidate_chunks:
             logger.warning("Không tìm thấy đoạn văn bản nào từ BM25, Vector và GraphRAG Search.")
             return []
@@ -522,23 +581,25 @@ class UETRetriever:
             rerank_candidates = self._apply_mmr(query, query_vector, candidate_chunks, top_n=self.mmr_top_n)
 
         # =====================================================================
-        # BƯỚC 3: RERANKER + SCORE BLENDING
+        # BƯỚC 3: RERANKER + HÒA TRỘN ĐIỂM HYBRID/RRF & ENTITY ANCHOR BOOST
         # =====================================================================
         effective_rerank_n = max(self.rerank_top_n, effective_top_k)
         if self.enable_mmr and self.mmr_stage == "post_rerank":
             effective_rerank_n = max(effective_rerank_n, self.mmr_top_n)
 
         try:
-            ranked_chunks = self.reranker.rerank(
+            # Chấm điểm toàn bộ rerank_candidates trước khi hòa trộn Hybrid/RRF để không cắt sớm chunk top BM25/Graph
+            scored_all = self.reranker.rerank(
                 query=query_text,
                 candidates=rerank_candidates,
-                top_n=effective_rerank_n,
+                top_n=len(rerank_candidates),
             )
+            ranked_chunks = self._blend_rerank_and_hybrid(query_text, scored_all, hybrid_map)[:effective_rerank_n]
+            for rank, ctx in enumerate(ranked_chunks, 1):
+                ctx.rank = rank
         except Exception as e:
             logger.warning(f"Lỗi khi chạy Reranker ({e}). Sử dụng thứ tự từ Hybrid Search.")
             ranked_chunks = rerank_candidates[:effective_rerank_n]
-
-        ranked_chunks = self._blend_rerank_and_hybrid(query_text, ranked_chunks, hybrid_map)
 
         # =====================================================================
         # BƯỚC 3.5: POST-RERANK MMR (nếu bật ở chế độ post_rerank)
@@ -574,6 +635,129 @@ class UETRetriever:
             f"{len(ranked_chunks)} reranked -> {len(final_contexts)} chunks cuối cùng."
         )
         return final_contexts
+
+    def _blend_rerank_and_rrf(
+        self,
+        reranked: List[RetrievedContext],
+        rrf_norm_map: Dict[str, float],
+        top_n: int,
+    ) -> List[RetrievedContext]:
+        """
+        Kết hợp điểm Cross-Encoder Reranker với điểm RRF chuẩn hóa (BM25 + Vector):
+            blended_score = w_rerank * rerank_score + w_rrf * rrf_norm_score
+        Giúp giữ tín hiệu khớp từ khóa chính xác từ BM25/RRF khi Reranker bị lệch trên bảng biểu.
+        Nếu Reranker bị degraded (rrf_fallback) hoặc rrf_blend_weight <= 0, giữ nguyên thứ tự gốc.
+        """
+        if not reranked:
+            return []
+
+        w_rerank = max(0.0, float(getattr(self, "rerank_weight", 0.6)))
+        w_rrf = max(0.0, float(getattr(self, "rrf_blend_weight", 0.4)))
+        total_w = w_rerank + w_rrf
+
+        if w_rrf <= 0.0 or total_w <= 0.0:
+            return reranked[:top_n]
+
+        # Nếu tất cả chunk đều ở trạng thái degraded (rrf_fallback), không trộn lại
+        if all((c.metadata or {}).get("degraded") for c in reranked):
+            return reranked[:top_n]
+
+        w_rerank /= total_w
+        w_rrf /= total_w
+
+        blended_list: List[RetrievedContext] = []
+        for c in reranked:
+            meta = dict(c.metadata) if c.metadata else {}
+            rerank_score = float(meta.get("rerank_score", c.similarity_score))
+            rrf_norm = float(rrf_norm_map.get(c.chunk_id, 0.0))
+            blended = round(w_rerank * rerank_score + w_rrf * rrf_norm, 4)
+
+            meta["rerank_score"] = round(rerank_score, 4)
+            meta["rrf_norm_score"] = round(rrf_norm, 4)
+            meta["blended_score"] = blended
+
+            blended_list.append(
+                RetrievedContext(
+                    chunk_id=c.chunk_id,
+                    text=c.text,
+                    similarity_score=blended,
+                    rank=c.rank,
+                    metadata=meta,
+                )
+            )
+
+        blended_list.sort(key=lambda x: x.similarity_score, reverse=True)
+        top_blended = blended_list[:top_n]
+        for rank, ctx in enumerate(top_blended, 1):
+            ctx.rank = rank
+        return top_blended
+
+    @staticmethod
+    def stitch_contiguous_chunks(contexts: List[RetrievedContext]) -> List[RetrievedContext]:
+        """
+        Ghép nối các chunk liền kề (Contiguous Chunk Stitching) thuộc cùng một tài liệu gốc.
+        Giúp các danh sách dài (như danh sách 20 ngành, bảng biểu nhiều trang) không bị phân mảnh.
+        """
+        if not contexts or len(contexts) < 2:
+            return contexts
+
+        from collections import defaultdict
+        doc_groups: Dict[Any, List[RetrievedContext]] = defaultdict(list)
+        for ctx in contexts:
+            doc_key = (
+                ctx.metadata.get("document_id")
+                or ctx.metadata.get("source_uri")
+                or ctx.metadata.get("file_name")
+                or ctx.metadata.get("title")
+            )
+            doc_groups[doc_key].append(ctx)
+
+        stitched_results: List[RetrievedContext] = []
+
+        for doc_key, group in doc_groups.items():
+            if not doc_key:
+                stitched_results.extend(group)
+                continue
+
+            # Sắp xếp theo chunk_index
+            group.sort(key=lambda c: c.metadata.get("chunk_index", 0))
+
+            merged: List[RetrievedContext] = []
+            current = group[0]
+
+            for nxt in group[1:]:
+                curr_end_idx = current.metadata.get("chunk_index_end", current.metadata.get("chunk_index", 0))
+                nxt_idx = nxt.metadata.get("chunk_index", 0)
+
+                if nxt_idx == curr_end_idx + 1:
+                    # Ghép liền kề hai đoạn chunk
+                    new_text = current.text + "\n\n" + nxt.text
+                    best_score = max(current.similarity_score, nxt.similarity_score)
+                    best_rank = min(current.rank, nxt.rank)
+                    merged_meta = dict(current.metadata)
+                    merged_meta["chunk_index_end"] = nxt.metadata.get("chunk_index_end", nxt_idx)
+                    merged_meta["stitched"] = True
+
+                    current = RetrievedContext(
+                        chunk_id=f"{current.chunk_id}+{nxt.chunk_id}",
+                        text=new_text,
+                        similarity_score=best_score,
+                        rank=best_rank,
+                        metadata=merged_meta,
+                    )
+                else:
+                    merged.append(current)
+                    current = nxt
+
+            merged.append(current)
+            stitched_results.extend(merged)
+
+        # Sắp xếp lại danh sách kết quả theo điểm tương đồng giảm dần
+        stitched_results.sort(key=lambda c: c.similarity_score, reverse=True)
+        for i, c in enumerate(stitched_results, 1):
+            c.rank = i
+
+        return stitched_results
 
 
 if __name__ == "__main__":

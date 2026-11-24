@@ -38,6 +38,8 @@ def main():
     parser.add_argument("--run", action="store_true", help="Kích hoạt khởi chạy giao diện Chatbot")
     parser.add_argument("--cli", action="store_true", help="Giao diện Chatbot dòng lệnh trên Terminal")
     parser.add_argument("--web", action="store_true", help="Giao diện Chatbot Web trên trình duyệt local")
+    parser.add_argument("--agentic", action="store_true", help="Kích hoạt chế độ Agentic RAG (LangGraph State Machine)")
+    parser.add_argument("--modular", action="store_true", help="Kích hoạt chế độ Modular RAG truyền thống")
     parser.add_argument("--host", default="127.0.0.1", help="Địa chỉ host cho Web UI")
     parser.add_argument("--port", type=int, default=8000, help="Cổng port cho Web UI")
 
@@ -74,6 +76,12 @@ def main():
 
     args = parser.parse_args()
     print_banner()
+
+    import os
+    if args.modular:
+        os.environ["RAG_MODE"] = "modular"
+    elif args.agentic:
+        os.environ["RAG_MODE"] = "agentic"
 
     if args.run:
         if args.web:
