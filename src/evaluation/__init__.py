@@ -1,24 +1,70 @@
-from src.evaluation.evaluator import UETEvaluator, UETRagasEvaluator, run_eval_e2e_cli
-from src.evaluation.evaluate_retrieval import RetrievalEvaluator
+from src.evaluation.diagnostics import (
+    ERROR_LABELS,
+    build_e2e_report,
+    classify_sample_error,
+    print_e2e_diagnostic_report,
+)
+from src.evaluation.evaluate_retrieval import RetrievalEvaluator, run_eval_retrieval_cli
+from src.evaluation.evaluator import (
+    UETEvaluator,
+    UETRagasEvaluator,
+    generate_predictions,
+    run_eval_e2e_cli,
+    score_predictions,
+)
+from src.evaluation.llm_judge import UETLLMJudgeEvaluator, normalize_likert_5
 from src.evaluation.metrics import (
-    compute_faithfulness,
+    average_precision,
+    compute_answer_correctness_offline,
+    compute_answer_relevance,
+    compute_batch_cosine_similarities,
     compute_context_relevance,
+    compute_faithfulness,
     compute_keyword_overlap,
+    compute_numeric_grounding,
+    compute_rouge_l,
+    compute_semantic_similarity,
+    compute_token_overlap_metrics,
+    extract_numeric_and_code_entities,
+    hit_rate_at_k,
+    is_generation_error_response,
+    is_refusal_response,
+    mrr,
+    ndcg_at_k,
+    normalize_vietnamese_for_eval,
     precision_at_k,
     recall_at_k,
-    ndcg_at_k,
-    mrr,
-    average_precision,
-    hit_rate_at_k,
+    tokenize_vietnamese,
 )
 
 __all__ = [
     "UETEvaluator",
     "UETRagasEvaluator",
-    "run_eval_e2e_cli",
+    "UETLLMJudgeEvaluator",
     "RetrievalEvaluator",
+    "run_eval_e2e_cli",
+    "run_eval_retrieval_cli",
+    "generate_predictions",
+    "score_predictions",
+    "classify_sample_error",
+    "build_e2e_report",
+    "print_e2e_diagnostic_report",
+    "ERROR_LABELS",
+    "normalize_likert_5",
+    "normalize_vietnamese_for_eval",
+    "tokenize_vietnamese",
+    "is_refusal_response",
+    "is_generation_error_response",
+    "extract_numeric_and_code_entities",
+    "compute_numeric_grounding",
+    "compute_token_overlap_metrics",
+    "compute_rouge_l",
+    "compute_semantic_similarity",
+    "compute_batch_cosine_similarities",
     "compute_faithfulness",
     "compute_context_relevance",
+    "compute_answer_relevance",
+    "compute_answer_correctness_offline",
     "compute_keyword_overlap",
     "precision_at_k",
     "recall_at_k",
@@ -27,4 +73,3 @@ __all__ = [
     "average_precision",
     "hit_rate_at_k",
 ]
-

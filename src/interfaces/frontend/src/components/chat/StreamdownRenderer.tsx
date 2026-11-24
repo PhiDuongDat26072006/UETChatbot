@@ -416,6 +416,24 @@ function transformProseSegment(segment: string): string {
     (match, dollarMath?: string, bracketMath?: string) => {
       const formula = (dollarMath ?? bracketMath ?? "").trim();
       if (!formula) return match;
+
+      // NẾU NỘI DUNG CHỈ LÀ CON SỐ ĐƠN THUẦN (ví dụ: "25", "28.19", "25 điểm", "2026"):
+      // Tuyệt đối KHÔNG render thành Block Math KaTeX căn giữa dòng với khoảng đệm lớn!
+      // Bóc ra thành văn bản in đậm thông thường để hiển thị tự nhiên cùng dòng.
+      if (/^-?\d+(?:[.,]\d+)?(?:\s*(?:điểm|tín chỉ|%|đ))?$/i.test(formula)) {
+        return ` **${formula}** `;
+      }
+
+      // Kiểm tra có thực sự là biểu thức toán học không (chứa toán tử toán học, phép tính hoặc lệnh LaTeX)
+      const isActualMathFormula =
+        MATH_COMMAND_RE.test(formula) ||
+        /[=+\-*/×÷≤≥≠<>\\_{}^]/.test(formula) ||
+        /\b(?:frac|times|div|cdot|sum|sqrt)\b/i.test(formula);
+
+      if (!isActualMathFormula && formula.length < 20) {
+        return ` ${formula} `;
+      }
+
       return `\n\n${makeMathTag(formula, true)}\n\n`;
     }
   );
@@ -449,13 +467,12 @@ function transformProseSegment(segment: string): string {
         return match;
       }
 
-      // Tránh nhận nhầm tiền tệ như "$100 đến $200"
+      // Tránh nhận nhầm tiền tệ như "$100 đến $200" hoặc điểm số đơn thuần như "$25$"
       if (
         !hasOuterSpace &&
-        /^\d/.test(formula) &&
-        !/[=+\-*/×÷\\^_{}()]/.test(formula)
+        /^-?\d+(?:[.,]\d+)?(?:\s*(?:điểm|tín chỉ|%|đ))?$/i.test(formula)
       ) {
-        return match;
+        return `**${formula}**`;
       }
 
       // Nếu công thức dài đứng riêng cả dòng ngoài bảng thì nâng thành block math cho dễ đọc
@@ -677,6 +694,9 @@ function UetKatexMath(props: Record<string, unknown> & ExtraProps) {
   }
 
   if (isDisplay) {
+    if (/^-?\d+(?:[.,]\d+)?(?:\s*(?:điểm|tín chỉ|%|đ))?$/i.test(decoded.trim())) {
+      return <strong className="font-bold text-[var(--text-primary)]">{decoded.trim()}</strong>;
+    }
     return (
       <span
         className="katex-block-wrapper block"

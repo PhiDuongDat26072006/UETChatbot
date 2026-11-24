@@ -49,9 +49,19 @@ def main():
     parser.add_argument("--level", type=str, choices=["doc", "chunk", "both"], default="both", help="Cấp độ đánh giá retrieval: doc, chunk, hoặc both (mặc định: both)")
     parser.add_argument("--mode", type=str, choices=["live", "mock"], default="live", help="Chế độ đánh giá retrieval: 'live' (chạy retriever thật) hoặc 'mock' (kiểm thử nhanh với ground-truth)")
     parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, tuyensinh, overview, all")
-    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (mặc định: data/eval_data/uet_rag_eval_100/e2e_eval_100.json)")
+    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (mặc định: data/eval_data/e2e_eval_100_annotated.json)")
     parser.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu câu hỏi muốn kiểm thử (mặc định: toàn bộ)")
-    parser.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas và LLM-as-a-Judge thay vì Heuristic")
+    parser.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas thay vì bộ đánh giá mặc định")
+    parser.add_argument("--use-judge", action="store_true", help="Bật UETLLMJudgeEvaluator (1-call Structured JSON tiếng Việt)")
+    parser.add_argument("--judge-provider", type=str, default=None, help="Provider cho LLM Judge (groq, openrouter, sambanova, gemini)")
+    parser.add_argument("--judge-model", type=str, default=None, help="Model cho LLM Judge")
+    parser.add_argument("--generate-only", action="store_true", help="Chỉ chạy Pha 1 sinh snapshot predictions.json")
+    parser.add_argument("--score-from", type=str, default=None, help="Chạy Pha 2 chấm điểm từ snapshot predictions.json có sẵn")
+    parser.add_argument("--save-predictions", type=str, default=None, help="Đường dẫn lưu snapshot predictions.json")
+    parser.add_argument("--no-semantic", action="store_true", help="Tắt semantic cosine (bge-m3) khi chấm E2E offline")
+    parser.add_argument("--no-resume", action="store_true", help="Không tái sử dụng snapshot cũ khi chạy Pha 1")
+    parser.add_argument("--use-cache", action="store_true", help="Bật cache retrieval theo hash cấu hình (mặc định: tắt)")
+    parser.add_argument("--no-cache", action="store_true", help="Tắt cache retrieval (mặc định)")
     parser.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
 
@@ -59,7 +69,7 @@ def main():
     parser.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
     parser.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
     parser.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
-    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
     parser.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa toàn bộ dữ liệu cũ ở chặng đích (chunked_data, vectordb, BM25 index, manifest) trước khi nạp lại từ đầu")
 
     args = parser.parse_args()
@@ -84,6 +94,7 @@ def main():
         eval_top_k = args.top_k if args.top_k is not None else configured_k
         out_p = Path(args.output) if args.output else None
         eval_dataset_target = args.dataset or cfg.get("paths", {}).get("eval_dataset_file")
+        retrieval_use_cache = bool(args.use_cache and not args.no_cache)
 
         if getattr(args, "all", False):
             print("\n" + "=" * 75)
@@ -103,6 +114,7 @@ def main():
                 level=args.level,
                 mode=args.mode,
                 domain=args.domain,
+                use_cache=retrieval_use_cache,
             )
 
             print("\n[CHẶNG 2/2] ĐÁNH GIÁ PHÂN HỆ END-TO-END GENERATION")
@@ -110,23 +122,39 @@ def main():
                 dataset_path=eval_dataset_target,
                 domain=args.domain,
                 use_ragas=args.use_ragas,
+                use_judge=args.use_judge,
+                judge_provider=args.judge_provider,
+                judge_model=args.judge_model,
                 num_samples=args.samples,
                 top_k=eval_top_k,
                 output_path=e2e_out,
+                generate_only=args.generate_only,
+                score_from=args.score_from,
+                save_predictions=args.save_predictions,
+                enable_semantic=not args.no_semantic,
+                resume=not args.no_resume,
             )
             print("\n" + "=" * 75)
             print("✅ ĐÃ HOÀN TẤT ĐÁNH GIÁ TOÀN DIỆN CẢ 2 PHÂN HỆ!")
             print("=" * 75 + "\n")
 
-        elif args.e2e:
+        elif args.e2e or args.score_from or args.generate_only or args.use_judge or args.use_ragas:
             from src.evaluation.evaluator import run_eval_e2e_cli
             run_eval_e2e_cli(
                 dataset_path=eval_dataset_target,
                 domain=args.domain,
                 use_ragas=args.use_ragas,
+                use_judge=args.use_judge,
+                judge_provider=args.judge_provider,
+                judge_model=args.judge_model,
                 num_samples=args.samples,
                 top_k=eval_top_k,
                 output_path=out_p,
+                generate_only=args.generate_only,
+                score_from=args.score_from,
+                save_predictions=args.save_predictions,
+                enable_semantic=not args.no_semantic,
+                resume=not args.no_resume,
             )
         else:
             # Mặc định khi chạy python main.py --eval hoặc --eval --retrieval: Đánh giá phân hệ truy xuất với K từ config.yaml
@@ -138,6 +166,7 @@ def main():
                 level=args.level,
                 mode=args.mode,
                 domain=args.domain,
+                use_cache=retrieval_use_cache,
             )
 
     elif args.ingest:
@@ -146,7 +175,14 @@ def main():
             run_ingest_status_cli()
         else:
             from src.pipeline import run_ingest_cli
-            run_ingest_cli(from_stage=args.from_stage, to_stage=args.to_stage, clear=args.clear, clear_existing=args.clear)
+            run_ingest_cli(
+                from_stage=args.from_stage,
+                to_stage=args.to_stage,
+                clear=args.clear,
+                clear_existing=args.clear,
+                domain=args.domain,
+                max_chunks=args.samples,
+            )
 
     else:
         print("📌 CÁC LỆNH CHÍNH ĐỂ SỬ DỤNG HỆ THỐNG:")
@@ -175,7 +211,8 @@ def main():
         print("\n📌 Các thao tác đơn chặng:")
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
-        print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data\n")
+        print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data")
+        print("  • Xây dựng GraphRAG Vector Index:    python main.py --ingest --from chunked --to graph_data\n")
         print(" 8. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
 
 if __name__ == "__main__":

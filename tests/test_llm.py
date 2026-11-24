@@ -96,7 +96,7 @@ class TestUETLLMClient(unittest.TestCase):
 
     def test_multi_provider_fallback_chain(self):
         """Kiểm tra chuỗi tự bọc lót: Groq lỗi -> SambaNova gánh -> Gemini gánh."""
-        client = UETLLMClient(enable_cache=False)
+        client = UETLLMClient(provider="groq", enable_cache=False)
         client.groq_keys = ["mock_groq"]
         client.sambanova_keys = ["mock_samba"]
         client.gemini_keys = ["mock_gemini"]
@@ -126,7 +126,7 @@ class TestUETLLMClient(unittest.TestCase):
 
     def test_multi_provider_worker_queue_batch(self):
         """Kiểm tra Hàng đợi chia tải đa luồng (generate_batch) phân phối câu hỏi cho 3 workers."""
-        client = UETLLMClient(enable_cache=False)
+        client = UETLLMClient(provider="groq", enable_cache=False)
         client.groq_keys = ["mock_groq"]
         client.sambanova_keys = ["mock_samba"]
         client.gemini_keys = ["mock_gemini"]
@@ -173,7 +173,7 @@ class TestUETLLMClient(unittest.TestCase):
 
     def test_worker_queue_fallback_on_429(self):
         """Kiểm tra khi 1 worker gặp lỗi 429, câu hỏi được trả lại hàng đợi để worker khác xử lý."""
-        client = UETLLMClient(enable_cache=False)
+        client = UETLLMClient(provider="groq", enable_cache=False)
         client.groq_keys = ["mock_groq"]
         client.sambanova_keys = ["mock_samba"]
         client.gemini_keys = []
@@ -197,6 +197,114 @@ class TestUETLLMClient(unittest.TestCase):
         responses = client.generate_batch([p])
         self.assertEqual(len(responses), 1)
         self.assertEqual(responses[0].answer, "SambaNova cứu cánh thành công!")
+
+    def test_openrouter_hy4_flash_primary_without_free_fallback(self):
+        """Mặc định dùng OpenRouter tencent/hy4-flash trực tiếp, không rơi sang các provider miễn phí."""
+        client = UETLLMClient(enable_cache=False)
+        self.assertEqual(client.provider, "openrouter")
+        self.assertEqual(client.model_name, "tencent/hy4-flash")
+        self.assertEqual(client.openrouter_model, "tencent/hy4-flash")
+
+        client.openrouter_keys = ["sk-or-mock"]
+        client.groq_keys = ["gsk-mock"]
+        client.sambanova_keys = ["samba-mock"]
+        client.gemini_keys = ["gem-mock"]
+        client.openrouter_delay = 0.01
+
+        calls = []
+
+        def forbid_free(name):
+            def _fn(_txt, **_kw):
+                calls.append(name)
+                raise AssertionError(f"Unexpected call to free provider {name}")
+            return _fn
+
+        client._call_groq = forbid_free("groq")
+        client._call_sambanova = forbid_free("sambanova")
+        client._call_gemini = forbid_free("gemini")
+
+        attempt = {"n": 0}
+
+        def mock_openrouter(text, model=None):
+            attempt["n"] += 1
+            calls.append(f"openrouter_{attempt['n']}")
+            if attempt["n"] == 1:
+                raise RuntimeError("OpenRouter temporary 503")
+            return "Trả lời từ tencent/hy4-flash!", "tencent/hy4-flash", {"provider": "openrouter"}
+
+        client._call_openrouter = mock_openrouter
+
+        with patch("src.llm.llm_client.time.sleep", return_value=None):
+            resp = client.generate(self.prompt)
+        self.assertEqual(calls, ["openrouter_1", "openrouter_2"])
+        self.assertEqual(resp.model_name, "tencent/hy4-flash")
+        self.assertIn("hy4-flash", resp.answer)
+
+        # Kiểm tra generate_batch chỉ tạo worker OpenRouter
+        calls.clear()
+        batch_resps = client.generate_batch([self.prompt])
+        self.assertEqual(len(batch_resps), 1)
+        self.assertEqual(batch_resps[0].model_name, "tencent/hy4-flash")
+        self.assertEqual(calls, ["openrouter_3"])
+
+        # Kiểm tra generate_stream đọc SSE từ OpenRouter
+        class _FakeStreamResp:
+            status_code = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def iter_lines(self):
+                yield 'data: {"choices":[{"delta":{"content":"Xin "}}]}'
+                yield 'data: {"choices":[{"delta":{"content":"chào!"}}]}'
+                yield "data: [DONE]"
+
+        class _FakeHTTPClient:
+            def __init__(self, timeout=None):
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def stream(self, method, url, headers=None, json=None):
+                assert "openrouter.ai" in url
+                assert json["model"] == "tencent/hy4-flash"
+                assert json["stream"] is True
+                assert json["reasoning"] == {"enabled": False}
+                return _FakeStreamResp()
+
+        with patch("httpx.Client", _FakeHTTPClient):
+            chunks = list(client.generate_stream(self.prompt))
+        self.assertEqual("".join(chunks), "Xin chào!")
+
+        # Kiểm tra _call_openrouter gốc gửi kèm reasoning={"enabled": False}
+        captured_post = {}
+
+        class _FakePostResp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": "OK no-reasoning"}}], "usage": {}}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured_post["payload"] = json
+            return _FakePostResp()
+
+        raw_client = UETLLMClient(enable_cache=False)
+        raw_client.openrouter_keys = ["sk-or-mock"]
+        self.assertEqual(raw_client.reasoning_effort, "none")
+        with patch("httpx.post", side_effect=fake_post):
+            ans, used_m, _meta = raw_client._call_openrouter("Hỏi test")
+        self.assertEqual(ans, "OK no-reasoning")
+        self.assertEqual(used_m, "tencent/hy4-flash")
+        self.assertEqual(captured_post["payload"]["reasoning"], {"enabled": False})
 
 
 if __name__ == "__main__":

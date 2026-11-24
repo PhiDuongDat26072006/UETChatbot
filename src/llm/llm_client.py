@@ -61,6 +61,16 @@ class UETLLMClient(BaseLLM):
             "base_url": "https://generativelanguage.googleapis.com/v1beta",
             "delay": 4.0,  # ~15 requests/phút
         },
+        "openrouter": {
+            "model": "tencent/hy4-flash",
+            "candidate_models": [
+                "tencent/hy4-flash",
+                "tencent/hy4",
+                "tencent/hy4-preview",
+            ],
+            "base_url": "https://openrouter.ai/api/v1",
+            "delay": 1.5,
+        },
     }
 
     def __init__(
@@ -75,19 +85,42 @@ class UETLLMClient(BaseLLM):
         config = load_yaml_config()
         llm_cfg = config.get("llm", {})
 
-        self.provider = provider or llm_cfg.get("provider", "groq")
-        self._model_name = model_name or llm_cfg.get("model_name", "llama-3.3-70b-versatile")
-        self.candidate_models = list(llm_cfg.get("candidate_models", self.DEFAULT_CONFIGS["groq"]["candidate_models"]))
+        self.provider = provider or llm_cfg.get("provider", "openrouter")
+        self._model_name = model_name or llm_cfg.get("model_name", "tencent/hy4-flash")
+        default_provider_candidates = self.DEFAULT_CONFIGS.get(
+            self.provider, self.DEFAULT_CONFIGS["openrouter"]
+        )["candidate_models"]
+        self.candidate_models = list(llm_cfg.get("candidate_models", default_provider_candidates))
         self.CANDIDATE_MODELS = self.candidate_models
         self.temperature = float(llm_cfg.get("temperature", 0.2))
+        self.reasoning_effort = llm_cfg.get("reasoning_effort", "none")
 
-        # Nạp API Keys cho cả 3 providers
-        self.groq_keys = self._load_keys_for_provider("GROQ", custom_key=api_key, custom_keys=api_keys)
+        # Nạp API Keys cho các providers
+        self.groq_keys = self._load_keys_for_provider(
+            "GROQ",
+            custom_key=api_key if self.provider != "openrouter" else None,
+            custom_keys=api_keys if self.provider != "openrouter" else None,
+        )
         self.sambanova_keys = self._load_keys_for_provider("SAMBANOVA")
         self.gemini_keys = self._load_keys_for_provider("GEMINI")
+        self.openrouter_keys = self._load_keys_for_provider(
+            "OPENROUTER",
+            custom_key=api_key if self.provider == "openrouter" else None,
+            custom_keys=api_keys if self.provider == "openrouter" else None,
+        )
+
+        openrouter_cfg = llm_cfg.get("providers", {}).get("openrouter", {})
+        self.openrouter_model = (
+            model_name
+            if (model_name and self.provider == "openrouter")
+            else openrouter_cfg.get("model", self.DEFAULT_CONFIGS["openrouter"]["model"])
+        )
+        self.openrouter_delay = float(
+            openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
+        )
 
         # Khóa tương thích ngược
-        self.api_keys = self.groq_keys
+        self.api_keys = self.openrouter_keys if self.provider == "openrouter" else self.groq_keys
         self.current_key_index = 0
 
         # Cấu hình Disk Cache
@@ -108,6 +141,8 @@ class UETLLMClient(BaseLLM):
             active_providers.append(f"SambaNova ({len(self.sambanova_keys)} keys)")
         if self.gemini_keys:
             active_providers.append(f"Gemini ({len(self.gemini_keys)} keys)")
+        if self.openrouter_keys:
+            active_providers.append(f"OpenRouter ({len(self.openrouter_keys)} keys)")
 
         if active_providers:
             logger.info(f"Đã kích hoạt Multi-Provider: {', '.join(active_providers)} | Cache: {self.cache_file.name}")
@@ -359,6 +394,62 @@ class UETLLMClient(BaseLLM):
 
         raise RuntimeError(last_error or "Gemini API không phản hồi")
 
+    def _apply_openrouter_reasoning(self, payload: Dict[str, Any]) -> None:
+        """Gắn cấu hình reasoning cho OpenRouter (mặc định tắt để tránh tốn reasoning_tokens)."""
+        raw_eff = getattr(self, "reasoning_effort", None)
+        if not raw_eff:
+            return
+        eff_low = str(raw_eff).strip().lower()
+        if eff_low in ("none", "off", "false", "disabled"):
+            payload["reasoning"] = {"enabled": False}
+        elif eff_low in ("minimal", "low", "medium", "high"):
+            payload["reasoning"] = {"effort": eff_low}
+
+    def _call_openrouter(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+        """Gọi OpenRouter API (OpenAI-compatible, mặc định Tencent Hy4)."""
+        if not self.openrouter_keys:
+            raise RuntimeError("Chưa cấu hình OPENROUTER_API_KEY trong .env")
+
+        import httpx
+
+        target_model = (
+            model
+            or getattr(self, "openrouter_model", None)
+            or self.DEFAULT_CONFIGS["openrouter"]["model"]
+        )
+        url = f"{self.DEFAULT_CONFIGS['openrouter']['base_url']}/chat/completions"
+        key = self.openrouter_keys[0]
+
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://uet.vnu.edu.vn",
+            "X-Title": "UETChatbot",
+        }
+        payload: Dict[str, Any] = {
+            "model": target_model,
+            "messages": [{"role": "user", "content": prompt_text}],
+            "temperature": self.temperature,
+        }
+        self._apply_openrouter_reasoning(payload)
+
+        resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
+        if resp.status_code == 400 and "reasoning" in payload and "reasoning" in resp.text.lower():
+            payload.pop("reasoning", None)
+            resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
+        if resp.status_code >= 400:
+            err_msg = resp.text
+            try:
+                err_msg = resp.json().get("error", {}).get("message", resp.text)
+            except Exception:
+                pass
+            raise RuntimeError(f"OpenRouter [{resp.status_code}]: {err_msg}")
+
+        data = resp.json()
+        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+        usage = data.get("usage", {})
+        return answer.strip(), target_model, {"provider": "openrouter", "usage": usage}
+
     def _legacy_gemini_snippet(self):
         pass
         """
@@ -417,13 +508,18 @@ class UETLLMClient(BaseLLM):
                 metadata={**cached_meta, "cache_hit": True},
             )
 
-        # 2. Chuỗi gọi Multi-Provider tự bọc lót
+        # 2. Chuỗi gọi Provider (OpenRouter dùng trực tiếp không fallback về các model miễn phí)
         errors: List[str] = []
-        providers_to_try = [
-            ("groq", self._call_groq),
-            ("sambanova", self._call_sambanova),
-            ("gemini", self._call_gemini),
-        ]
+        if self.provider == "openrouter":
+            providers_to_try = [
+                ("openrouter", self._call_openrouter),
+            ]
+        else:
+            providers_to_try = [
+                ("groq", self._call_groq),
+                ("sambanova", self._call_sambanova),
+                ("gemini", self._call_gemini),
+            ]
 
         with Timer() as timer:
             for name, call_fn in providers_to_try:
@@ -444,10 +540,27 @@ class UETLLMClient(BaseLLM):
                 except Exception as e:
                     err_msg = str(e)
                     errors.append(f"{name}: {err_msg}")
-                    logger.warning(f"Provider {name} gặp sự cố: {err_msg}. Chuyển sang provider dự phòng...")
+                    logger.warning(f"Provider {name} gặp sự cố: {err_msg}. Chuyển sang bước dự phòng...")
 
-            # 3. Tự bọc lót cấp 2: Nếu cả 3 đều bận tức thời, nghỉ 2.5s rồi thử lại lần cuối với Gemini
-            if self.gemini_keys:
+            # 3. Tự bọc lót cấp 2: Nghỉ 2.5s rồi thử lại 1 lần
+            if self.provider == "openrouter" and self.openrouter_keys:
+                try:
+                    logger.info("Đang tự động phục hồi: Thử lại OpenRouter sau 2.5s...")
+                    time.sleep(2.5)
+                    answer, used_model, meta = self._call_openrouter(prompt_text)
+                    if answer:
+                        self._save_to_disk_cache(prompt_text, answer, used_model, meta)
+                        return Response(
+                            query_id=prompt.user_query.query_id,
+                            answer=answer,
+                            sources=prompt.contexts,
+                            model_name=used_model,
+                            latency_seconds=round(timer.elapsed, 3),
+                            metadata=meta,
+                        )
+                except Exception as retry_e:
+                    errors.append(f"openrouter_retry: {retry_e}")
+            elif self.provider != "openrouter" and self.gemini_keys:
                 try:
                     logger.info("Đang tự động phục hồi: Thử lại lần cuối với Gemini sau 2.5s...")
                     time.sleep(2.5)
@@ -465,10 +578,11 @@ class UETLLMClient(BaseLLM):
                 except Exception as retry_e:
                     errors.append(f"gemini_retry: {retry_e}")
 
-            # 4. Fallback khi tất cả provider đều không khả dụng
+            # 4. Fallback khi provider không khả dụng
+            provider_label = "OpenRouter" if self.provider == "openrouter" else "Groq, SambaNova, Gemini"
             fallback_text = (
                 "⚠️ **MÔ HÌNH AI TẠM THỜI TỪ CHỐI DỊCH VỤ**\n\n"
-                f"> Hệ thống đã thử qua các nhà cung cấp (Groq, SambaNova, Gemini) nhưng đều gặp giới hạn hạn mức hoặc sự cố mạng.\n"
+                f"> Hệ thống đã thử qua nhà cung cấp ({provider_label}) nhưng gặp giới hạn hạn mức hoặc sự cố mạng.\n"
                 f"> Chi tiết: {errors[0] if errors else 'Chưa cấu hình API Key trong file .env'}\n\n"
                 "Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau ít phút."
             )
@@ -530,12 +644,16 @@ class UETLLMClient(BaseLLM):
 
         # 2. Cấu hình các Worker
         workers_cfg = []
-        if self.groq_keys:
-            workers_cfg.append(("Groq", self._call_groq, self.DEFAULT_CONFIGS["groq"]["delay"]))
-        if self.sambanova_keys:
-            workers_cfg.append(("SambaNova", self._call_sambanova, self.DEFAULT_CONFIGS["sambanova"]["delay"]))
-        if self.gemini_keys:
-            workers_cfg.append(("Gemini", self._call_gemini, self.DEFAULT_CONFIGS["gemini"]["delay"]))
+        if self.provider == "openrouter":
+            if self.openrouter_keys:
+                workers_cfg.append(("OpenRouter", self._call_openrouter, self.openrouter_delay))
+        else:
+            if self.groq_keys:
+                workers_cfg.append(("Groq", self._call_groq, self.DEFAULT_CONFIGS["groq"]["delay"]))
+            if self.sambanova_keys:
+                workers_cfg.append(("SambaNova", self._call_sambanova, self.DEFAULT_CONFIGS["sambanova"]["delay"]))
+            if self.gemini_keys:
+                workers_cfg.append(("Gemini", self._call_gemini, self.DEFAULT_CONFIGS["gemini"]["delay"]))
 
         if not workers_cfg:
             logger.warning("Không có API provider nào sẵn sàng. Chuyển sang fallback tuần tự.")
@@ -607,9 +725,52 @@ class UETLLMClient(BaseLLM):
     # -------------------------------------------------------------------------
 
     def generate_stream(self, prompt: AugmentedPrompt) -> Generator[str, None, None]:
-        """Sinh phản hồi dạng luồng (streaming) qua Groq hoặc SambaNova."""
-        # Thử streaming qua Groq
-        if self.groq_keys:
+        """Sinh phản hồi dạng luồng (streaming) qua OpenRouter (hoặc Groq nếu cấu hình provider='groq')."""
+        if self.provider == "openrouter" and self.openrouter_keys:
+            try:
+                import httpx
+                url = f"{self.DEFAULT_CONFIGS['openrouter']['base_url']}/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.openrouter_keys[0]}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://uet.vnu.edu.vn",
+                    "X-Title": "UETChatbot",
+                }
+                payload: Dict[str, Any] = {
+                    "model": self.openrouter_model,
+                    "messages": [{"role": "user", "content": prompt.formatted_prompt}],
+                    "temperature": self.temperature,
+                    "stream": True,
+                }
+                self._apply_openrouter_reasoning(payload)
+                with httpx.Client(timeout=150.0) as client:
+                    with client.stream("POST", url, headers=headers, json=payload) as response:
+                        if response.status_code == 200:
+                            yielded_any = False
+                            for line in response.iter_lines():
+                                line = line.strip()
+                                if not line or not line.startswith("data:"):
+                                    continue
+                                data_str = line[5:].strip()
+                                if data_str == "[DONE]":
+                                    return
+                                try:
+                                    chunk_json = json.loads(data_str)
+                                    delta = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                    if delta:
+                                        yielded_any = True
+                                        yield delta
+                                except Exception:
+                                    continue
+                            if yielded_any:
+                                return
+                        else:
+                            logger.warning(f"Streaming qua OpenRouter trả về mã HTTP {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Streaming qua OpenRouter không thành công: {e}")
+
+        # Thử streaming qua Groq khi provider != 'openrouter'
+        if self.provider != "openrouter" and self.groq_keys:
             try:
                 import httpx
                 url = f"{self.DEFAULT_CONFIGS['groq']['base_url']}/chat/completions"
@@ -648,18 +809,60 @@ class UETLLMClient(BaseLLM):
         resp = self.generate(prompt)
         yield resp.answer
 
+    def complete_text(
+        self,
+        prompt_text: str,
+        preferred_provider: Optional[str] = "openrouter",
+        model: Optional[str] = None,
+    ) -> str:
+        """Gọi trực tiếp LLM cho các tác vụ trích xuất offline (GraphRAG) có Disk Cache."""
+        cache_key = f"[{preferred_provider}:{model or 'default'}]\n{prompt_text}"
+        cached = self._get_from_disk_cache(cache_key)
+        if cached and cached[0]:
+            return cached[0]
+
+        provider_map = {
+            "openrouter": lambda txt: self._call_openrouter(txt, model=model),
+            "groq": lambda txt: self._call_groq(txt, model=model if preferred_provider == "groq" else None),
+            "sambanova": lambda txt: self._call_sambanova(txt, model=model if preferred_provider == "sambanova" else None),
+            "gemini": lambda txt: self._call_gemini(txt, model=model if preferred_provider == "gemini" else None),
+        }
+
+        order: List[str] = []
+        if preferred_provider and preferred_provider in provider_map:
+            order.append(preferred_provider)
+        for pname in ("openrouter", "groq", "sambanova", "gemini"):
+            if pname not in order:
+                order.append(pname)
+
+        errors: List[str] = []
+        for pname in order:
+            try:
+                answer, used_model, meta = provider_map[pname](prompt_text)
+                if answer:
+                    self._save_to_disk_cache(cache_key, answer, used_model, meta)
+                    return answer
+            except Exception as exc:
+                errors.append(f"{pname}: {exc}")
+
+        raise RuntimeError("Không thể gọi LLM complete_text: " + "; ".join(errors))
+
     @property
     def model_name(self) -> str:
         return self._model_name
 
     @property
     def api_key(self) -> str:
+        if self.provider == "openrouter" and self.openrouter_keys:
+            return self.openrouter_keys[0]
         if self.groq_keys:
             return self.groq_keys[0]
         if self.sambanova_keys:
             return self.sambanova_keys[0]
         if self.gemini_keys:
             return self.gemini_keys[0]
+        if self.openrouter_keys:
+            return self.openrouter_keys[0]
         return ""
 
 

@@ -6,6 +6,7 @@ Hỗ trợ nhiều Backend: FlashRank (ONNX), Cross-Encoder, và Heuristic Cross
 """
 
 from __future__ import annotations
+import os
 import re
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -250,7 +251,8 @@ class JinaONNXReranker(BaseReranker):
         self,
         model_name: str = "jinaai/jina-reranker-v2-base-multilingual",
         onnx_filename: str = "onnx/model.onnx",
-        max_length: int = 1024,
+        max_length: int = 512,
+        batch_size: int = 8,
     ):
         if "/" not in model_name and not Path(model_name).exists():
             repo_id = f"jinaai/{model_name}"
@@ -259,9 +261,11 @@ class JinaONNXReranker(BaseReranker):
 
         self.model_name = repo_id
         self.onnx_filename = onnx_filename
-        self.max_length = max_length
+        self.max_length = int(max_length)
+        self.batch_size = max(1, int(batch_size))
         self._session = None
         self._tokenizer = None
+        self._active_providers: List[str] = []
         self._fallback = HeuristicReranker()
 
         try:
@@ -279,22 +283,57 @@ class JinaONNXReranker(BaseReranker):
                 rel_filename = onnx_filename if onnx_filename.startswith("onnx/") else f"onnx/{onnx_filename}"
                 onnx_path = hf_hub_download(repo_id=repo_id, filename=rel_filename)
 
-            self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    repo_id,
+                    trust_remote_code=True,
+                    fix_mistral_regex=True,
+                )
+            except TypeError:
+                self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
 
             sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
-            available_providers = ort.get_available_providers()
-            providers = (
-                ["DmlExecutionProvider", "CPUExecutionProvider"]
-                if "DmlExecutionProvider" in available_providers
-                else ["CPUExecutionProvider"]
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
+            sess_options.inter_op_num_threads = 1
+
+            avail_providers = ort.get_available_providers()
+            if "CUDAExecutionProvider" in avail_providers:
+                try:
+                    import torch  # noqa: F401 - preload CUDA runtime shared libraries on Colab/Linux
+                except Exception:
+                    pass
+                if hasattr(ort, "preload_dlls"):
+                    try:
+                        ort.preload_dlls()
+                    except Exception:
+                        pass
+                try:
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    )
+                except Exception as cuda_err:
+                    logger.warning(f"CUDAExecutionProvider lỗi ({cuda_err}); chuyển sang CPUExecutionProvider.")
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CPUExecutionProvider"],
+                    )
+            else:
+                self._session = ort.InferenceSession(
+                    onnx_path,
+                    sess_options=sess_options,
+                    providers=["CPUExecutionProvider"],
+                )
+
+            self._active_providers = list(self._session.get_providers())
+            logger.info(
+                f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}' "
+                f"(providers={self._active_providers}, max_length={self.max_length}, "
+                f"batch_size={self.batch_size}, threads={sess_options.intra_op_num_threads})."
             )
-            self._session = ort.InferenceSession(
-                onnx_path,
-                sess_options=sess_options,
-                providers=providers,
-            )
-            logger.info(f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}' [Providers: {self._session.get_providers()}].")
         except Exception as e:
             logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
             self._session = None
@@ -315,12 +354,18 @@ class JinaONNXReranker(BaseReranker):
         try:
             import numpy as np
 
-            batch_size = 32
-            all_prob_scores: List[float] = []
+            all_prob_scores: List[float] = [0.0] * len(candidates)
+            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa
+            sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(candidates[idx].text or ""))
+            eff_batch_size = (
+                max(self.batch_size, 32)
+                if "CUDAExecutionProvider" in getattr(self, "_active_providers", [])
+                else self.batch_size
+            )
 
-            for i in range(0, len(candidates), batch_size):
-                batch_cands = candidates[i : i + batch_size]
-                sentence_pairs = [[query, c.text] for c in batch_cands]
+            for i in range(0, len(sorted_indices), eff_batch_size):
+                batch_indices = sorted_indices[i : i + eff_batch_size]
+                sentence_pairs = [[query, candidates[idx].text] for idx in batch_indices]
                 inputs = self._tokenizer(
                     sentence_pairs,
                     padding=True,
@@ -339,7 +384,8 @@ class JinaONNXReranker(BaseReranker):
                 if raw_logits.ndim == 0:
                     raw_logits = np.array([raw_logits.item()])
                 prob_scores = 1.0 / (1.0 + np.exp(-raw_logits.astype(np.float64)))
-                all_prob_scores.extend(prob_scores.tolist())
+                for idx, p_score in zip(batch_indices, prob_scores.tolist()):
+                    all_prob_scores[idx] = float(p_score)
 
             ranked = list(zip(candidates, all_prob_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
@@ -848,10 +894,17 @@ class RerankerFactory:
 
 
         # Ưu tiên Jina ONNX nếu được chỉ định hoặc model_name chứa 'jina'
+        jina_kwargs: Dict[str, Any] = {}
+        if kwargs.get("max_length") is not None:
+            jina_kwargs["max_length"] = int(kwargs["max_length"])
+        if kwargs.get("batch_size") is not None:
+            jina_kwargs["batch_size"] = int(kwargs["batch_size"])
+
         if rtype in ("onnx", "jina", "jina_onnx") or "jina" in model_str:
             return JinaONNXReranker(
                 model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
                 onnx_filename=onnx_filename or "onnx/model.onnx",
+                **jina_kwargs,
             )
 
         if rtype == "flashrank":
@@ -866,6 +919,7 @@ class RerankerFactory:
             return JinaONNXReranker(
                 model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
                 onnx_filename=onnx_filename or "onnx/model.onnx",
+                **jina_kwargs,
             )
         except Exception:
             pass

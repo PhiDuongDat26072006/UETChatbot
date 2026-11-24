@@ -88,14 +88,41 @@ class UETEmbedder(BaseEmbeddingModel):
 
                     sess_options = ort.SessionOptions()
                     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    self._onnx_session = ort.InferenceSession(
-                        str(resolved_onnx.resolve()),
-                        sess_options=sess_options,
-                        providers=["CPUExecutionProvider"],
-                    )
+                    if "CUDAExecutionProvider" in ort.get_available_providers():
+                        try:
+                            import torch  # noqa: F401
+                        except Exception:
+                            pass
+                        if hasattr(ort, "preload_dlls"):
+                            try:
+                                ort.preload_dlls()
+                            except Exception:
+                                pass
+                        try:
+                            self._onnx_session = ort.InferenceSession(
+                                str(resolved_onnx.resolve()),
+                                sess_options=sess_options,
+                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                            )
+                        except Exception as cuda_err:
+                            logger.warning(f"ONNX CUDAExecutionProvider lỗi ({cuda_err}); fallback sang CPUExecutionProvider.")
+                            self._onnx_session = ort.InferenceSession(
+                                str(resolved_onnx.resolve()),
+                                sess_options=sess_options,
+                                providers=["CPUExecutionProvider"],
+                            )
+                    else:
+                        self._onnx_session = ort.InferenceSession(
+                            str(resolved_onnx.resolve()),
+                            sess_options=sess_options,
+                            providers=["CPUExecutionProvider"],
+                        )
                     out_names = [o.name for o in self._onnx_session.get_outputs()]
                     self._onnx_output_names = ["sentence_embedding"] if "sentence_embedding" in out_names else None
-                    logger.info(f"Đã khởi tạo thành công mô hình ONNX Embedding BGE-M3 ({self._dimension} chiều).")
+                    logger.info(
+                        f"Đã khởi tạo thành công mô hình ONNX Embedding BGE-M3 "
+                        f"({self._dimension} chiều, providers={self._onnx_session.get_providers()})."
+                    )
                     return
                 except Exception as e:
                     logger.warning(f"Không thể khởi tạo ONNX Embedding ({e}). Chuyển sang PyTorch SentenceTransformer.")
@@ -112,7 +139,11 @@ class UETEmbedder(BaseEmbeddingModel):
                     target_model = str(local_dir.resolve())
                 logger.info(f"Đang tải mô hình SentenceTransformer '{target_model}' ({self._dimension} chiều)...")
                 self._st_model = SentenceTransformer(target_model)
-                logger.info(f"Đã khởi tạo thành công mô hình embedding '{self._model_name}' ({self._dimension} chiều).")
+                st_device = getattr(self._st_model, "device", "unknown")
+                logger.info(
+                    f"Đã khởi tạo thành công mô hình embedding '{self._model_name}' "
+                    f"({self._dimension} chiều, device={st_device})."
+                )
                 return
             except Exception as e:
                 logger.warning(
@@ -193,7 +224,6 @@ class UETEmbedder(BaseEmbeddingModel):
                     norms = np.linalg.norm(sentence_emb, ord=2, axis=-1, keepdims=True)
                     norms = np.maximum(norms, 1e-12)
                     sentence_emb = sentence_emb / norms
-
                     for vec in sentence_emb:
                         all_vectors.append(vec.tolist())
                 return all_vectors
@@ -203,9 +233,11 @@ class UETEmbedder(BaseEmbeddingModel):
         # 2. Sử dụng SentenceTransformer (bge-m3) PyTorch
         if self._st_model is not None:
             try:
+                st_device = str(getattr(self._st_model, "device", "cpu")).lower()
+                st_batch_size = 64 if st_device.startswith("cuda") else 32
                 raw_vectors = self._st_model.encode(
                     texts,
-                    batch_size=32,
+                    batch_size=st_batch_size,
                     normalize_embeddings=True,
                     show_progress_bar=False,
                 )

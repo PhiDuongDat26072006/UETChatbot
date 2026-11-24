@@ -263,6 +263,48 @@ class TestRetrieverMMRIntegration(unittest.TestCase):
         # 3. Kiểm tra embed_texts được gọi để sinh vector bổ sung cho các chunk thiếu
         self.assertGreater(embedder.embed_texts_calls, 0)
 
+    def test_hybrid_relevance_and_protect_tabular_mmr(self):
+        """5. Kiểm tra bảo vệ chunk bảng cùng document_id và dùng Hybrid relevance thay vì Vector thuần."""
+        q_vec = [1.0, 0.0, 0.0]
+        cands = [
+            RetrievedContext(
+                chunk_id="tab_1",
+                text="[Điểm chuẩn 2025]\n[META: Bảng điểm]\nNgành CN1: 26.5",
+                similarity_score=0.95,
+                metadata={"document_id": "doc_2025", "data_type": "tabular"},
+            ),
+            RetrievedContext(
+                chunk_id="tab_2",
+                text="[Điểm chuẩn 2025]\n[META: Bảng điểm]\nNgành CN8: 27.86",
+                similarity_score=0.90,
+                metadata={"document_id": "doc_2025", "data_type": "tabular"},
+            ),
+            RetrievedContext(
+                chunk_id="other_doc",
+                text="Thông báo hội thảo khoa học.",
+                similarity_score=0.20,
+                metadata={"document_id": "doc_other", "data_type": "prose"},
+            ),
+        ]
+        # tab_1 và tab_2 có vector gần như trùng nhau (chung tiền tố), nhưng khác document với other_doc
+        vecs = [
+            [0.9, 0.1, 0.0],
+            [0.899, 0.101, 0.0],
+            [0.1, 0.0, 0.99],
+        ]
+        selected = MaximalMarginalRelevance.select(
+            query_vector=q_vec,
+            candidates=cands,
+            candidate_vectors=vecs,
+            lambda_mult=0.5,
+            top_n=2,
+            use_hybrid_relevance=True,
+            similarity_threshold=0.92,
+            protect_tabular=True,
+        )
+        selected_ids = [c.chunk_id for c in selected]
+        self.assertEqual(selected_ids, ["tab_1", "tab_2"])
+
 
 if __name__ == "__main__":
     unittest.main()

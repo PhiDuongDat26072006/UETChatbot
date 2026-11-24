@@ -47,9 +47,13 @@ database/*
 # 8. Explicitly track metadata and benchmark test sets
 # !data/doc.md
 
-# 9. Tài liệu ngữ cảnh / hướng dẫn AI agent cá nhân (Module Ingestion)
+# 9. Tài liệu ngữ cảnh / hướng dẫn AI agent cá nhân (Ingestion, Evaluation & Retrieval)
 src/ingestion/contexts/
 src/ingestion/AGENTS.md
+src/evaluation/contexts/
+src/evaluation/AGENTS.md
+src/retrieval/contexts/
+src/retrieval/AGENTS.md
 contexts/
 AGENTS.md
 

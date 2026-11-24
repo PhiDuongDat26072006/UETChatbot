@@ -81,9 +81,11 @@ _RESPONSE_FORMAT_RULES = (
     "- TUYỆT ĐỐI KHÔNG dùng biểu tượng cảm xúc hay icon trang trí (emoji như 📌, ⚠️, 💡, ✅, 🎓, 📚, 🔹, 👉...) "
     "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**).\n"
     "- TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\", không liệt kê URL, link hay trích dẫn tên tài liệu tham khảo ở cuối câu trả lời.\n"
-    "- Mọi công thức toán học hoặc công thức tính điểm (như điểm SAT, HSA, GPA, học phí) BẮT BUỘC phải viết "
-    "bằng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng, KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, "
-    "và KHÔNG đặt công thức trong dấu backtick `...`), sử dụng \\frac{tử}{mẫu}, \\times, \\text{...}.\n"
+    "- ĐIỂM SỐ VÀ CÁC CON SỐ ĐƠN THUẦN (như điểm chuẩn, điểm trúng tuyển, điểm GPA, số tín chỉ, học phí, năm học, mã ngành...): "
+    "BẮT BUỘC viết tự nhiên bằng chữ và số thông thường trên cùng dòng văn bản (ví dụ: viết '**25 điểm**', '**28.19 điểm**', '**GPA 3.2**', '**24 tín chỉ**'), "
+    "TUYỆT ĐỐI KHÔNG bọc các con số đơn thuần này trong cú pháp LaTeX $$...$$ hay $...$ (TUYỆT ĐỐI KHÔNG viết $$25$$, $$28.19$$, $$2026$$ đứng riêng một dòng).\n"
+    "- CHỈ sử dụng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng) khi trình bày CÔNG THỨC TOÁN HỌC phức tạp có phép tính (chứa phân số \\frac{tử}{mẫu}, phép nhân \\times, cộng trừ nhiều biến), "
+    "KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, và KHÔNG đặt công thức trong dấu backtick `...`.\n"
     "- Khi trình bày bảng quy đổi chứng chỉ ngoại ngữ (IELTS, TOEFL, TOEIC, Cambridge, Aptis, VSTEP), "
     "giữ nội dung từng ô ngắn gọn, rõ ràng.\n"
 )
@@ -501,7 +503,7 @@ def create_app():
     def health_check() -> Dict[str, Any]:
         """Kiểm tra trạng thái máy chủ và mô hình LLM hiện tại."""
         config = load_yaml_config()
-        model_name = config.get("llm", {}).get("model_name", "qwen/qwen3.8-27b")
+        model_name = config.get("llm", {}).get("model_name", "tencent/hy4-flash")
         return {
             "status": "ok",
             "message": "UET Chatbot RAG Server đang chạy bình thường.",
