@@ -157,3 +157,20 @@ prompt:
          + Bảng phải có tiêu đề rõ ràng, các cột cân đối, nội dung từng ô ngắn gọn, dễ nắm bắt.
          + Sau bảng, dùng danh sách gạch đầu dòng (•) hoặc khối trích dẫn (> Lưu ý quan trọng) để nhấn mạnh các lưu ý, điều kiện kèm theo hoặc trường hợp đặc biệt.
     4. NÊU RÕ VĂN BẢN CĂN CỨ: Cuối câu trả lời, luôn ghi rõ nguồn tham khảo: "📌 Căn cứ quy chế: [Tên file / văn bản / số quyết định / trang]".
+
+evaluation:
+  judge:
+    provider: "groq"
+    model: "openai/gpt-oss-120b"
+    candidate_models:
+      - "openai/gpt-oss-120b"
+      - "openai/gpt-oss-20b"
+    fallback_provider: "openrouter"
+    fallback_model: "tencent/hy4-flash"
+    temperature: 0.0
+    max_tokens: 2048
+    reasoning_effort: "low"
+    max_retries: 2
+    delay_seconds: 1.0
+    enable_cache: true
+    cache_file: "database/eval_judge_cache.json"
