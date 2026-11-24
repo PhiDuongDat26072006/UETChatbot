@@ -7165,9 +7165,1751 @@ sites:
       : decision: rejected
       https://uet.edu.vn/chuong-trinh-trao-doi-sinh-vien-voi-cac-doi-tac-nuoc-ngoai/:
         decision: listing
+      http://127.0.0.1:37327/bai-moi:
+        decision: accepted
+      https://uet.edu.vn/chuong-trinh-trao-doi-sinh-vien-tai-dai-hoc-kanazawa-nhat-ban-3/:
+        decision: rejected
+      https://uet.edu.vn/cong-bo-ket-qua-danh-gia-diem-ren-luyen-chinh-thuc-hoc-ky-ii-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/cung-cap-so-tai-khoan-ca-nhan-de-thanh-toan-hoc-bong-khuyen-khich-hoc-tap/:
+        decision: rejected
+      https://uet.edu.vn/dan-dat-tuong-lai-cong-nghe-ban-dan-voi-hoc-bong-thac-si-toan-phan-vnu-samsung-technology-track-v-stt/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-chuong-trinh-dao-tao-cntt-dinh-huong-thi-truong-nhat-ban-2/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-de-tai-can-bo-huong-dan-kltn-bao-ve-dot-1-nam-2025-2/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-mien-thi-hoac-cong-diem-cho-sinh-vien-tham-gia-cac-cuoc-thi-olympic-ky-thi-quoc-te-3/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-mien-thi-hoac-cong-diem-cho-sinh-vien-tham-gia-cac-cuoc-thi-olympic-ky-thi-quoc-te-4/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-nganh-hoc-trong-nhom-nganh-may-tinh-va-robot-cn2-2/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-nhan-giai-thuong-kova-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-nhan-hoc-bong-dong-hanh-singapore-hoc-ki-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-tham-du-cuoc-thi-procon-uet-2026/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-tham-gia-chuong-trinh-hoc-bong-lg-display-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-thi-olp-toan-hoc-sinh-vien-truong-dhcn-lan-thu-xiii-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/dang-ky-thi-olp-tri-tue-nhan-tao-sinh-vien-truong-dh-cong-nghe-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-thi-sinh-du-dieu-kien-tham-du-ky-thi-tuyen-sinh-sau-dai-hoc-dot-2-nam-2025-bac-thac-si/:
+        decision: rejected
+      https://uet.edu.vn/de-cuong-cac-mon-thi-ths-cua-ky-thi-tuyen-sinh-sdh-dot-1-2021/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-dieu-chinh-co-cau-cap-hoc-bong-va-de-xuat-danh-sach-xet-toyota-nam-hoc-2026-2027/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-sinh-vien-duoc-nhan-hoc-bong-img-nam-hoc-2026-2027/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-xet-hoc-bong-toshiba-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/diem-chuan-trung-tuyen-dai-hoc-chinh-quy-theo-ket-qua-thi-thpt-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/diem-trung-tuyen-nganh-nhom-nganh-theo-ket-qua-thi-thpt-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/diem-trung-tuyen-nhom-nganhnganh-theo-ket-qua-thi-thpt-nam-2018-2/:
+        decision: rejected
+      https://uet.edu.vn/diem-trung-tuyen-nhom-nganhnganh-theo-ket-qua-thi-thpt-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/dieu-chinh-doi-tuong-ap-dung-hoc-bong-ncs/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-dot-1-hoc-ky-nam-hoc-2022-2023-2/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-hki-nam-hoc-2023-2024-bac-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-danh-sach-sinh-vien-tham-gia-ky-thi-phu-hoc-ky-phu-2021-2022-2/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-ky-nang-bo-tro-danh-cho-sinh-vien-qh-2016/:
+        decision: rejected
+      https://uet.edu.vn/mo-cong-dang-ky-ho-so-xet-tuyen-dai-hoc-chinh-quy-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-2-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-3-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/lich-hoc-tap-cua-sinh-vien-k68-truong-dai-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/lich-sinh-hoat-dau-khoa-lich-hoc-quan-su-lich-hoc-chuyen-mon-cua-sinh-vien-k70/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-bo-sung-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-2-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-bo-tuc-kien-thuc-ky-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-dot-1-hoc-ky-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-hoc-ky-nam-hoc-2017-2018-bac-sau-dai-hoc-dot-1/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-hoc-ky-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-chinh-thuc-hoc-ky-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-danh-sach-sinh-vien-tham-gia-ky-thi-phu-hoc-ky-ii-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-danh-sach-sinh-vien-tham-gia-ky-thi-phu-hoc-ky-phu-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-hoc-ky-hkii-nam-hoc-2020-2021-dot-3/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-hoc-ky-ii-nam-hoc-2023-2024-bac-sau-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/lich-thi-ket-thuc-hoc-phan-dai-hoc-hoc-ky-ii-2023-2024-dot-1/:
+        decision: rejected
+      ? https://uet.edu.vn/lich-thi-ky-thi-phu-lich-thi-lop-hoc-phan-mo-bo-sung-va-danh-sach-hoc-vien-tham-gia-ky-thi-phu-trong-hoc-ky-ii-nam-hoc-2025-2026-bac-sau-dai-hoc/
+      : decision: rejected
+      https://uet.edu.vn/lich-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/mac-khao-sat-chinh-thuc-kiem-dinh-chat-luong-truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi/:
+        decision: rejected
+      https://uet.edu.vn/muc-diem-nhan-dang-ky-xet-tuyen-vao-dai-hoc-chinh-quy-nam-2018-2/:
+        decision: rejected
+      https://uet.edu.vn/nguong-dam-bao-chat-luong-dau-vao-theo-phuong-thuc-xet-tuyen-ket-qua-thi-tot-nghiep-thpt-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/nhan-giay-chung-nhan-hoc-bong-yamada-toshiba-toto-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/nop-ho-hoc-bong-duy-tri-cho-ncs-tts-co-nang-luc-nghien-cuu-xuat-sac-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/phe-duyet-ket-qua-ren-luyen-hoc-ky-ii-nam-hoc-2016-2017-cua-sinh-vien-dai-hoc-chinh-quy/:
+        decision: rejected
+      ? https://uet.edu.vn/quy-hoc-bong-cuu-sinh-vien-khoa-dien-tu-vien-thong-trao-hoc-bong-chap-canh-dam-nam-hoc-2016-2017/img_3803/
+      : decision: rejected
+      ? https://uet.edu.vn/quy-hoc-bong-cuu-sinh-vien-khoa-dien-tu-vien-thong-trao-hoc-bong-chap-canh-dam-nam-hoc-2016-2017/img_38201/
+      : decision: rejected
+      ? https://uet.edu.vn/quy-hoc-bong-cuu-sinh-vien-khoa-dien-tu-vien-thong-trao-hoc-bong-chap-canh-dam-nam-hoc-2016-2017/img_3825-2/
+      : decision: rejected
+      ? https://uet.edu.vn/quy-hoc-bong-cuu-sinh-vien-khoa-dien-tu-vien-thong-trao-hoc-bong-chap-canh-dam-nam-hoc-2016-2017/img_38273/
+      : decision: rejected
+      https://uet.vnu.edu.vn/chuong-trinh-asean-trong-the-gioi-ngay-nay-astw-2027-tai-philippines/:
+        decision: rejected
       https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-gap-mat-ky-niem-44-nam-ngay-nha-giao-viet-nam-20-11/:
         decision: rejected
-      http://127.0.0.1:37327/bai-moi:
+      https://uet.edu.vn/Dropbox/Dung-Giang/2022-2023/HK%201/1.%20CV%20TKB/daotao_dhcn@vnu.edu.vn:
+        decision: rejected
+      https://uet.edu.vn/ap-u-de-tai-nghien-cuu-khoa-hoc-tu-dam-voi-may-bay-khong-nguoi-lai/:
+        decision: rejected
+      https://uet.edu.vn/bao-cao-tinh-hinh-viec-lam-cua-cuu-sinh-vien-tot-nghiep-nam-2021-k60-k61-k62-k63/:
+        decision: rejected
+      https://uet.edu.vn/bao-cao-tinh-hinh-viec-lam-cua-cuu-sinh-vien-tot-nghiep-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/boi-canh-ai-phat-trien-co-hoi-viec-lam-nganh-thiet-ke-cong-nghiep-va-hoa-lon/:
+        decision: rejected
+      https://uet.edu.vn/cac-quy-dinh-huong-dan/:
+        decision: rejected
+      https://uet.edu.vn/cap-moi-bhyt-bhtt-cho-sv-k71-va-gia-han-bhyt-nam-2027-cho-sv-khoa-cu/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-bao-cao-tinh-hinh-viec-lam-cua-cuu-sinh-vien-tot-nghiep-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-bao-cao-tinh-hinh-viec-lam-cua-cuu-sinh-vien-tot-nghiep-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-bao-cao-tinh-hinh-viec-lam-cua-sinh-vien-tot-nghiep-nam-2021-sau-1-nam-ra-truong/:
+        decision: rejected
+      ? https://uet.edu.vn/chuong-trinh-hop-tac-lien-ket-dao-tao-tuyen-dung-giua-truong-dh-cong-nghe-voi-cong-ty-tnhh-nissan-automotive-technology-viet-nam/
+      : decision: rejected
+      https://uet.edu.vn/chuong-trinh-thuc-tap-ky-mua-xuan-2027-tai-kist-han-quoc/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-thuc-tap-va-nghien-cuu-quoc-te-iirf-ky-dong-nam-2026-tai-iit-delhi-an-do/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-ky-xuan-nam-2027-tai-dai-hoc-hanyang-erica-han-quoc/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-ky-xuan-nam-2027-tai-dai-hoc-kansai-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-mua-dong-future-tech-winter-school-2026-tai-dai-hoc-mtuci-lien-bang-nga/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-tuyen-dung-sinh-vien-tot-nghiep-dai-hoc/:
+        decision: rejected
+      ? https://uet.edu.vn/cong-bo-danh-sach-va-lay-y-kien-nhan-dan-ve-ca-nhan-de-nghi-xet-tang-danh-hieu-nha-giao-nhan-dan-nha-giao-uu-tu-lan-thu-17-nam-2026/
+      : decision: rejected
+      https://uet.edu.vn/cong-doan/:
+        decision: rejected
+      https://uet.edu.vn/danh-gia-luan-an-tien-sy-cua-ncs-dong-thi-ngoc-lan/:
+        decision: rejected
+      https://uet.edu.vn/danh-gia-luan-an-tien-sy-cua-ncs-nguyen-dang-co/:
+        decision: rejected
+      https://uet.edu.vn/danh-gia-luan-an-tien-sy-cua-ncs-tran-vu-hop/:
+        decision: rejected
+      https://uet.edu.vn/danh-gia-luan-an-tien-sy-cua-ncs-vo-van-hoang/:
+        decision: rejected
+      ? https://uet.edu.vn/10-dau-an-noi-bat-nam-2025-truong-dai-hoc-cong-nghe-tren-hanh-trinh-doi-moi-chuyen-doi-so-va-hoi-nhap-2/
+      : decision: rejected
+      https://uet.edu.vn/10-dau-an-noi-bat-nam-2025-truong-dai-hoc-cong-nghe-tren-hanh-trinh-doi-moi-chuyen-doi-so-va-hoi-nhap/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-doi-thoai-giua-lanh-dao-nha-truong-voi-phu-huynh-va-sinh-vien-nam-hoc-2025-2026-xay-dung-moi-truong-hoc-tap-hien-dai-tu-ket-noi-da-chieu/
+      : decision: rejected
+      https://uet.edu.vn/hoi-nghi-quoc-te-lan-thu-7-ve-co-hoc-ky-thuat-va-tu-dong-hoa/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-cap-truong-lan-thu-19-nhieu-de-tai-co-tinh-sang-tao-va-ung-dung-thuc-tien-cao/
+      : decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-truong-dai-hoc-cong-nghe-lan-thu-20-cac-de-tai-gan-voi-thuc-tien-va-chu-trong-phat-trien-san-pham/
+      : decision: rejected
+      https://uet.edu.vn/hon-240-thi-sinh-buoc-vao-ky-thi-chon-doi-tuyen-olympic-tri-tue-nhan-tao-nam-2026/:
+        decision: rejected
+      ? https://uet.edu.vn/hop-tac-uet-yonsei-lg-innotek-thuc-day-gan-ket-dai-hoc-doanh-nghiep-trong-dao-tao-nhan-luc-chat-luong-cao/
+      : decision: rejected
+      https://uet.edu.vn/huong-dan-nop-minh-chung-xet-tuyen-dhcq-nam-2025/:
+        decision: rejected
+      https://uet.edu.vn/huong-dan-phat-trien-va-che-uu-da%cc%83i-nhom-nghien-cuu-manh-o-dai-hoc-quoc-gia-ha-noi/:
+        decision: rejected
+      https://uet.edu.vn/huong-dan-sinh-vien-su-dung-thu-vien-nam-hoc-2021-2022/:
+        decision: rejected
+      ? https://uet.edu.vn/huong-ung-ngay-the-gioi-khong-thuoc-la-31-5-tuan-le-quoc-gia-khong-thuoc-la-25-31-5-2026-va-tang-cuong-thuc-thi-luat-phong-chong-tac-hai-thuoc-la/
+      : decision: rejected
+      ? https://uet.edu.vn/huu-tam-bang-ky-su-robot-tai-truong-dai-hoc-cong-nghe-dhqghn-nhieu-co-hoi-viec-lam-hap-dan-tai-cac-cong-ty-trong-nuoc-va-quoc-te/
+      : decision: rejected
+      https://uet.edu.vn/infographic-can-bo-giang-vien-tre-la-luc-luong-tiem-nang-phat-trien-phong-trao-doan-hoi/:
+        decision: rejected
+      https://uet.edu.vn/kham-suc-khoe-dau-khoa-2/:
+        decision: rejected
+      https://uet.edu.vn/kham-suc-khoe-dau-khoa/:
+        decision: rejected
+      https://uet.edu.vn/khen-thuong-tap-the-ca-nhan/:
+        decision: rejected
+      ? https://uet.edu.vn/khoa-dien-tu-vien-thong-truong-dai-hoc-cong-nghe-va-fpt-software-hop-tac-mo-phong-thi-nghiem-mo-openlab-nghien-cuu-ve-linh-vuc-thong-nhung-va-iot/
+      : decision: rejected
+      https://uet.edu.vn/khoi-dong-hanh-trinh-moi-voi-tuan-le-hoi-nhap-cho-sinh-vien-k67/:
+        decision: rejected
+      https://uet.edu.vn/kiem-dinh-chat-luong/:
+        decision: rejected
+      https://uet.edu.vn/ky-thi-danh-gia-nang-luc-tieng-anh/:
+        decision: rejected
+      https://uet.edu.vn/ky-thuat-robot-nganh-hoc-tien-phong-cong-nghiep-trong-thoi-dai-4-0/:
+        decision: rejected
+      https://uet.edu.vn/lam-chu-cong-nghe-cao-ung-dung-trong-nong-nghiep/:
+        decision: rejected
+      https://uet.edu.vn/lan-dau-tien-viet-nam-xay-dung-thanh-cong-gen-mot-nguoi-viet/:
+        decision: rejected
+      ? https://uet.edu.vn/le-ky-niem-20-nam-thanh-lap-khoa-co-hoc-ky-thuat-va-tu-dong-hoa-20-nam-minh-chung-cho-lua-chon-dung-dan-va-tam-nhin-di-truoc-don-dau/
+      : decision: rejected
+      ? https://uet.edu.vn/lua-chon-nganh-ky-thuat-nang-luong-buoc-dem-de-tu-tin-gia-nhap-thi-truong-nhan-luc-nang-luong-chat-luong-cao-toan-cau/
+      : decision: rejected
+      https://uet.edu.vn/luan-an-tien-si-sau-bao-ve-cua-ncs-nguyen-tran-ngoc-linh/:
+        decision: rejected
+      https://uet.edu.vn/luan-an-tien-si-sau-bao-ve-cua-ncs-pham-thi-quynh-trang-2/:
+        decision: rejected
+      https://uet.edu.vn/luan-an-tien-si-sau-bao-ve-cua-ncs-pham-thi-quynh-trang/:
+        decision: rejected
+      https://uet.edu.vn/tuyen-dung-lap-trinh-game-c-cua-cong-ty-cong-ty-gameloft/:
+        decision: rejected
+      https://uet.edu.vn/tuyen-dung-sinh-vien-tot-nghiep-nam-2022-2021-voi-vi-tri-ky-su-thiet-ke-phan-cung/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-ky-mua-xuan-nam-2027-tai-dai-hoc-osaka-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-kansai-nhat-ban-ky-thu-nam-2025/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-macau-trung-quoc-ky-thu-nam-hoc-2026-2027/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-macau-trung-quoc-ky-xuan-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-macau-trung-quoc-ky-xuan-nam-hoc-2026-2027/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-quoc-gia-seoul-han-quoc/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-sciences-po-ch-phap-2/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-tai-dai-hoc-strasbourg-cong-hoa-phap-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-trao-doi-mua-dong-future-tech-winter-school-2025-tai-dai-hoc-mtuci-lien-bang-nga/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-tuyen-dung-nam-2022-cua-mobifone/:
+        decision: rejected
+      https://uet.edu.vn/chuyen-doi-dai-hoc-yeu-cau-tat-yeu/:
+        decision: rejected
+      https://uet.edu.vn/chuyen-giao-giai-phap-kiem-thu-tu-dong-cho-cac-du-cc/:
+        decision: rejected
+      ? https://uet.edu.vn/chuyen-nganh-cong-nghe-man-hinh-tien-tien-co-hoi-phat-trien-nghe-nghiep-cho-ueters-tu-mo-hinh-truong-vien-doanh-nghiep/
+      : decision: rejected
+      https://uet.edu.vn/chuyen-nganh-quan-ly-thong-thong-tin/:
+        decision: rejected
+      ? https://uet.edu.vn/clb-cac-khoa-vien-truong-cntt-tt-viet-nam-fisu-viet-nam-chuc-dai-hoi-nhiem-ky-ii-tai-truong-dai-hoc-cong-nghe-dhqghn/
+      : decision: rejected
+      https://uet.edu.vn/co-hoi-hoc-tap-tai-dai-hoc-quoc-gia-ha-noi/:
+        decision: rejected
+      https://uet.edu.vn/co-hoi-hoc-tap-tai-dai-hoc-quoc-gia-ha-noi/vnu-dgnl-2016-7-600x414/:
+        decision: rejected
+      ? https://uet.edu.vn/co-hoi-thuc-tap-va-tuyen-dung-quoc-te-cua-sinh-vien-truong-dai-hoc-cong-nghe-tai-tap-doan-meiko-nhat-ban/
+      : decision: rejected
+      https://uet.edu.vn/cong-bo-quyet-dinh-chi-dinh-bi-thu-dang-uy-truong-dai-hoc-cong-nghe-nhiem-ky-2020-2025/:
+        decision: rejected
+      ? https://uet.edu.vn/cong-bo-quyet-dinh-cong-nhan-danh-hieu-hoc-sinh-gioi-ky-thi-olympic-bac-thpt-nam-hoc-2024-2025-cua-dai-hoc-quoc-gia-ha-noi-cac-mon-toan-vat-li-hoa-hoc-sinh-hoc-tin-hoc-va-khoa-hoc-ky-thu/
+      : decision: rejected
+      ? https://uet.edu.vn/cong-doan-truong-dai-hoc-cong-nghe-trao-tang-qua-cho-hoc-sinh-truong-ptdtbt-ththcs-che-cu-nha-mu-cang-chai/
+      : decision: rejected
+      ? https://uet.edu.vn/cong-nhan-tot-nghiep-va-cap-van-bang-cu-nhan-chinh-quy-chuong-trinh-dao-tao-chuan-chuong-trinh-dao-tao-chuan-quoc-te-dot-thang-32018/
+      : decision: rejected
+      ? https://uet.edu.vn/cong-trinh-ufboot2-improving-ultrafast-bootstrap-approximation-duoc-trao-tang-giai-thuong-dhqghn-ve-khoa-hoc-va-cong-nghe-nam-2021/
+      : decision: rejected
+      https://uet.edu.vn/cong-ty-cp-vien-may-va-dung-cu-cong-nghiep-tuyen-dung-ky-su-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/cong-ty-tnhh-lg-display-vietnam-haiphong-tuyen-dung-cac-vi-tri-ky-su/:
+        decision: rejected
+      https://uet.edu.vn/cong-ty-tnhh-nissan-automotive-technology-viet-nam-tuyen-dung/:
+        decision: rejected
+      https://uet.edu.vn/crystal-international-group-tuyen-dung/:
+        decision: rejected
+      https://uet.edu.vn/cung-cap-tai-khoan-ngan-hang-phuc-vu-viec-hoan-tra-kinh-phi-cho-nguoi-hoc-lan-hoan-tra-thu-3/:
+        decision: rejected
+      https://uet.edu.vn/huong-dan-nop-minh-chung-xet-tuyen-dhcq-nam-2024/:
+        decision: rejected
+      ? https://uet.edu.vn/huong-dan-quy-dinh-chinh-sach-ho-tro-chi-phi-hoc-tap-doi-voi-sinh-vien-la-nguoi-dan-toc-thieu-hoc-tai-cac-co-giao-duc-dai-hoc-theo-thong-tu-352014/
+      : decision: rejected
+      https://uet.edu.vn/nop-ho-huong-chinh-sach-ho-tro-chi-phi-hoc-tap-hoc-ki-nam-hoc-2020-2021/:
+        decision: rejected
+      https://uet.edu.vn/nop-ho-so-nhan-tro-cap-xa-hoi-hoc-ki-ii-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/nop-hp-cua-hvch-khoa-qh-2022-chuong-trinh-lien-ket-dao-tao-thac-si-doi-tac-cap-bang-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/nu-pho-giao-su-nguoi-viet-cuu-sinh-vien-truong-dai-hoc-cong-nghe-day-ai-o-dai-hoc-top-dau-trung-quoc/:
+        decision: rejected
+      https://uet.edu.vn/nu-sinh-10x-duoc-ket-nap-dang-tu-khi-hoc-lop-12-dat-giai-nhi-nghien-cuu-khoa-hoc/:
+        decision: rejected
+      https://uet.edu.vn/nu-sinh-khoa-hoc-may-tinh-tot-nghiep-thu-khoa-dai-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/nu-sinh-nganh-cong-nghe-hang-khong-vu-tru-no-luc-vuot-qua-rao-can-de-thanh-cong/:
+        decision: rejected
+      https://uet.edu.vn/one-uet-chien-luoc-phat-trien-truong-dai-hoc-cong-nghe-trong-giai-doan-moi/:
+        decision: rejected
+      https://uet.edu.vn/pham-thi-kim-hue-nu-sinh-nganh-tri-tue-nhan-tao-va-hanh-trinh-ba-nam-cham-toi-uoc-mo/:
+        decision: rejected
+      https://uet.edu.vn/phan-tich-quan-diem-cong-dong-mang-doi-voi-cac-san-pham-thuong-mai/ccc/:
+        decision: rejected
+      https://uet.edu.vn/phan-tich-quan-diem-cong-dong-mang-doi-voi-cac-san-pham-thuong-mai/leanhcuong1/:
+        decision: rejected
+      https://uet.edu.vn/phat-trien-nhan-luc-chat-luong-cao-bang-chinh-sach-uu-dai/:
+        decision: rejected
+      https://uet.edu.vn/phat-trien-thong-tro-khang-cam-tay-dua-tren-ic-tuong-tu-ad5941-de-phat-hien-te-bao-ung-thu-phoi-a549/:
+        decision: rejected
+      https://uet.edu.vn/phien-hop-lan-thu-14-hoi-dong-truong-truong-dai-hoc-cong-nghe-nhiem-ky-2022-2027/:
+        decision: rejected
+      https://uet.edu.vn/phien-hop-lan-thu-hai-hoi-dong-khoa-hoc-va-dao-tao-truong-dh-cong-nghe-nhiem-ky-2025-2030/:
+        decision: rejected
+      https://uet.edu.vn/phong-thi-ky-thi-olympic-bac-thpt-cua-dhqghn-nam-hoc-2024-2025/:
+        decision: rejected
+      ? https://uet.edu.vn/quy-dinh-chinh-sach-ho-tro-chi-phi-hoc-tap-doi-voi-sinh-vien-la-nguoi-dan-toc-thieu-hoc-tai-cac-co-giao-duc-dai-hoc-theo-quyet-dinh-662013qd-ttg/
+      : decision: rejected
+      ? https://uet.edu.vn/quy-dinh-doi-voi-thi-sinh-tai-phong-thi-trich-thong-tu-172023tt-bgdtt-ngay-10102023-cua-bo-giao-duc-va-dao-tao/
+      : decision: rejected
+      https://uet.edu.vn/ra-soat-cac-dieu-kien-tot-nghiep-hoan-thanh-chuong-trinh-dao-tao-cua-sinh-vien-3/:
+        decision: rejected
+      https://uet.edu.vn/samsung-tuyen-40-sinh-vien-uu-tu-de-dao-tao-nganh-ban-dan/:
+        decision: rejected
+      ? https://uet.edu.vn/san-pham-ao-ha-nhiet-chong-nong-cho-nhan-vien-y-te-phong-chong-dich-covid-19-la-1-trong-10-su-kien-khoa-hoc-va-cong-nghe-noi-bat-nam-2021/
+      : decision: rejected
+      https://uet.edu.vn/sang-che-vat-lieu-polymer-compozit-soi-thuy-tinh/:
+        decision: rejected
+      https://uet.edu.vn/sang-tao-xuat-phat-tu-doi-song/:
+        decision: rejected
+      https://uet.edu.vn/sang-tao-xuat-phat-tu-doi-song/_mg_25943/:
+        decision: rejected
+      https://uet.edu.vn/sang-tao-xuat-phat-tu-doi-song/linechart/:
+        decision: rejected
+      https://uet.edu.vn/sang-tao-xuat-phat-tu-doi-song/mainscreen/:
+        decision: rejected
+      https://uet.edu.vn/sap-dien-ra-hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-truong-dai-hoc-cong-nghe-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/sap-dien-ra-ngay-hoi-viec-lam-ket-noi-thanh-cong-uet-job-fair-2024/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dh-cong-nghe-lien-ket-dao-tao-thac-si-chuyen-nganh-ky-thuat-truyen-thong-va-du-lieu-truong-dh-paris-saclay-cap-bang/
+      : decision: rejected
+      https://uet.edu.vn/truong-dhcn-dat-giai-nhat-toan-toan-tai-olympic-vat-ly-sinh-vien-toan-quoc-lan-thu-xxi/:
+        decision: rejected
+      https://uet.edu.vn/cho-phep-sinh-vien-ta-van-minh-duoc-tiep-tuc-hoc-tap/:
+        decision: rejected
+      https://uet.edu.vn/chuan-bi-cho-cong-tac-xet-tot-nghiep-cua-sinh-vien-dot-thang-6-nam-2025/:
+        decision: rejected
+      https://uet.edu.vn/chuan-bi-cho-cong-tac-xet-tot-nghiep-cua-sinh-vien-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/chuan-bi-cho-cong-tac-xet-tot-nghiep-cua-sinh-vien-nam-2025/:
+        decision: rejected
+      https://uet.edu.vn/chuc-buoi-chia-se-truc-tuyen-livestream-honda-award/:
+        decision: rejected
+      https://uet.edu.vn/chuc-cac-lop-hoc-tieng-han-danh-cho-nguoi-hoc-truong-dai-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/chuc-tuan-le-hoi-nhap-sinh-vien-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-asean-korea-youth-summit-2022/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-bao-cao-khoa-hoc-toshiba-scholarship-mid-year-meeting-2/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-di-giao-luu-tai-nhat-ban-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-discovernus-ky-mua-xuan-nam-hoc-2025-2026-tai-dai-hoc-quoc-gia-singapore-nus/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-giao-luu-tai-nhat-ban-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-global-esg-junior-leader-fellowship-tai-han-quoc/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-hang-khong-vu-tru-uet-mai-matxcova-nga/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-hoc-online-cua-dai-hoc-osaka-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-hoi-nghi-thu-linh-sinh-vien-tai-truong-dai-hoc-quan-ly-singapore-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-hop-tac-dao-taothac-si-voi-vien-jaist-nhat-ban/:
+        decision: rejected
+      ? https://uet.edu.vn/chuong-trinh-hop-tac-va-nhung-trai-nghiem-thuc-te-cua-cuu-sinh-vien-tai-cong-ty-tnhh-nissan-automotive-technology-viet-nam/
+      : decision: rejected
+      https://uet.edu.vn/chuong-trinh-mua-he-unair-aun-summer-camp-2026/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-mua-upm-aun-summer-camp-2025/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-mua-voi-mang-luoi-cac-truong-dai-hoc-dong-nam-aun/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-nang-buoc-thu-khoa-bao-tien-phong-chuc-2/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-nang-buoc-thu-khoa-bao-tien-phong-chuc/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-nus-enterprise-summer-programme-in-entrepreneurship-2026/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-tai-dai-hoc-burapha-thai-lan/:
+        decision: rejected
+      ? https://uet.edu.vn/chuong-trinh-thuc-tap-4-tuan-tai-nhat-ban-cua-tap-doan-toshiba/introduction-of-toshiba-global-internship/
+      : decision: rejected
+      ? https://uet.edu.vn/chuong-trinh-thuc-tap-4-tuan-tai-nhat-ban-cua-tap-doan-toshiba/toshiba-global-internship-program-2017_application-guidelines-position-list/
+      : decision: rejected
+      https://uet.edu.vn/chuong-trinh-thuc-tap-sinh-tai-cong-ty-lg-innotek-viet-nam-hai-phong/:
+        decision: rejected
+      https://uet.edu.vn/e-magazine-khong-ngung-trau-doi-va-dat-cau-hoi-trong-nghien-cuu-khoa-hoc/:
+        decision: rejected
+      https://uet.edu.vn/emcemi-trong-thiet-ke-mach-dien-tu-va-antenna/:
+        decision: rejected
+      https://uet.edu.vn/kham-pha-nganh-co-ky-thuat-tai-truong-dai-hoc-cong-nghe-dhqghn-2/:
+        decision: rejected
+      https://uet.edu.vn/kham-suc-khoe-cho-sinh-vien-k66/:
+        decision: rejected
+      https://uet.edu.vn/khoa-co-hoc-ky-thuat-va-tu-dong-hoa-ky-ket-hop-tac-voi-dai-hoc-dong-han-quoc/:
+        decision: rejected
+      https://uet.edu.vn/khoa-co-hoc-ky-thuat-va-tu-dong-hoa-tang-cuong-hop-tac-voi-cac-truong-dai-hoc-doanh-nghiep-han-quoc/:
+        decision: rejected
+      ? https://uet.edu.vn/khoa-cong-nghe-nong-nghiep-truong-dai-hoc-cong-nghe-voi-dinh-huong-gop-phan-xay-dung-nen-nong-nghiep-tai-viet-nam-hieu-qua-va-ben-vung/
+      : decision: rejected
+      https://uet.edu.vn/khoa-cong-nghe-thong-tin-gap-mat-va-trao-qua-tet-cho-sinh-vien/:
+        decision: rejected
+      https://uet.edu.vn/khoa-cong-nghe-thong-tin-trao-ho-tro-ve-tau-xe-cho-sinh-vien-co-hoan-canh-kho-khan-ve-que-don-tet-2023/:
+        decision: rejected
+      https://uet.edu.vn/khoi-dau-hanh-trinh-moi-voi-tuan-le-hoi-nhap-cho-sinh-vien-k65/:
+        decision: rejected
+      https://uet.edu.vn/kiem-tra-thong-tin-trong-danh-sach-diem-hoc-tap-ren-luyen-hkii-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/kien-tri-muc-tieu-dam-bao-chat-luong-dao-tao-trong-boi-canh-dich-covid-19/:
+        decision: rejected
+      ? https://uet.edu.vn/ky-ket-hop-tac-ba-ben-giua-truong-dai-hoc-cong-nghe-voi-cong-ty-tnhh-atoll-group-lien-bang-nga-va-vien-nghien-cuu-bao-ve-moi-truong-va-suc-khoe-cong-dong/
+      : decision: rejected
+      https://uet.edu.vn/ky-ket-hop-tac-voi-truong-dai-hoc-cong-nghiep-chiba/:
+        decision: rejected
+      https://uet.edu.vn/ky-ket-hop-tac-voi-truong-dai-hoc-dien-tu-truyen-thong-tokyo-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/ky-su-cong-nghe-nong-nghiep-nganh-hot-thoi-4-0/:
+        decision: rejected
+      https://uet.edu.vn/ky-thi-lap-trinh-danh-cho-hoc-sinh-thpt-nam-2022/:
+        decision: rejected
+      ? https://uet.edu.vn/ky-thi-lap-trinh-sinh-vien-quoc-te-icpc-2024-uet-gop-phan-dua-viet-nam-ghi-dau-trong-linh-vuc-cong-nghe-thong-tin-gio/
+      : decision: rejected
+      https://uet.edu.vn/ky-yeu-20-nam-ket-noi-kien-tao-doi-moi/:
+        decision: rejected
+      https://uet.edu.vn/kyber-network-goi-von-thanh-cong-cuu-sinh-vien-uet-noi-ve-khoi-nghiep/:
+        decision: rejected
+      https://uet.edu.vn/la-ban-dien-tu-dung-trong-hang-hai/:
+        decision: rejected
+      ? https://uet.edu.vn/lan-dau-tien-viet-nam-gianh-huy-chuong-dong-vong-chung-ket-toan-cau-cuoc-thi-lap-trinh-sinh-vien-quoc-te-acmicpc/
+      : decision: rejected
+      https://uet.edu.vn/le-khai-mac-cuoc-thi-lap-trinh-quoc-te-naprock-lan-thu-17/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-danh-gia-ngoai-truong-dai-hoc-cong-nghe-theo-tieu-chuan-bo-giao-duc-va-dao-tao/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-danh-gia-ngoai-truong-dai-hoc-cong-nghe-theo-tieu-chuan-bo-giao-duc-va-dao-tao/dscn3125/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-danh-gia-ngoai-truong-dai-hoc-cong-nghe-theo-tieu-chuan-bo-giao-duc-va-dao-tao/dscn3129/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-danh-gia-ngoai-truong-dai-hoc-cong-nghe-theo-tieu-chuan-bo-giao-duc-va-dao-tao/dscn3139/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-danh-gia-ngoai-truong-dai-hoc-cong-nghe-theo-tieu-chuan-bo-giao-duc-va-dao-tao/dscn3144-2/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-truong-xuong-co-khi-tu-dong-hoa/img_35981/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-truong-xuong-co-khi-tu-dong-hoa/img_36051/:
+        decision: rejected
+      https://uet.edu.vn/sinh-vien-khoa-cong-nghe-thong-tin-doat-huy-chuong-vang-olympic-toan-hoc-sinh-vien-toan-quoc-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/sinh-vien-nam-nhat-truong-dh-cong-nghe-hai-lan-nhan-huan-chuong-lao-dong/:
+        decision: rejected
+      https://uet.edu.vn/sinh-vien-nguyen-thi-ngoc-mai-dat-giai-thuong-sao-thang-gieng-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/sinh-vien-truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-dat-giai-tai-ai4vn-challenges-2022/:
+        decision: rejected
+      ? https://uet.edu.vn/sinh-vien-truong-dai-hoc-cong-nghe-dat-nhieu-giai-cao-tai-ky-thi-olympic-tin-hoc-sinh-vien-viet-nam-lan-thu-30-procon-va-ky-thi-lap-trinh-sinh-vien-quoc-te-icpc-asia-ha-noi-2021/
+      : decision: rejected
+      ? https://uet.edu.vn/sinh-vien-truong-dai-hoc-cong-nghe-tham-gia-phong-van-tuyen-thuc-tap-sinh-tai-tap-doan-hang-khong-boeing/
+      : decision: rejected
+      ? https://uet.edu.vn/sinh-vien-truong-dh-cong-nghe-dat-giai-nhi-tai-dien-dan-sinh-vien-nghien-cuu-khoa-hoc-khoi-nganh-ky-thuat-nang-luong-student-forum-2023/
+      : decision: rejected
+      https://uet.edu.vn/sinh-vien-truong-dh-cong-nghe-trai-nghiem-che-tao-robot-tai-truong-dai-hoc-cong-nghe-chiba-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/study-europe-virtual-fair-malaysia-asean-region/:
+        decision: rejected
+      https://uet.edu.vn/su-dung-ung-dung-uet-student-notification/:
+        decision: rejected
+      https://uet.edu.vn/su-kien-va-thanh-tuu-tieu-bieu-cua-uet-nam-2023-phong-de-tang-toc-va-pha/:
+        decision: rejected
+      https://uet.edu.vn/su-kien-va-thanh-tuu-tieu-bieu-nam-2017/:
+        decision: rejected
+      ? https://uet.edu.vn/suc-hut-va-trie%cc%89n-vo%cc%a3ng-lon-cu%cc%89a-nganh-cong-nghe%cc%a3-ky%cc%83-thua%cc%a3t-co-die%cc%a3n-tu%cc%89-ta%cc%a3i-uet/
+      : decision: rejected
+      https://uet.edu.vn/summer-school-recent-advances-deep-learning/:
+        decision: rejected
+      https://uet.edu.vn/svtech-ha-noi-tuyen-dung-ky-su-trien-khai-network-level-open-dao-tao-fresher/:
+        decision: rejected
+      https://uet.edu.vn/tan-cu-nhan-nguyen-quang-huy-tu-nhung-bai-den-thu-khoa-tot-nghiep-nganh-cong-nghe-thong-tin/:
+        decision: rejected
+      ? https://uet.edu.vn/tan-sinh-vien-truong-dai-hoc-cong-nghe-bat-dau-khoa-hoc-giao-duc-quoc-phong-va-ninh-va-giao-duc-chat-tai-hoa-lac/
+      : decision: rejected
+      https://uet.edu.vn/tang-cuong-cong-tac-phong-chong-dich-benh-covid-19-tai-truong-dhcn-2/:
+        decision: rejected
+      https://uet.edu.vn/tang-cuong-hop-tac-quoc-te-trong-dao-tao-sau-dai-hoc-voi-dai-hoc-california-irvine/:
+        decision: rejected
+      https://uet.edu.vn/tang-cuong-hop-tac-voi-cong-ty-tnhh-lg-innotek-viet-nam/:
+        decision: rejected
+      https://uet.edu.vn/tang-cuong-hop-tac-voi-truong-dai-hoc-cong-nghe-chiba-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/tap-doan-cong-nghe-san-xuat-chip-nvidia-trao-doi-hop-tac-voi-truong-dai-hoc-cong-nghe-dhqghn/:
+        decision: rejected
+      https://uet.edu.vn/tap-huan-boi-duong-nghiep-vu-pccc-va-thuc-tap-phuong-chua-chay-cuu-ho-cuu-nan-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/tat-ca-vi-chat-luong-khoa-hoc/image001/:
+        decision: rejected
+      https://uet.edu.vn/tat-ca-vi-chat-luong-khoa-hoc/image003-2/:
+        decision: rejected
+      https://uet.edu.vn/tay-huong-dan-chuyen-doi-cho-dnnvv-san-xuat-cong-nghiep/:
+        decision: rejected
+      https://uet.edu.vn/tham-du-dien-dan-sinh-vien-chau-voi-moi-truong-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/tham-gia-bhyt-nam-2022-2/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-tuyen-chon-sinh-vien-qh-2017-icq-k62-vao-hoc-nganh-cong-nghe-hang-khong-vu-tru/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-tuyen-dung-cua-cuc-chung-thuc-va-bao-mat-thong-tin-ctsbmtt/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-diem-den-ve-trao-doi-hoc-thuat-va-giao-luu-quoc-te/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-doi-moi-mo-hinh-dao-tao-sau-dai-hoc-buoc-dot-pha-trong-nghien-cuu-khoa-hoc-va-thu-hut-nhan-tai/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-duoc-cap-bang-doc-quyen-giai-phap-huu-ich-cho-nghien-cuu-phuong-phap-quan-ly-va-giam-sat-bo-chuyen-doi-cong-suat-cho-thiet-bi-dien-gio/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-duoc-cap-bang-doc-quyen-sang-che-cho-thiet-bi-la-ban-dien-tu/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-ky-ket-hop-tac-voi-truong-dai-hoc-giao-thong-van-tai-cung-phat-trien-trong-dao-tao-va-nghien-cuu/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-thanh-lap-khoa-cong-nghe-xay-dung-giao-thong/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-to-chuc-tap-huan-nghiep-vu-cong-tac-kiem-tra-coi-thi-ky-thi-tot-nghiep-thpt-nam-2026/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dong-hanh-trien-khai-nghi-quyet-57-nqtw-dong-gop-vao-sinh-thai-doi-moi-sang-tao-quoc-gia/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-hop-tac-dao-tao-tien-si-ve-nhan-luc-cong-nghe-chat-luong-cao-voi-dai-hoc-cong-nghe-sydney-va-tap-doan-fpt/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-hop-tac-mo-chuyen-nganh-cong-nghe-man-hinh-tien-tien-voi-lg-display-viet-nam-hai-phong/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-hop-tac-trong-linh-vuc-vi-mach-ban-dan-voi-cong-ty-hememic-biotechnologies/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-khai-giang-nam-hoc-2017-2018/img_8269/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-khang-dinh-vi-tren-bang-xep-hang-uy-tin-gioi/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-ky-ket-hop-tac-voi-cong-ty-co-phan-bong-den-phich-nuoc-rang-dong/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-lam-viec-voi-van-phong-da%cc%a3i-die%cc%a3n-phong-giao-du%cc%a3c-han-quoc-o%cc%89-nuoc-ngoai-ta%cc%a3i-vie%cc%a3t-nam-ve-chuong-trinh/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-mo-rong-hop-tac-dao-tao-trao-doi-can-bo-va-giang-vien-voi-truong-khoa-hoc-va-cong-nghe-vat-lieu-dai-hoc-bac-kinh/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-thuc-day-co-hoi-hop-tac-voi-tap-doan-cong-nghe-sinh-hoc-atoll-cong-hoa-belarus/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-thuc-day-hop-tac-nghien-cuu-va-dao-tao-trong-cac-linh-vuc-cong-nghe-tien-tien-voi-jaist/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-thuc-day-hop-tac-voi-truong-dai-hoc-khoa-hoc-va-cong-nghe-ufa-lien-bang-nga/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-trao-bang-tot-nghiep-cho-sinh-vien-khoa-dau-tien-nganh-ky-thuat-robot/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-tung-buoc-lam-chu-cong-nghe-dien-gio-hieu-nang-cao/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-va-samsung-dien-tu-han-quoc-cung-hop-tac-dao-tao-nguon-nhan-luc-chat-luong-cao-trong-linh-vuc-ban-dan-va-vi-mach/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-va-samsung-viet-nam-tiep-noi-hop-tac-boi-duong-nhan-tai-cong-nghe-cho-ky-nguyen-so/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-va-tap-doan-deo-ca-ky-ket-hop-tac-chien-luoc-ve-dao-tao-tuyen-dung-trong-linh-vuc-ha-tang-giao-thong/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-va-tap-doan-samsung-viet-nam-hop-tac-dao-tao-nguon-nhan-luc-chat-luong-cao-linh-vuc-ban-dan-va-vi-mach/
+      : decision: rejected
+      https://uet.edu.vn/truong-dh-cong-nghe-chia-se-kinh-nghiem-xay-dung-he-sinh-thai-dai-hoc-so-voi-truong-dh-duoc-ha-noi/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dh-cong-nghe-dong-hanh-trong-cong-tac-dinh-huong-nghe-nghiep-doi-voi-hoc-sinh-truong-thpt-chu-van-ha-noi/
+      : decision: rejected
+      https://uet.edu.vn/truong-dhcn-dam-bao-cong-tac-phong-chong-dich-ngay-dau-tien-sinh-vien-di-hoc-lai/:
+        decision: rejected
+      ? https://uet.edu.vn/vien-tri-tue-nhan-tao-dap-ung-nhu-cau-xa-hoi-ve-doi-ngu-nhan-luc-chat-luong-cao-va-nghien-cuu-ung-dung-trong-linh-vuc-tri-tue-nhan-tao/
+      : decision: rejected
+      https://uet.edu.vn/viet-nam-co-nhieu-loi-khoi-nghiep-trong-linh-vuc-tri-tue-nhan-tao/:
+        decision: rejected
+      https://uet.edu.vn/bo-luan-an-tien-si-cua-ncs-nguyen-thi-cam-van/:
+        decision: rejected
+      https://uet.edu.vn/bo-mau-tai-lieu-van-phong/:
+        decision: rejected
+      https://uet.edu.vn/bo-mau-thuyet-trinh-su-dung-trong-hoat-dong-cua-truong-dhcn/:
+        decision: rejected
+      https://uet.edu.vn/bo-sung-va-dieu-chinh-giang-vien-giang-day-hoc-ky-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.edu.vn/bo-truong-bo-gd-dt-nguyen-kim-son-hanh-dong-vi-mot-nen-giao-duc-thuc-chat/:
+        decision: rejected
+      https://uet.edu.vn/boi-duong-va-phat-trien-cong-dan-tinh-hoa/:
+        decision: rejected
+      https://uet.edu.vn/build-su-kien-truc-tuyen-oracle-academy-virtual-student-day/:
+        decision: rejected
+      https://uet.edu.vn/buoi-giao-tiep-truc-tuyen-cua-dai-hoc-aizu-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/cac-chuong-trinh-tai-tro-hop-tac-cua-quy-vinif-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/cac-dieu-kien-dam-bao-chat-luong-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/cac-dieu-kien-dam-bao-chat-luong/:
+        decision: rejected
+      https://uet.edu.vn/cac-hoat-dong-lien-quan-den-ket-thuc-khoa-hoc-qh-2014-icq/:
+        decision: rejected
+      https://uet.edu.vn/cac-moc-quan-trong-sau-ky-thi-tot-nghiep-thpt/:
+        decision: rejected
+      https://uet.edu.vn/cac-truong-dai-hoc-ky-thuat-thuc-day-dao-tao-nhan-luc-trong-nganh-thiet-ke-vi-mach/:
+        decision: rejected
+      https://uet.edu.vn/cafe-sang-voi-vtv3-chip-vi-long-phat-hien-som-te-bao-ung-thu-phoi/:
+        decision: rejected
+      https://uet.edu.vn/can-coi-trung-tam-du-lieu-quoc-gia-la-cong-trinh-trong-diem/:
+        decision: rejected
+      https://uet.edu.vn/canh-bao-thu-doan-toi-pham-loi-dung-khong-gian-mang-de-du-loi-keo-sinh-vien/:
+        decision: rejected
+      ? https://uet.edu.vn/cap-kinh-phi-ho-tro-chi-phi-hoc-tap-hoc-ky-nam-hoc-2017-2018-cho-sinh-vien-dai-hoc-chinh-quy-thuoc-cac-doi-tuong-duoc-huong/
+      : decision: rejected
+      https://uet.edu.vn/carlsberg-asia-graduate-trainee-program-2022-vietnam/:
+        decision: rejected
+      https://uet.edu.vn/chang-trai-bai-nao-lam-phan-mem-noi-thay-nguoi-khiem-khuyet/:
+        decision: rejected
+      https://uet.edu.vn/chang-trai-quang-binh-nghien-cuu-chinh-phuc-mat-troi/:
+        decision: rejected
+      https://uet.edu.vn/chao-mung-ky-niem-88-nam-ngay-thanh-lap-doan-tncs-ho-chi-minh-2631931-2632019/:
+        decision: rejected
+      https://uet.edu.vn/chi-bo-cong-nghe-thong-tin-chuc-le-ket-nap-dang-vien-moi/:
+        decision: rejected
+      https://uet.edu.vn/chi-bo-dien-tu-vien-thong-chuc-le-ket-nap-dang-vien-moi/:
+        decision: rejected
+      https://uet.edu.vn/chi-bo-dien-tu-vien-thong-chuc-thanh-cong-dai-hoi-nhiem-ky-2022-2025/:
+        decision: rejected
+      https://uet.edu.vn/childrens-social-service-referrals-from-schools-soar-to-record-high/:
+        decision: rejected
+      https://uet.edu.vn/chip-vi-long-phat-hien-te-bao-ung-thu-phoi-trong-30-phut/:
+        decision: rejected
+      ? https://uet.edu.vn/cho-phep-su-dung-chung-chi-tieng-anh-aptis-esol-cua-hoi-dong-anh-de-du-tuyen-sau-dai-hoc-trong-nam-2023/
+      : decision: rejected
+      https://uet.edu.vn/chuong-trinh-tang-qua-tet-xuan-gan-ket-tet-yeu-thuong/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-tf-nus-learn-programme-2024/:
+        decision: rejected
+      https://uet.edu.vn/doan-giang-vien-can-bo-va-sinh-vien-den-tham-nha-may-san-xuat-cua-cong-ty-tnhh-lg-innotek-hai-phong/:
+        decision: rejected
+      https://uet.edu.vn/doc-dao-mo-hinh-dao-tao-nhan-tai-thanh-cong-o-viet-nam/:
+        decision: rejected
+      https://uet.edu.vn/doi-03-danh-giai-nhat-khoa-hoc-trai-nghiem-lap-trinh-robot/:
+        decision: rejected
+      https://uet.edu.vn/doi-eggcentroy-vo-dich-cuoc-thi-lap-trinh-quoc-te-acmicpc-2020-khu-vuc-chau/:
+        decision: rejected
+      https://uet.edu.vn/dong-bien-cuong-yeu-thuong/:
+        decision: rejected
+      https://uet.edu.vn/dong-thu-khoa-nganh-cong-nghe-thong-tin-dong-long-gui-gam-uoc-mo-vao-mai-truong-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/duong-den-giang-duong-cua-con-trai-nguoi-dien/:
+        decision: rejected
+      https://uet.edu.vn/event/truong-dai-hoc-cong-nghe-co-hai-bang-doc-quyen-giai-phap-huu-ich/:
+        decision: rejected
+      ? https://uet.edu.vn/gap-mat-chia-tay-dong-chi-nguyen-doan-hoan-va-nguyen-xuan-thanh-can-bo-phong-hanh-chinh-quan-tri-nghi-huu-huong-che-bao-hiem-xa-hoi/
+      : decision: rejected
+      https://uet.edu.vn/gap-mat-chia-tay-ts-le-phe-giang-vien-chinh-khoa-cong-nghe-thong-tin-nghi-huu-theo-che/:
+        decision: rejected
+      https://uet.edu.vn/gap-mat-chia-tay-ts-tran-mau-danh-giang-vien-khoa-vat-ly-ky-thuat-va-cong-nghe-nano-nghi-huu-theo-che/:
+        decision: rejected
+      https://uet.edu.vn/gap-mat-dau-xuan-ky-hoi-2019/:
+        decision: rejected
+      https://uet.edu.vn/gap-mat-ky-niem-76-nam-ngay-thuong-binh-liet-sy/:
+        decision: rejected
+      https://uet.edu.vn/gap-mat-mat-hoi-cuu-chien-binh-nhan-dip-ngay-quan-doi-nhan-dan-2212/:
+        decision: rejected
+      https://uet.edu.vn/gap-mat-tri-ky-niem-ngay-nha-giao-viet-nam-2011/:
+        decision: rejected
+      https://uet.edu.vn/giai-dap-thac-mac-cua-sinh-vien-khoa-qh-2019-chua-tot-nghiep-tai-hoi-nghi-doi-thoai/:
+        decision: rejected
+      https://uet.edu.vn/giai-dap-thac-mac-cua-sinh-vien-lien-quan-den-hoi-nghi-doi-thoai-hoc-ky-ii-nam-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/giai-phap-camera-giam-sat-cam9-2/cong-ty-vp9-ke-hop-tac-voi-truong-2/:
+        decision: rejected
+      https://uet.edu.vn/giai-phap-camera-giam-sat-cam9-2/giai-ba3-3/:
+        decision: rejected
+      https://uet.edu.vn/giai-thuong-qua-cau-vang-nam-2023-ts-le-dinh-anh-dinh-huong-cac-nghien-cuu-phuc-vu-sinh-xa-hoi/:
+        decision: rejected
+      https://uet.edu.vn/giam-doc-dhqghn-bo-nhiem-lai-pgs-ts-nguyen-viet-ha-giu-chuc-vu-hieu-truong-truong-dai-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/giam-doc-dhqghn-nhan-bang-tien-si-danh-du-cua-dh-tong-hop-lien-bang-vien-dong-lien-bang-nga/:
+        decision: rejected
+      https://uet.edu.vn/giao-su-chu-duc-trinh-giu-chan-giang-vien-gioi-hien-dang-la-van-de-nan-giai/:
+        decision: rejected
+      ? https://uet.edu.vn/giao-su-nguyen-dinh-duc-chu-tich-hoi-dong-truong-dai-hoc-cong-nghe-tiep-tuc-lot-vao-top-100-nha-khoa-hoc-co-tam-anh-huong-nhat-gioi-nam-2024-trong-linh-vuc-engineering/
+      : decision: rejected
+      https://uet.edu.vn/giao-su-nguyen-dinh-duc-lam-chu-tich-hoi-dong-giao-su-co-truong-dai-hoc-cong-nghe-dhqghn/:
+        decision: rejected
+      ? https://uet.edu.vn/giao-su-nguyen-dinh-duc-tro-thanh-thanh-vien-ban-bien-tap-tap-chi-ve-khoa-hoc-cong-nghe-hang-khong-vu-tru-cua-quoc-te/
+      : decision: rejected
+      https://uet.edu.vn/giao-su-tien-si-khoa-hoc-nguyen-dinh-duc-lam-khoa-hoc-thi-khong-xoi-duoc/:
+        decision: rejected
+      https://uet.edu.vn/giao-su-vien-si-nguyen-van-hieu-canh-chim-dau-dan-ngung-bay/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-quoc-te-lan-thu-7-ve-mach-tich-hop-thiet-ke-va-kiem-chung/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-bo-mon-cong-nghe-xay-dung-giao-thong/:
+        decision: rejected
+      https://uet.edu.vn/mang-internet-van-vat-cong-nghiep-anh-huong-den-viet-nam/:
+        decision: rejected
+      https://uet.edu.vn/master-paris-saclay/:
+        decision: rejected
+      https://uet.edu.vn/mat-xich-quan-trong-tao-nen-vi-the-giao-duc-toan-dien-trong-giai-doan-moi/:
+        decision: rejected
+      https://uet.edu.vn/mau-banner-backdrop/:
+        decision: rejected
+      https://uet.edu.vn/mau-qua-tang/:
+        decision: rejected
+      https://uet.edu.vn/meiko-tuyen-thuc-tap-tai-phong-lap-rap-khoi-tu-dong-hoa/:
+        decision: rejected
+      ? https://uet.edu.vn/mien-hoc-cong-nhan-va-cong-diem-mon-hoc-cho-sinh-vien-tham-du-cac-ky-thi-olympic-va-dat-thanh-tich-trong-nghien-cuu-khoa-hoc-nam-2018/
+      : decision: rejected
+      https://uet.edu.vn/mien-hoc-va-cong-nhan-diem-tieng-anh-cho-sinh-vien-3/:
+        decision: rejected
+      https://uet.edu.vn/mo-bo-sung-lop-hoc-phan-hoc-ky-ii-nam-hoc-2023-2024-dot-3-khu-vuc-cau-giay/:
+        decision: rejected
+      https://uet.edu.vn/monkey-viet-nam-tuyen-dung-nhieu-vi-tri-nhan-su/:
+        decision: rejected
+      https://uet.edu.vn/motosafe-ung-dung-ho-tro-nguoi-di-xe-may/:
+        decision: rejected
+      https://uet.edu.vn/nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/nam-hoc-2021-2022-tang-cuong-chuyen-doi-huong-den-phat-trien-ben-vung/:
+        decision: rejected
+      https://uet.edu.vn/nam-sinh-gianh-hcv-olympic-quoc-te-la-dai-bieu-thanh-nien-tien-tien-lam-theo-loi-bac/:
+        decision: rejected
+      ? https://uet.edu.vn/nam-sinh-nganh-cong-nghe-ky-thuat-dien-tu-vien-thong-vuot-qua-chinh-minh-de-tro-thanh-thu-khoa-tot-nghiep/
+      : decision: rejected
+      https://uet.edu.vn/nang-cao-chat-luong-dao-tao-thich-ung-voi-cach-mang-cong-nghiep-4-0/:
+        decision: rejected
+      https://uet.edu.vn/nang-cao-hieu-qua-va-hoat-dong-cua-cac-don-vi-cap-bo-mon/:
+        decision: rejected
+      https://uet.edu.vn/nang-cao-nang-luc-giang-vien-moi-truong-nghien-cuu-qua-cac-hop-tac-voi-cac-truong-dai-hoc-chau-au/:
+        decision: rejected
+      https://uet.edu.vn/nen-tang-dat-va-dieu-van-xe-truc-tuyen-emddi-gianh-giai-ba-nhan-tai-dat-viet-2018/:
+        decision: rejected
+      https://uet.edu.vn/nganh-cong-nghe-thong-tin-lua-chon-cua-nhieu-ban-tre-trong-thoi-dai-4-0/:
+        decision: rejected
+      https://uet.edu.vn/ngap-tran-niem-vui-va-y-nghia-trong-ngay-quoc-te-phu-nu-83-ton-vinh-nu-can-bo-giang-vien-tai-uet/:
+        decision: rejected
+      https://uet.edu.vn/ngay-hoi-ket-noi-cong-nghe-uet-connect-2018/:
+        decision: rejected
+      https://uet.edu.vn/ngay-hoi-viec-lam-sinh-vien-truong-dai-hoc-cong-nghe-2022/:
+        decision: rejected
+      https://uet.edu.vn/nghi-day-hoc-ngay-20112023-2/:
+        decision: rejected
+      https://uet.edu.vn/nghi-hoc-ngay-2011/:
+        decision: rejected
+      ? https://uet.edu.vn/nghien-cuu-phat-trien-cam-bien-quang-co-kha-nang-thay-doi-chieu-cua-dong-quang-dien-khi-thay-doi-mau-sac-cua-anh-sang-chieu-toi/
+      : decision: rejected
+      https://uet.edu.vn/nhan-bang-tot-nghiep-dot-thang-3-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/nhan-bang-tot-nghiep-dot-thang-3-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/phien-ho%cc%a3p-lan-thu-5-hoi-dong-khoa-hoc-va-dao-tao-truong-dh-cong-nghe-nhiem-ky-2019-2024/:
+        decision: rejected
+      https://uet.edu.vn/phien-ho%cc%a3p-lan-thu-nhat-hoi-dong-khoa-hoc-va-dao-tao-truong-dh-cong-nghe-nhiem-ky-2025-2030/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-bao-ve-cap-dai-hoc-quoc-gia-luan-tien-si-cua-nghien-cuu-sinh-pham-thi-ngan/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-bao-ve-luan-tien-si-cua-ncs-duong-viet-huy/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-bao-ve-luan-tien-si-cua-nghien-cuu-sinh-pha%cc%a3m-thanh-tung/:
+        decision: rejected
+      ? https://uet.edu.vn/thong-bao-buoi-gioi-thieu-va-trao-doi-ve-chuong-trinh-dao-tao-lien-ket-quoc-te-bac-thac-si-chuyen-nganh-ky-thuat-truyen-thong-va-du-lieu/
+      : decision: rejected
+      https://uet.edu.vn/thong-bao-chuc-danh-gia-luan-tien-si-cua-nghien-cuu-sinh-pham-huu-tung/:
+        decision: rejected
+      ? https://uet.edu.vn/thong-bao-chuc-hoi-nghi-co-hoc-toan-quoc-lan-thu-xi-va-dai-hoi-dai-bieu-toan-quoc-hoi-co-hoc-viet-nam-lan-thu-ix/
+      : decision: rejected
+      https://uet.edu.vn/thong-bao-danh-gia-luan-tien-si-cap-co-cua-ncs-vu-thi-dao/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-danh-gia-luan-tien-si-cap-co-so%cc%89-cua-nghien-cuu-sinh-tran-quoc-quan/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-danh-sach-nop-ho-ho-tro-chi-phi-hoc-tap-trong-hoc-ki-ii-nam-hoc-2017-2018-va-xac-nhan-ho/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-hoi-nghi-quoc-te-lan-thu-13-ve-ung-dung-cong-nghe-thong-minh-trong-nong-nghiep-apfita-2022/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-nghi-day-hoc-ngay-18112022/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-nghi-hoc-ngay-2011/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-tham-gia-bao-hiem-y-te-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-tuyen-chuyen-vien-hop-dong-2/:
+        decision: rejected
+      https://uet.edu.vn/thong-ke-sinh-vien-co-hoan-canh-kho-khan-co-nhu-cau-vay-von-de-mua-may-tinh-thiet-bi-hoc-truc-tuyen/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-danh-muc-nganh-duoc-phep-dao-tao-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-cua-ncs-quach-xuan-truong/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-cua-ncs-vu-thi-dao/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-kieu-minh-viet/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-le-hoang-quynh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-pham-huu-tung/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-pham-quoc-thang/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-pham-thanh-huyen/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-tran-van-hau-2/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-vu-xuan-manh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-ho-anh-tam/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-tran-nhu-chi/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-ts-cua-ncs-nguyen-thi-anh-dao/:
+        decision: rejected
+      https://uet.edu.vn/trien-khai-cho-sinh-vien-tham-gia-bhyt-nam-2025-dot-2/:
+        decision: rejected
+      https://uet.edu.vn/trien-khai-day-hoc-truc-tuyen-hoc-phan-giao-duc-chat-hk-ii-2019-2020/:
+        decision: rejected
+      https://uet.edu.vn/tuyen-giang-vien-tien-si/:
+        decision: rejected
+      https://uet.edu.vn/uet-fastest-xe-tu-hanh-gan-voi-tri-tue-nhan-tao/:
+        decision: rejected
+      https://uet.edu.vn/uet-job-fair-2025-connect-success-ngay-hoi-viec-lam-truong-dai-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/uet-mot-su-kien-tieu-bieu-nam-2021/:
+        decision: rejected
+      https://uet.edu.vn/uet-tang-cuong-giao-luu-hoi-nhap-quoc-te-voi-doan-truong-dai-hoc-cong-nghe-va-thiet-ke-singapore-sutd/:
+        decision: rejected
+      ? https://uet.edu.vn/uet-va-truong-dh-cong-nghe-chiba-nhat-ban-tang-cuong-giao-luu-va-chia-se-kinh-nghiem-trong-dao-tao-quan-tri-dai-hoc/
+      : decision: rejected
+      https://uet.edu.vn/ung-dung-cong-nghe-vi-co-dien-tu-trong-thiet-bi-tao-vi-giot-danh-cho-cac-ung-dung-phan-phoi-thuoc/:
+        decision: rejected
+      https://uet.edu.vn/viet-nam-gianh-6-huy-chuong-bac-olympic-tin-hoc-chau/:
+        decision: rejected
+      ? https://uet.edu.vn/viet-nam-gianh-7-huy-chuong-olympic-tin-hoc-chau-thai-binh-duong-2024-chuc-tai-truong-dh-cong-nghe-dhqghn/
+      : decision: rejected
+      https://uet.edu.vn/viet-nam-lan-dau-che-tao-tram-thu-di-dong-tin-hieu-ve-tinh/:
+        decision: rejected
+      https://uet.edu.vn/viet-nam-thieu-nhan-luc-co-tay-nghe-ve-ky-thuat-robot/:
+        decision: rejected
+      https://uet.edu.vn/viettel-digital-talent-2022-chuong-trinh-tai-nang-cua-viettel/:
+        decision: rejected
+      https://uet.edu.vn/vnu-va-ciat-hop-tac-trong-linh-vuc-nong-nghiep-cong-nghe-cao/:
+        decision: rejected
+      ? https://uet.edu.vn/vtv-cong-dan-truong-dh-cong-nghe-trang-bi-cho-sinh-vien-bo-ky-nang-hoan-chinh-khi-ra-truong-san-sang-dap-ung-yeu-cau-cua-thoi-ky-moi/
+      : decision: rejected
+      https://uet.edu.vn/vtv2-cong-nghe-kien-tao-nang-cao-chat-luong-nguon-nhan-luc-cntt/:
+        decision: rejected
+      https://uet.edu.vn/vui-hoi-trang-ram-2018/:
+        decision: rejected
+      https://uet.edu.vn/xay-dung-chuong-trinh-dao-tao-thac-si-trong-du-montus/:
+        decision: rejected
+      https://uet.edu.vn/xep-hang-dai-hoc-chau-2017-dai-hoc-quoc-gia-ha-noi-duy-tri-vi-tri-139/:
+        decision: rejected
+      https://uet.edu.vn/xu-ung-dung-thong-thong-minh-tu-dong-hoa-tren-gioi/:
+        decision: rejected
+      https://uet.edu.vn/yeu-cau-sinh-vien-qh-2014-icq-nop-anh-de-lam-bang-tot-nghiep/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/02-nhom-sinh-vien-truong-dai-hoc-cong-nghe-dat-giai-thuong-khoa-hoc-va-cong-nghe-sinh-vien-toan-quoc-nam-2023/
+      : decision: rejected
+      ? https://uet.vnu.edu.vn/02-sinh-vien-truong-dhcn-dat-phan-thuong-nu-sinh-vien-tieu-bieu-trong-linh-vuc-khoa-hoc-va-cong-nghe-nam-2021/
+      : decision: rejected
+      https://uet.vnu.edu.vn/02-tai-nang-tre-dat-giai-thuong-khoa-hoc-cong-nghe-thanh-nien-qua-cau-vang-nam-2017/:
+        decision: rejected
+      https://uet.vnu.edu.vn/14110-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/14421-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/14448-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/40626-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/ai4life-hoi-nghi-tri-tue-nhan-tao-nam-2018/:
+        decision: rejected
+      https://uet.vnu.edu.vn/gen-z-tran-vu-duc-huy-di-tim-loi-giai-giong-nhu-hanh-trinh-mo-ra-chan-troi-moi/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/giai-thuong-best-paper-award-tai-hoi-nghi-quoc-te-ve-cac-cong-nghe-truyen-thong-tien-tien-atc-2024-thuoc-ve-nhom-nghien-cuu-cua-truong-dh-cong-nghe-ket-hop-dh-quoc-gia-yang-ming-chiao-tung/
+      : decision: rejected
+      https://uet.vnu.edu.vn/thong-tin-luan-tien-si-cua-nghien-cuu-sinh-bui-van-tan/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tiep-giao-su-truong-dai-hoc-melbourne-uc/:
+        decision: rejected
+      https://uet.vnu.edu.vn/toa-dam-tu-van-suc-khoe-tam-cua-sinh-vien/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tom-tat-luan-cua-ncs-nguyen-ngoc-khai/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tom-tat-luan-tien-si-cua-ncs-tran-ngoc-ha/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tom-tat-luan-tien-si-cua-ncs-vu-ngoc-trinh/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tom-tat-luan-tien-si-cua-nghien-cuu-sinh-sanya-praseuth/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/trai-nghiem-hoc-tap-thu-vi-cua-sinh-vien-truong-ky-su-paris-phap-voi-chuong-trinh-trao-doi-quoc-te-tai-khoa-cong-nghe-xay-dung-giao-thong-uet/
+      : decision: rejected
+      https://uet.vnu.edu.vn/trung-tam-nghien-cuu-cong-nghe-mang-viettel-vttek-tap-doan-vien-thong-quan-doi-tuyen-cong-tac-vien/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-co-04-nha-giao-duoc-cong-nhan-dat-tieu-chuan-chuc-danh-giao-su-pho-giao-su-nam-2019/
+      : decision: rejected
+      ? https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-25-nam-huong-den-phat-trien-ben-vung-va-trach-nhiem-xa-hoi-quoc-gia/
+      : decision: rejected
+      ? https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-dang-cai-ky-thi-lap-trinh-sinh-vien-quoc-te-vong-chung-ket-khu-vuc-chau-thai-binh-duong-2024/
+      : decision: rejected
+      https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-gap-mat-dau-xuan-ty-2025/:
+        decision: rejected
+      https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-ron-rang-chao-don-tan-sinh-vien-k68-den-voi-mai-nha-uet/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-tap-huan-nghiep-vu-cong-tac-kiem-tra-coi-thi-ky-thi-tot-nghiep-thpt-nam-2024/
+      : decision: rejected
+      https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-duoc-giao-nhiem-vu-dao-tao-ky-su-nganh-cong-nghe-hang-khong-vu-tru/:
+        decision: rejected
+      https://uet.vnu.edu.vn/truong-dai-hoc-cong-nghe-lam-co-van-chuyen-mon-wecode-2017/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/truong-dhcn-thanh-cong-tu-nhung-quyet-sach-sang-tao-nhung-con-nguoi-tam-huyet-va-triet-ly-phat-trien-co-tam-nhin/
+      : decision: rejected
+      https://uet.vnu.edu.vn/tuan-le-hoi-nhap-cho-sinh-vien-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.vnu.edu.vn/tuoi-tre-truong-dai-hoc-cong-nghe-rang-ro-trong-ngay-hoi-hien-mau/:
+        decision: rejected
+      https://uet.vnu.edu.vn/vai-tro-cua-giao-vien-chu-nhiem-trong-viec-phat-trien-toan-dien-cho-sinh-vien/:
+        decision: rejected
+      https://uet.vnu.edu.vn/vietnam-electronics-electrical-software-engineering-major-work-japan/:
+        decision: rejected
+      https://uet.vnu.edu.vn/vu-thanh-thao-nu-sinh-vien-vuot-len-hoan-canh-voi-uoc-mo-viet-phan-mem/:
+        decision: rejected
+      https://uet.edu.vn/dao-tao/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/:
+        decision: rejected
+      https://hotro.uet.vnu.edu.vn/login:
+        decision: rejected
+      https://uet.edu.vn/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-sinh-vien-da-nop-va-chua-nop-hoc-phi-tinh-den-het-10h-ngay-29112022/:
+        decision: rejected
+      https://uet.edu.vn/vtv1-dai-hoc-phai-dot-pha-ve-dao-tao-nhan-luc-theo-nghi-quyet-57/:
+        decision: rejected
+      https://uet.vnu.edu.vn/le-bao-ve-luan-tien-si-chuyen-nganh-thong-thong-tin-cua-nghien-cuu-sinh-le-hoang-quynh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dao-tao-ngan-han-2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/cau-hoi-thuong-gap-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/hoc-bong/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/thong-tin-tuyen-sinh-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/van-ban-qui-dinh/:
+        decision: rejected
+      https://uet.edu.vn/category/uncategorized-vi/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/uncategorized-vi/page/28/:
+        decision: rejected
+      https://uet.edu.vn/category/vien-tri-tue-nhan-tao/:
+        decision: rejected
+      https://uet.edu.vn/chuc-le-giang-va-trao-bang-tot-nghiep-dot-2-nam-2023-ncs-hvch-sv-2/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-bi-cam-thi-hk-phu-nam-hoc-2025-2026-do-no-hp/:
+        decision: rejected
+      ? https://uet.edu.vn/events/hoi-thao-quoc-te-thuc-day-phat-trien-the-he-tuong-lai-hop-tac-ban-dan-ha-lan-viet-nam-empowering-the-next-generation-netherlands-vietnam-semiconductor-collaboration/
+      : decision: rejected
+      ? https://uet.edu.vn/events/hoi-thao-quoc-te-viet-nam-lien-bang-nga-khong-gian-hoc-thuat-viet-nam-lien-bang-nga-hop-tac-giao-duc-dai-hoc-va-nghien-cuu-khoa-hoc-trong-ky-nguyen-so/
+      : decision: rejected
+      https://uet.edu.vn/events/le-be-giang-va-trao-bang-tot-nghiep-dot-1-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/events/page/2/?event_status=expired:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-ra-soat-ho-so-mien-giam-hoc-phi-hoc-ky-i-nam-hoc-2026-2027/:
+        decision: rejected
+      ? https://uet.edu.vn/kiem-tra-thong-tin-trong-danh-sach-du-kien-xet-hoc-bong-khuyen-khich-hoc-tap-trong-hki-nam-hoc-2025-2026/
+      : decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-nguyen-truong-nam-hoc-2024-2025/:
+        decision: rejected
+      ? https://uet.edu.vn/mien-giam-hoc-phi-va-kinh-phi-duoc-huong-theo-che-do-trong-hoc-ky-i-nam-hoc-2026-2027-cua-sinh-vien-dai-hoc-chinh-quy-truong-dai-hoc-cong-nghe/
+      : decision: rejected
+      https://uet.edu.vn/mot-bieu-mau-phuc-vu-viec-bao-ve-luan-van-cua-hoc-vien/:
+        decision: rejected
+      https://uet.edu.vn/nop-ho-so-mien-giam-hoc-phi-hoc-ky-i-nam-hoc-2026-2027/:
+        decision: rejected
+      https://uet.edu.vn/thu-hoc-phi-cua-hvch-ncs-trong-hkii-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/trien-khai-thu-hoc-phi-trong-nam-hoc-2022-2023-2/:
+        decision: rejected
+      https://uet.edu.vn/trien-khai-thu-hp-cua-sinh-vien-trong-hki-nam-hoc-2026-2027/:
+        decision: rejected
+      ? https://uet.edu.vn/trieu-tap-sinh-vien-tham-du-buoi-toa-dam-chuyen-de-information-security-on-mobile-devices-phoi-hop-voi-samsung/
+      : decision: rejected
+      https://uet.edu.vn/trieu-tap-sinh-vien-tham-du-hoi-nghi-xuc-tien-dau-tu-dhqghn-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/trieu-tap-sinh-vien-tham-du-ngay-hoi-tri-tue-nhan-tao-viet-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-duoc-vinh-danh-tai-giai-thuong-so-va-ai-asocio-2026/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-ngan-han/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/dang-ky-xet-tuyen-dh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/nganh-hoc-dh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/nhap-hoc-dh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/page/12/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/thong-tin-tuyen-sinh-dh/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/thong-tin-tuyen-sinh-dh/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/page/30/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/cau-hoi-thuong-gap-sdh/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/dang-ky-xet-tuyen-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/ket-qua-tuyen-sinh-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/ket-qua-xet-tuyen-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/nganh-hoc-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/page/17/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/thong-tin-tuyen-sinh-sdh/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/sau-dai-hoc/thong-tin-tuyen-sinh-sdh/page/6/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/van-ban-huong-dan-dh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/van-ban-huong-dan-sdh/:
+        decision: rejected
+      https://uet.edu.vn/category/uncategorized-vi/page/27/:
+        decision: rejected
+      https://uet.edu.vn/category/uncategorized-vi/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/vien-tri-tue-nhan-tao/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/vien-tri-tue-nhan-tao/page/4/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-cac-de-tai-nhiem-vu-nam-2017-2/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-cac-de-tai-nhiem-vu-nam-2018-2/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-cac-de-tai-nhiem-vu-nam-2019-2/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-cac-de-tai-nhiem-vu-nam-2020-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-quoc-te-ve-tich-hop-thong-sii-2024-thanh-cong-mo-ra-nhieu-co-hoi-hop-tac-trao-doi-khoa-hoc/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-quoc-te-ve-vat-lieu-tu-tien-tien-va-ung-dung-isamma-2024-chuc-tai-quang-binh/:
+        decision: rejected
+      https://uet.edu.vn/category/api-vnu/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/co-cau-to-chuc/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/cong-doan/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/ba-cong-khai/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/dao-tao-tap-huan/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/ke-hoach/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/kiem-dinh-chat-luong/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/page/67/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/thac-sy/page/27/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/thac-sy/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/tien-sy/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/tien-sy/page/46/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/lien-thong-chuyen-tiep-quoc-te/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/page/73/:
+        decision: rejected
+      https://uet.edu.vn/category/dtdh/page/12/:
+        decision: rejected
+      https://uet.edu.vn/category/dtdh/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/dtsdh/page/28/:
+        decision: rejected
+      https://uet.edu.vn/category/dtsdh/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/ban-tin-khcn-htpt/page/10/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/ban-tin-khcn-htpt/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/page/22/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/san-pham-chuyen-giao/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/san-pham-khoa-hoc-cong-nghe/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/khoa-hoc-cong-nghe/san-pham-khoa-hoc-cong-nghe/page/9/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tong-hop/page/165/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tong-hop/page/4/:
+        decision: rejected
+      https://uet.edu.vn/dieu-chinh-doi-tuong-mien-giam-hoc-phi-hoc-ky-nam-hoc-2017-2018-cua-sinh-vien-lo-van-choi/:
+        decision: rejected
+      https://uet.edu.vn/dieu-chinh-lich-thi-hoc-ky-ii-nam-hoc-2022-2023-bac-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/dieu-chinh-lich-thi-hoc-ky-phu-nam-hoc-2021-2022-bac-dai-hoc-lan-2/:
+        decision: rejected
+      ? https://uet.edu.vn/gap-go-cuu-sinh-vien-pham-tuan-anh-dong-hanh-voi-uet-trong-cong-tac-huong-nghiep-va-tuyen-dung-sinh-vien/
+      : decision: rejected
+      https://uet.edu.vn/gap-go-giao-luu-cung-cuu-sinh-vien-truoc-ky-niem-20-nam-thanh-lap-truong-dai-hoc-cong-nghe/:
+        decision: rejected
+      ? https://uet.edu.vn/gap-go-sinh-vien-nguyen-tan-minh-giai-nhat-sinh-vien-nckh-cap-truong-voi-de-tai-hap-dan-su-dung-cong-nghe-ai-ho-tro-xu-ly-van-ban-phap-luat/
+      : decision: rejected
+      ? https://uet.edu.vn/hoan-tra-hoc-phi-cho-sinh-vien-thuoc-chuong-trinh-chat-luong-cao-theo-thong-tu-23-2014-tt-bgddt-tot-nghiep-dot-xet-thang-03-nam-2026/
+      : decision: rejected
+      ? https://uet.edu.vn/hoan-tra-hoc-phi-cho-sinh-vien-thuoc-chuong-trinh-chat-luong-cao-theo-thong-tu-23-2014-tt-bgddt-tot-nghiep-dot-xet-thang-12-nam-2025/
+      : decision: rejected
+      ? https://uet.edu.vn/hoan-tra-hoc-phi-cho-sinh-vien-thuoc-chuong-trinh-chat-luong-cao-theo-thong-tu-232014tt-bgddt-tot-nghiep-dot-thang-6-va-thang-9-nam-2024/
+      : decision: rejected
+      https://uet.edu.vn/hoi-thao-cach-mang-hoa-va-trang-bi-nghe-nghiep-cho-ban-cong-ty-svtech-chuc/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-thao-dao-tao-trong-dung-tai-nang-trong-boi-canh-moi/'Nuôi%20dưỡng%20nhân%20tài%20sớm,%20liên%20thông%20từ%20phổ%20thông%20đến%20sau%20đại%20học'
+      : decision: rejected
+      ? https://uet.edu.vn/hoi-thao-khoa-hoc-dao-tao-nguon-nhan-luc-chat-luong-cao-trong-cac-linh-vuc-khoa-hoc-cong-nghe-ki-thuat-toan-hoc-stem-thuc-hien-dot-pha-chien-luoc-ve-phat-trien-nguon-nhan-luc-theo-nghi/
+      : decision: rejected
+      https://uet.edu.vn/hoi-thao-khoa-hoc-quoc-te-ung-dung-hoc-may-trong-uoc-tinh-luong-mua/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-quoc-te-lan-thu-ba-ve-nang-luong-co-ha-tang-va-moi-truong/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-quoc-te-viet-nam-hoc-tieu-ban-chuyen-giao-tri-thuc-va-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-tinh-toan-va-nghien-cuu-ung-dung-vat-lieu-composite-tien-tien-phuc-vu-phat-trien-kinh-te-bien/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-truc-tuyen-gpu-framework-university-tour/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-truc-tuyen-sinh-vien-cong-nghe-voi-nghien-cuu-khoa-hoc-nam-2022/:
+        decision: rejected
+      https://uet.edu.vn/hoi-thao-ung-dung-cong-nghe-trong-linh-vuc-y-sinh/:
+        decision: rejected
+      https://uet.edu.vn/ke-hoach-bao-ve-luan-van-thac-si-dot-2-nam-2017/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-xet-tot-nghiep-dot-thang-9-nam-2022-cua-sinh-vien-bac-dai-hoc-2/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-xet-tot-nghiep-dot-thang-92025-cua-sinh-vien-bac-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-xet-tot-nghiep-thang-92017-cua-sinh-vien-dai-hoc-chinh-quy/:
+        decision: rejected
+      https://uet.edu.vn/khai-mac-hoi-thao-quoc-te-viet-nam-hoc-lan-thu-5-phat-trien-ben-vung-trong-boi-canh-bien-doi-toan-cau/:
+        decision: rejected
+      ? https://uet.edu.vn/khao-sat-ve-viec-sinh-vien-k62-k63-da-tot-nghiep-den-tham-du-le-giang-va-trao-bang-tot-nghiep-sang-ngay-3062022/
+      : decision: rejected
+      ? https://uet.edu.vn/khoa-cong-nghe-thong-tin-28-cong-trinh-khoa-hoc-duoc-khen-thuong-tai-le-trao-giai-sinh-vien-nghien-cuu-khoa-hoc-nam-2023/
+      : decision: rejected
+      https://uet.edu.vn/kiem-tra-danh-sach-sinh-vien-du-dieu-kien-xet-tot-nghiep-thang-92025/:
+        decision: rejected
+      https://uet.edu.vn/kiem-tra-du-lieu-dang-ki-mon-hoc-va-du-kien-thu-hoc-phi-hki-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-mac-hoi-thao-quoc-te-cua-ieee-ve-xu-ly-tin-hieu-thong-ke-lan-thu-22/:
+        decision: rejected
+      ? https://uet.edu.vn/le-ky-ket-hop-tac-dao-tao-tuyen-dung-giua-truong-dai-hoc-cong-nghe-va-cong-ty-willof-construction-nhat-ban/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-tham-gia-lien-minh-chien-luoc-thuc-hien-nghi-quyet-57/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-to-chuc-le-trao-bang-tot-nghiep-va-cong-bo-quyet-dinh-bo-nhiem-chuc-danh-giao-su-pho-giao-su-nam-2025/
+      : decision: rejected
+      https://uet.edu.vn/tu-van-tuyen-sinh-2026-co-hoi-thach-thuc-va-lua-chon-thong-minh/:
+        decision: rejected
+      ? https://uet.edu.vn/video-huong-toi-dai-hoi-dang-bo-truong-dhcn-lan-thu-v-hay-cung-nhin-lai-nhung-thanh-tuu-cua-dang-bo-truong-dh-cong-nghe-nhiem-ky-2020-2025/
+      : decision: rejected
+      https://uet.edu.vn/vtv1-nang-luong-la-su-song/:
+        decision: rejected
+      https://uet.edu.vn/yeu-cau-sv-kiem-tra-du-lieu-ket-qua-hoc-tap-tinh-den-hkii-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/19707-2/:
+        decision: rejected
+      https://uet.edu.vn/20065-2/:
+        decision: rejected
+      https://uet.edu.vn/7-chuyen-de-ve-o-nhiem-khong-khi-chau-tai-hoi-thao-quoc-te/:
+        decision: rejected
+      https://uet.edu.vn/?attachment_id=7201:
+        decision: rejected
+      https://uet.edu.vn/?page_id=125:
+        decision: rejected
+      https://uet.edu.vn/bo-sung-danh-sach-mien-giam-hoc-phi-va-kinh-phi-duoc-huong-theo-che-trong-hoc-ky-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/cac-mau-van-ban-phuc-vu-bao-ve-luan-van-thac-si/:
+        decision: rejected
+      ? https://uet.edu.vn/cap-hoc-bong-khuyen-khich-hoc-tap-hoc-ky-nam-hoc-2022-2023-cho-sinh-vien-chuong-trinh-dao-tao-chat-luong-cao-thong-tu-232014tt-bgddt/
+      : decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-du-kien-sinh-vien-duoc-cap-hoc-bong-kkht-ki-cuoi-tot-nghiep-thang-6-2025/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-nop-ho-hoc-bong-bidv-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-nop-ho-mien-giam-hoc-phi-hoc-ky-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-nop-ho-mien-giam-hoc-phi-hoc-ky-ii-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-nop-ho-mien-giam-hoc-phi-hoc-ky-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-sinh-vien-da-nop-va-chua-nop-hoc-phi-tinh-den-10h00-ngay-08082022/:
+        decision: rejected
+      https://uet.edu.vn/cap-nhat-danh-sach-thu-hoc-phi-cua-hvchncs-tinh-den-ngay-06122024/:
+        decision: rejected
+      https://uet.edu.vn/category/api-vnu/page/15/:
+        decision: rejected
+      https://uet.edu.vn/category/api-vnu/page/4/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/dam-bao-chat-luong/van-ban-lien-quan-2/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao-en/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao-en/dao-tao-sau-dai-hoc-en/:
+        decision: rejected
+      https://uet.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/hoc-phi-hoc-bong/page/92/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/page/155/:
+        decision: rejected
+      ? https://uet.edu.vn/danh-sach-nguoi-hoc-du-kien-bi-cam-dkmhhuy-ket-qua-dkmh-cam-bao-cao-tien-vi-chua-nop-hoc-phi-tinh-den-ngay-2062023-2/
+      : decision: rejected
+      ? https://uet.edu.vn/danh-sach-nguoi-hoc-du-kien-bi-cam-thi-cam-dang-ky-hoc-ky-phu-vi-chua-nop-hoc-phi-tinh-den-het-ngay-2252022/
+      : decision: rejected
+      https://uet.edu.vn/danh-sach-nguoi-hoc-hoan-tra-lai-kinh-phi-con-du-dot-1-sau-dieu-chinh-va-bu-tru-hoc-phi/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-bi-cam-thi-ky-thi-hki-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-bi-cam-thi-ky-thi-hoc-ky-ii-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-dat-hoc-bong-tu-quy-hoc-bong-thap-sang-tuong-lai/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-de-nghi-cam-thi-trong-hoc-ky-ii-nam-hoc-2024-2025-no-hoc-phi/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-de-nghi-xet-nhan-hoc-bong-evn-nam-hoc-2022-2023/:
+        decision: rejected
+      ? https://uet.edu.vn/danh-sach-sinh-vien-de-nghi-xet-nhan-hoc-bong-va-ho-tro-tu-goi-ho-tro-tai-chinh-uom-mam-tai-nang-shb-nam-hoc-2024-2025/
+      : decision: rejected
+      ? https://uet.edu.vn/danh-sach-sinh-vien-du-kien-bi-cam-thi-chua-hoan-thanh-nghia-vu-nop-hoc-phi-hoc-ky-ii-nam-hoc-2024-2025/
+      : decision: rejected
+      ? https://uet.edu.vn/danh-sach-sinh-vien-du-kien-bi-cam-thi-neu-sau-ngay-2352024-van-chua-nop-hoc-phi-hoc-ky-ii-nam-hoc-2023-2024-theo-quy-dinh/
+      : decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-nhan-hoc-bong-adf-han-quoc-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-nhan-hoc-bong-panasonic-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sv-de-nghi-nhan-hoc-bong-kumho-asiana-hoc-ki-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sv-de-nghi-xet-nhan-hoc-bong-annex-hoc-ky-ii-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sv-de-nghi-xet-nhan-hoc-bong-yamada-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sv-khoa-cu-de-nghi-xet-nhan-hoc-bong-adf-han-quoc-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-thi-sinh-dien-trung-tuyen-thang-bac-thac-si-dot-1-nam-2024/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-thi-sinh-trung-tuyen-tuyen-thang-va-uu-tien-xet-tuyen-nam-2018/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-thu-hoc-phi-ky-2022-2023-danh-sach-bo-sung-tu-24082023/:
+        decision: rejected
+      ? https://uet.edu.vn/danh-sach-tro-giang-cac-lop-hoc-phan-danh-cho-sinh-vien-chuong-trinh-dao-tao-chat-luong-cao-hki-nam-hoc2022-2023/
+      : decision: rejected
+      https://uet.edu.vn/de-nghi-danh-sach-sinh-vien-duoc-nhan-hoc-bong-img-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-danh-sach-sinh-vien-duoc-xet-hoc-bong-nang-buoc-thu-khoa-2025/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-danh-sach-sv-duoc-nhan-hoc-bong-mitsubishi-nhat-ban-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-danh-sach-sv-duoc-nhan-hoc-bong-nguyen-truong-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.edu.vn/de-nghi-danh-sach-sv-duoc-nhan-hoc-bong-ponychung-nam-hoc-2017-2018/:
+        decision: rejected
+      ? https://uet.edu.vn/dieu-chinh-bo-sung-danh-sach-cap-hoc-bong-khuyen-khich-hoc-tap-hoc-ky-ii-nam-hoc-2023-2024-cho-sinh-vien-truong-dai-hoc-cong-nghe/
+      : decision: rejected
+      https://uet.edu.vn/dieu-chinh-lich-thi-hoc-ky-ii-nam-hoc-2022-2023-bac-sau-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-xet-tot-nghiep-dot-thang-32024-cua-sinh-vien-bac-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-xet-tot-nghiep-dot-thang-32025-cua-sinh-vien-bac-dai-hoc/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-cua-ncs-bui-thi-hong-nhung/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-bui-huu-phuc-2/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-doan-huu-chuc/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-duong-thi-hang/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-giang-thanh-trung/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-hoang-tieu-binh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-lam-minh-long/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-le-van-luan/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-nguyen-duy-tan/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-nguyen-thi-cham/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-nguyen-thi-hong-loan/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-nguyen-thi-khanh-van/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-pham-minh-phu/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-phung-cong-phi-khanh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-sanya/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-tang-toan/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-ncs-tran-van-hoi/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-si-cua-nghien-cuu-sinh-tran-van-manh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-duong-ngoc-son/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-pham-hai-dang/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-phan-hai/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-luan-tien-sy-cua-ncs-vu-ngoc-linh/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-ve-le-trao-hoc-bong-shinnyo-nhat-ban-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-ve-luan-tien-si-cua-ncs-le-chi-luan/:
+        decision: rejected
+      https://uet.edu.vn/thong-tin-ve-luan-tien-si-cua-ncs-pham-thi-ngan/:
+        decision: rejected
+      https://uet.edu.vn/thu-chuc-mung-cua-hieu-truong-truong-dh-cong-nghe-gui-tan-sinh-vien-k68/:
+        decision: rejected
+      https://uet.edu.vn/thu-hoc-phi-trong-hoc-ki-2023-2024-va-cac-khoan-no-neu-co-cua-sinh-vien/:
+        decision: rejected
+      ? https://uet.edu.vn/thu-hoc-phi-trong-hoc-ki-phu-nam-hoc-2021-2022-cua-cac-sinh-vien-ctdt-chuan-sinh-vien-clc-theo-tt23-sinh-vien-bang-kep-sinh-vien-truong-ngoai/
+      : decision: rejected
+      https://uet.edu.vn/video-chuyen-doi-trong-linh-vuc-quan-ly-khoa-hoc-va-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/video-dhqghn-chao-don-tan-sinh-vien-qh-2021/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/guong-mat-sinh-vien/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/guong-mat-sinh-vien/page/7/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/hoc-phi-hoc-bong/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/hoc-phi-hoc-bong/page/91/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/page/154/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/thong-bao-nguoi-hoc/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/sinh-vien/thong-bao-nguoi-hoc/page/9/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/page/326/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/page/6/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-hoi-thao/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-hop-tac-2/page/12/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-hop-tac-2/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-nghien-cuu/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-sinh-vien/page/161/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-sinh-vien/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tong-hop/page/163/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tong-hop/page/6/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tuc-dam-bao-chat-luong/page/3/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuc/tin-tuyen-dung/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuyen-sinh-2/page/10/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuyen-sinh-2/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuyen-sinh/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tin-tuyen-sinh/page/6/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-dung/page/2/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/cong-khai-cac-dieu-kien-tuyen-sinh/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/page/5/:
+        decision: rejected
+      https://uet.edu.vn/category/tuyen-sinh/dai-hoc/page/9/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-de-nghi-cam-thi-trong-hk-phu-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-sinh-vien-de-nghi-xet-hoc-bong-ponychung-han-quoc-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/lay-y-kien-phan-hoi-cua-sinh-vien-ve-hoc-phan-hki-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/lay-y-kien-phan-hoi-cua-sinh-vien-ve-hoc-phan-va-cac-hoat-dong-ho-tro-nguoi-hoc/:
+        decision: rejected
+      https://uet.edu.vn/le-bao-ve-luan-tien-si-chuyen-nganh-ky-thuat-dien-tu-cua-nghien-cuu-sinh-doan-huu-chuc/:
+        decision: rejected
+      https://uet.edu.vn/le-bao-ve-luan-tien-si-chuyen-nganh-ky-thuat-dien-tu-cua-nghien-cuu-sinh-nguyen-thi-thanh-van/:
+        decision: rejected
+      https://uet.edu.vn/le-bao-ve-luan-tien-si-chuyen-nganh-thong-thong-tin-cua-nghien-cuu-sinh-ha-van-sang/:
+        decision: rejected
+      https://uet.edu.vn/le-giang-khoa-dao-tao-ky-su-thong-dieu-khien-led/:
+        decision: rejected
+      https://uet.edu.vn/le-giang-va-trao-bang-tot-nghiep-nam-hoc-2016-2017-2/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-giang-nam-hoc-2018-2019/:
+        decision: rejected
+      https://uet.edu.vn/le-khai-giang-nam-hoc-2021-2022/:
+        decision: rejected
+      ? https://uet.edu.vn/le-khai-giang-nam-hoc-2022-2023-chuong-trinh-thac-si-lien-ket-voi-dh-paris-saclay-ve-ky-thuat-truyen-thong-va-du-lieu/
+      : decision: rejected
+      https://uet.edu.vn/le-ky-ket-giua-truong-dai-hoc-cong-nghe-va-dai-hoc-aizu-nhat-ban/:
+        decision: rejected
+      ? https://uet.edu.vn/le-ky-ket-hop-tac-giua-truong-dai-hoc-cong-nghe-va-khoa-ky-thuat-va-cong-nghe-thong-tin-dai-hoc-cong-nghe-sydney-uc/
+      : decision: rejected
+      ? https://uet.edu.vn/le-ky-ket-hop-tac-nghien-cuu-va-phat-trien-ha-tang-du-lieu-khong-gian-dia-ly-giua-truong-dai-hoc-cong-nghe-voi-vu-ke-hoach-va-hop-tac-bo-khoa-hoc-va-cong-nghe-nuoc-chdcnd-lao/
+      : decision: rejected
+      https://uet.edu.vn/le-trao-chung-chi-gia-cong-co-khi-cnc-khoa/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-adf-han-quoc-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-annex-hoc-ky-1-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-dong-hanh-vingroup-dhqghn-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-dong-hanh-vingroup-dhqghn-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-k-t-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-lawrence-s-ting-hoc-ki-nam-hoc-2020-2021/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-mitsubishi-nhat-ban-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-nguyen-truong-nam-hoc-2021-2022/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-nguyen-truong-to-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-posco-han-quoc-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-posco-nam-hoc-2024-2025/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-shinnyo-nhat-ban-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-toshiba-nam-hoc-2023-2024/:
+        decision: rejected
+      https://uet.edu.vn/le-trao-hoc-bong-vingroup-nam-hoc-2019-2020/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-bao-ve-luan-tien-si-cap-co-cua-ncs-tran-ngoc-ha/:
+        decision: rejected
+      ? https://uet.edu.vn/thong-bao-danh-sach-thi-sinh-trung-tuyen-cac-chuyen-nganh-dao-tao-bac-thac-si-trong-ky-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2023/
+      : decision: rejected
+      https://uet.vnu.edu.vn/category/sinh-vien/page/153/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/sinh-vien/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tin-tuc/tin-sinh-vien/page/160/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tin-tuc/tin-sinh-vien/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tin-tuyen-sinh-2/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tin-tuyen-sinh-2/page/9/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/dai-hoc/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/dai-hoc/page/8/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/page/26/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/sau-dai-hoc/page/13/:
+        decision: rejected
+      https://uet.vnu.edu.vn/category/tuyen-sinh/sau-dai-hoc/page/6/:
+        decision: rejected
+      https://uet.vnu.edu.vn/chuc-le-giang-va-trao-bang-tot-nghiep-dot-1-nam-2018-ncs-hvch-sv/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-cap-nhat-thu-hoc-phi-tinh-den-09h-ngay-26122023-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-cap-nhat-thu-hoc-phi-tinh-den-het-ngay-0742022-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-cap-nhat-tinh-hinh-thu-hoc-phi-tu-ngay-0142021-den-het-ngay-1442021/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-de-nghi-sinh-vien-xet-nhan-hoc-bong-mb-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-ncs-duoc-nhan-hoc-bong-cua-dhqghn-nam-2018/:
+        decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-sinh-vien-bi-huy-dang-ky-mon-hoc-trong-hkii-nam-hoc-2023-2024-no-hoc-phi-cac-ki-truoc/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/danh-sach-sinh-vien-dai-hoc-chinh-quy-khoa-cong-nghe-thong-tin-khoa-dien-tu-vien-thong-va-khoa-vat-ly-ky-thuat-va-cong-nghe-nano-bao-ve-khoa-luan-tot-nghiep-dot-1-nam-2018-tai-cac-hoi-dong/
+      : decision: rejected
+      https://uet.vnu.edu.vn/danh-sach-sinh-vien-de-nghi-xet-nhan-hoc-bong-k-t-nam-hoc-2020-2021/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/danh-sach-sinh-vien-duoc-xet-cap-hoc-bong-khuyen-khich-hoc-tap-05-thang-hoc-ky-ii-nam-hoc-2018-2019/
+      : decision: rejected
+      https://uet.vnu.edu.vn/gia-han-nop-hoc-phi-hoc-ky-ii-nam-hoc-2021-2022-va-cac-khoan-no-neu-co-cua-svhvchncs/:
+        decision: rejected
+      https://uet.vnu.edu.vn/hoc-phi-qua-han-sau-dieu-chinh-danh-cho-cac-hvch-khoa-k22-va-ncs-khoa-k20-k21/:
+        decision: rejected
+      https://uet.vnu.edu.vn/hoi-thao-tuyen-dung-cong-ty-lg-innotek-viet-nam/:
+        decision: rejected
+      ? https://uet.vnu.edu.vn/hoi-thao-tuyen-dung-sinh-vien-khoa-dtvt-va-cntt-tu-cong-ty-tnhh-phat-trien-phan-mem-toshiba-viet-nam/
+      : decision: rejected
+      https://uet.vnu.edu.vn/ket-qua-xet-hoc-bong-kkht-hoc-ky-ii-nam-hoc-2017-2018/:
+        decision: rejected
+      https://uet.vnu.edu.vn/ket-qua-xet-tot-nghiep-thang-32019-cua-sinh-vien-dai-hoc-chinh-quy/:
+        decision: rejected
+      https://uet.vnu.edu.vn/nop-hoc-phi-hoc-ky-nam-hoc-2020-2021-va-cac-khoan-no-neu-co-cua-ncs-hvch-2/:
+        decision: rejected
+      https://uet.vnu.edu.vn/nop-hoc-phi-qua-han-nam-hoc-2017-2018-cua-ncs-k20-k21-va-hvch-k22/:
+        decision: rejected
+      https://uet.edu.vn/moi-sinh-vien-tham-du-chuong-trinh-hoc-bong-tai-nang-samsung-stp-2018/:
+        decision: rejected
+      https://uet.edu.vn/mot-mau-de-thi-tuyen-sinh-sdh-cac-nam-gan-day/:
+        decision: rejected
+      https://uet.edu.vn/muc-diem-nhan-dang-ky-xet-tuyen-vao-dai-hoc-chinh-quy-nam-2018/:
+        decision: rejected
+      ? https://uet.edu.vn/nghien-cuu-sinh-va-thuc-tap-sinh-sau-tien-si-truong-dai-hoc-cong-nghe-xuat-sac-nhan-hoc-bong-uom-tao-tai-nang-tre/
+      : decision: rejected
+      https://uet.edu.vn/nop-phieu-danh-gia-ket-qua-ren-luyen-danh-cho-sinh-vien-qh-2020-cu-nhan-tro-ve-truoc-khoa-cu/:
+        decision: rejected
+      ? https://uet.edu.vn/phong-van-tuyen-sinh-chuong-trinh-thac-si-v-stt-nganh-cong-nghe-ky-thuat-dien-tu-vien-thong-dinh-huong-chuyen-sau-cong-nghe-ban-dan/
+      : decision: rejected
+      https://uet.edu.vn/quy-hoc-bong-cuu-sinh-vien-khoa-dien-tu-vien-thong-trao-hoc-bong-chap-canh-dam-nam-hoc-2016-2017/:
+        decision: rejected
+      https://uet.edu.vn/san-hoc-bong-de-phu-giup-cha/:
+        decision: rejected
+      ? https://uet.edu.vn/sinh-vien-uet-chinh-phuc-hoc-bong-tien-si-tai-uc-singapore-khi-chua-tot-nghiep-hanh-trinh-pha-day-cam-hung/
+      : decision: rejected
+      https://uet.edu.vn/tang-hoc-bong-mb-nam-hoc-2025-2026-cho-sinh-vien/:
+        decision: rejected
+      ? https://uet.edu.vn/tham-du-chuong-trinh-hoc-bong-theo-dien-hiep-dinh-cua-bo-giao-duc-va-dao-tao-viet-nam-va-bo-khoa-hoc-va-giao-duc-dai-hoc-ba-lan-nam-2026/
+      : decision: rejected
+      https://uet.edu.vn/tham-du-chuong-trinh-trao-doi-sinh-vien-ky-mua-thu-nam-2026-tai-dai-hoc-waseda-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-cac-lhp-tieng-anh-danh-cho-sinh-vien-khoa-qh-2021-icq-tro-ve-truoc/:
+        decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-chinh-thuc-bac-sau-dai-hoc-hoc-ky-nam-hoc-2021-2022-dot-1/:
+        decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-chinh-thuc-danh-cho-sinh-vien-khoa-qh-2022-icq-hoc-ky-nam-hoc-2022-2023-3/:
+        decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-chinh-thuc-danh-cho-sinh-vien-khoa-qh-2022-icq-hoc-ky-nam-hoc-2022-2023/:
+        decision: rejected
+      ? https://uet.edu.vn/thoi-khoa-bieu-chinh-thuc-danh-cho-sinh-vien-khoa-qh-2022-icq-hoc-ky-nam-hoc-2022-2023/daotao_dhcn@vnu.edu.vn
+      : decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-chinh-thuc-hoc-ky-nam-hoc-2022-2023/:
+        decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-hoc-phan-giao-duc-chat-va-dieu-chinh-thong-tin-lhp-hoc-ky-nam-hoc-2022-2023-2/:
+        decision: rejected
+      ? https://uet.edu.vn/thoi-khoa-bieu-hoc-phan-giao-duc-chat-va-dieu-chinh-thong-tin-lhp-hoc-ky-nam-hoc-2022-2023/daotao_dhcn@vnu.edu.vn
+      : decision: rejected
+      https://uet.edu.vn/thoi-khoa-bieu-khoa-hoc-ngan-han-gia-cong-co-khi-cong-nghe-cnc-co-ban-dot-12017/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-dang-ky-bao-ve-kltn-dot-2-nam-2016/:
+        decision: rejected
+      ? https://uet.edu.vn/thong-bao-ket-qua-ky-thi-sat-hach-trinh-tieng-anh-bac-2-ngay-26-08-2017/ket-qua-ky-thi-sat-hach-ngoai-ngu/
+      : decision: rejected
+      https://uet.edu.vn/thong-bao-ket-qua-tuyen-sinh-dot-2-nam-2017/:
+        decision: rejected
+      https://uet.edu.vn/thong-bao-thoi-khoa-bieu-hoc-ky-ii-nam-hoc-2016-2017-cho-sv-chuong-trinh-clc/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-thi-tuyen-sinh-dao-tao-tien-si-dot-1-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-thi-tuyen-sinh-sau-dai-hoc-bac-thac-si-nam-2020/:
+        decision: rejected
+      https://uet.edu.vn/ket-qua-thi-tuyen-sinh-sau-dai-hoc-dot-1-nam-2023/:
+        decision: rejected
+      ? https://uet.edu.vn/ket-qua-thi-vong-1-va-trieu-tap-ung-vien-du-dieu-kien-tham-du-vong-2-ky-thi-tuyen-dung-vien-chuc-hanh-chinh-ky-thuat-nam-2023/
+      : decision: rejected
+      https://uet.edu.vn/ket-qua-thi-vong-2-ky-thi-tuyen-dung-vien-chuc-hanh-chinh-ky-thuat-nam-2023/:
+        decision: rejected
+      https://uet.edu.vn/danh-muc-nhiem-vu-de-tai-nghien-cuu-khoa-hoc-cac-nam/:
+        decision: rejected
+      https://uet.edu.vn/danh-sach-bai-bao-khoa-hoc/:
+        decision: rejected
+      https://uet.edu.vn/thong-ke-sach-chuyen-khao-da-xuat-ban/:
+        decision: rejected
+      ? https://uet.edu.vn/thong-tu-022022tt-bgdd-quy-dinh-dieu-kien-trinh-tu-thu-tuc-mo-nganh-dao-tao-dinh-chi-hoat-dong-cua-nganh-dao-tao-trinh-dai-hoc-thac-si-tien-si/
+      : decision: rejected
+      https://uet.edu.vn/thu-khoa-nganh-cong-nghe-thong-tin-truong-dh-cong-nghe-voi-bang-thanh-tich-tuong/:
+        decision: rejected
+      https://uet.edu.vn/thu-khoa-nganh-thong-thong-tin-truong-dh-cong-nghe-voi-thanh-tich-an-tuong/:
+        decision: rejected
+      ? https://uet.edu.vn/thu-khoa-tot-nghiep-som-do-minh-nhat-thu-thach-ban-than-tu-lop-tien-trinh-dao-tao-tich-cuc-nganh-tri-tue-nhan-tao/
+      : decision: rejected
+      https://uet.edu.vn/to-chuc-lop-hoc-bo-sung-kien-thuc-danh-cho-doi-tuong-du-tuyen-dao-tao-trinh-do-thac-si-nam-2026/:
+        decision: rejected
+      https://uet.edu.vn/tong-hop-cac-van-bang-huu-tri-tue-da-duoc-cong-nhan/:
+        decision: rejected
+      https://uet.edu.vn/tong-hop-cong-bo-cac-nam-test/:
+        decision: rejected
+      https://uet.edu.vn/tra-khen-thuong-tap-the-ca-nhan/:
+        decision: rejected
+      ? https://uet.edu.vn/trien-khai-mo-hinh-giao-vien-chu-nhiem-moi-va-huong-dan-quy-trinh-tiep-nhan-ho-tro-va-giai-dap-thac-mac-danh-cho-sinh-vien/
+      : decision: rejected
+      https://uet.edu.vn/trien-khai-thu-hp-cua-sinh-vien-trong-hk-phu-nam-hoc-2025-2026/:
+        decision: rejected
+      https://uet.edu.vn/trinet-mo-hinh-mang-tensor-the-he-moi-mo-ra-huong-xu-ly-du-lieu-lon-trong-tri-tue-nhan-tao/:
+        decision: rejected
+      https://uet.edu.vn/trung-tam-dai-hoc-so/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-chuc-hoi-nghi-phu-huynh-dau-khoa-hoc-khoa-qh-2025/:
+        decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-dai-hoc-quoc-gia-ha-noi-san-sang-chao-don-tan-sinh-vien-k70-tai-ngay-hoi-nhap-hoc/
+      : decision: rejected
+      ? https://uet.edu.vn/truong-dai-hoc-cong-nghe-don-tiep-doan-vien-cong-nghe-o-to-han-quoc-thuc-day-hop-tac-nghien-cuu-va-phat-trien-nguon-nhan-luc-chat-luong-cao/
+      : decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-ky-ket-hop-tac-toan-dien-voi-hoc-vien-ky-thuat-va-cong-nghe-an-ninh/:
+        decision: rejected
+      https://uet.edu.vn/truong-dai-hoc-cong-nghe-tiep-don-doan-vien-blekinge-institute-of-technology-thuy-dien/:
+        decision: rejected
+      https://uet.edu.vn/truong-dh-cong-nghe-phat-trien-thiet-bi-giao-tiep-cho-nguoi-mat-kha-nang-noi-blife/:
+        decision: rejected
+      https://uet.edu.vn/tu-nhung-san-pham-quen-thuoc-den-hanh-trinh-tim-vi-khuan-co-loi/:
+        decision: rejected
+      https://uet.edu.vn/tu-no-luc-ben-bi-o-giang-duong-uet-den-khoanh-khac-goi-ten-thu-khoa-nguyen-ngoc-yen-trang-2/:
+        decision: rejected
+      https://uet.edu.vn/uet-xanh-hoa-lac-2026-gieo-mam-xanh-kien-tao-tuong-lai/:
+        decision: rejected
+      https://uet.edu.vn/ung-dung-thuc-te-ao-trong-bao-ton-di-san-van-hoa-phi-vat-tai-bao-tang-van-hoa-cac-dan-toc-viet-nam/:
+        decision: rejected
+      https://uet.edu.vn/vien-cong-nghe-hang-khong-vu-tru-2/:
+        decision: rejected
+      https://uet.edu.vn/workshop-huong-nghiep-buc-tranh-thi-truong-ai/:
+        decision: rejected
+      https://uet.edu.vn/02-de-tai-du-khoa-hoc-va-cong-nghe-cua-truong-dhcn-duoc-quy-vinif-tai-tro-nghien-cuu/:
+        decision: rejected
+      ? https://uet.edu.vn/02-nha-giao-truong-dai-hoc-cong-nghe-nhan-giai-thuong-danh-hieu-nha-giao-tieu-bieu-dai-hoc-quoc-gia-ha-noi-nam-2022/
+      : decision: rejected
+      ? https://uet.edu.vn/02-nhom-sinh-vien-truong-dhcn-dat-giai-nhi-giai-thuong-khoa-hoc-va-cong-nghe-danh-cho-sinh-vien-trong-cac-co-so-giao-duc-dai-hoc-nam-2025/
+      : decision: rejected
+      https://uet.edu.vn/cuoc-chay-dua-chip-ban-dan-toan-cau-dinh-vi-thach-thuc-va-co-hoi-doi-voi-viet-nam/:
+        decision: rejected
+      https://uet.edu.vn/cuoc-thi-chon-doi-tuyen-procon-2024/:
+        decision: rejected
+      https://uet.edu.vn/hoan-thien-nop-bang-tot-nghiep-thpt-khoa-qh-2025/:
+        decision: rejected
+      https://uet.edu.vn/hoat-dong-cong-tac-sinh-vien/:
+        decision: rejected
+      https://uet.edu.vn/hoat-dong-khoa-hoc-cong-nghe/:
+        decision: rejected
+      https://uet.edu.vn/hoc-bang-lam-trai-nghiem-thuc-te-cua-cac-ky-su-tuong-lai-nganh-cong-nghe-nong-nghiep/:
+        decision: rejected
+      ? https://uet.edu.vn/hoc-vien-chuong-trinh-v-stt-hoc-tap-nghien-cuu-voi-giang-vien-quoc-te-ve-cong-nghe-lang-dong-don-lop-nguyen-tu/
+      : decision: rejected
+      https://uet.edu.vn/hoi-dong-khoa-hoc-dao-tao/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_6994-1/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7023/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7047-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7051-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7057-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7067-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7075-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7091-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7099-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7108-2/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-dai-bieu-cong-doan-truong-dai-hoc-cong-nghe-giua-nhiem-ky-2016-2021/img_7123-2/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-dao-tao-doi-moi-quan-tri-dai-hoc-gan-voi-chuyen-doi-huong-toi-chat-luong-va-trach-nhiem-toan-dien/
+      : decision: rejected
+      https://uet.edu.vn/hoi-nghi-dao-tao-uet-2025-chuyen-doi-nang-tam-chat-luong/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-doi-thoai-giua-lanh-dao-nha-truong-voi-phu-huynh-va-sinh-vien-nam-2025-doi-thoai-de-dong-hanh-phat-trien-va-nang-cao-chat-luong-dao-tao/
+      : decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-cap-truong-lan-thu-18-khoi-day-dam-hoc-tap-va-sang-tao-cua-sinh-vien/
+      : decision: rejected
+      https://uet.edu.vn/hoi-nghi-sinh-vien-nghien-cuu-khoa-hoc-truong-dai-hoc-cong-nghe-lan-thu-21/:
+        decision: rejected
+      https://uet.edu.vn/hoi-nghi-tong-ket-cong-tac-dang-nam-2023-va-trien-khai-nhiem-vu-nam-2024/:
+        decision: rejected
+      ? https://uet.edu.vn/hoi-nghi-xuc-tien-dau-tu-nam-2023-day-manh-nguon-luc-dau-tu-trong-linh-vuc-cong-nghe-cong-nghiep-ban-dan/
+      : decision: rejected
+      https://uet.edu.vn/hon-30-doanh-nghiep-trien-khai-ung-dung-nen-tang-tu-dong-phan-tich-va-hieu-khach-hang/:
+        decision: rejected
+      https://uet.edu.vn/hop-tac-voi-truong-dai-hoc-cong-nghiep-chiba-trong-linh-vuc-cong-nghe-robot/:
+        decision: rejected
+      https://uet.edu.vn/htv-sinh-vien-nam-hai-chia-se-ly-lua-chon-nganh-cong-nghe-hang-khong-vu-tru-cua-uet/:
+        decision: rejected
+      https://uet.edu.vn/htv-truong-dh-cong-nghe-dao-tao-ra-nhung-sinh-vien-co-canh-tranh-toan-cau/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-toa-dam-tu-khoi-nghiep-den-khoi-nghiep-thong-minh-start-smart/:
+        decision: rejected
+      https://uet.edu.vn/chuong-trinh-trao-doi-hoc-vien-cao-hocsinh-vien-tai-dai-hoc-osaka-nhat-ban/:
+        decision: rejected
+      https://uet.edu.vn/ban-giam-hieu/:
+        decision: accepted
+      https://uet.edu.vn/ban-hanh-mau-van-bang-giao-duc-dai-hoc-tai-dai-hoc-quoc-gia-ha-noi/:
+        decision: accepted
+      https://uet.edu.vn/ban-hanh-quy-dinh-ve-quan-ly-hoat-dong-hop-tac-quoc-te-cua-dhqghn/:
+        decision: accepted
+      https://uet.edu.vn/bo-mon-cong-nghe-xay-dung-giao-thong/:
+        decision: accepted
+      https://uet.edu.vn/dang-uy/:
         decision: accepted
   HANDBOOK:
     urls:

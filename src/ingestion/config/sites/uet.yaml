@@ -6,7 +6,6 @@ version: 2
 # ==============================================================================
 seeds:
   # --- CORE SCOPE (Đang cào trọng tâm CTĐT, ngoại ngữ và quy chế trên uet.edu.vn / uet.vnu.edu.vn) ---
-  - https://uet.edu.vn/dao-tao/
   - https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
   - https://uet.vnu.edu.vn/wp-content/uploads/2022/12/Quy-ch%E1%BA%BF-%C4%90T%C4%90H-3626.pdf
   - https://uet.vnu.edu.vn/wp-content/uploads/2021/03/Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final.pdf
@@ -122,6 +121,11 @@ seeds:
   - https://uet.edu.vn/diem-trung-tuyen-vao-truong-dh-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/
   - https://uet.edu.vn/khung-chuong-trinh-dao-tao-chuan-bac-dai-nganh-tri-tue-nhan-tao/
   - https://uet.edu.vn/lan-dau-tien-uet-dao-tao-cong-nghe-sinh-hoc-ket-hop-voi-ai-va-khoa-hoc-du-lieu/
+  - https://uet.edu.vn/ban-giam-hieu/
+  - https://uet.edu.vn/ban-hanh-mau-van-bang-giao-duc-dai-hoc-tai-dai-hoc-quoc-gia-ha-noi/
+  - https://uet.edu.vn/ban-hanh-quy-dinh-ve-quan-ly-hoat-dong-hop-tac-quoc-te-cua-dhqghn/
+  - https://uet.edu.vn/bo-mon-cong-nghe-xay-dung-giao-thong/
+  - https://uet.edu.vn/dang-uy/
 
   # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
   # - https://uet.vnu.edu.vn/
