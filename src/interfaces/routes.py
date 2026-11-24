@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 from src.base import UserQuery
-from src.pipeline import get_rag_pipeline
+from src.pipeline import get_rag_pipeline, get_active_pipeline
 from src.utils.helpers import Timer, get_logger, load_yaml_config
 
 logger = get_logger("api")
@@ -100,7 +101,7 @@ _VOICE_RESPONSE_FORMAT_RULES = (
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Nội dung câu hỏi của sinh viên")
-    session_id: str = Field(default="default_session", description="Mã phiên hội thoại")
+    session_id: Optional[str] = Field(default=None, description="Mã phiên hội thoại (tự động tạo UUID nếu để trống)")
     top_k: Optional[int] = Field(
         default=None,
         description="Số lượng trích đoạn cần lấy (mặc định lấy theo config.yaml)",
@@ -130,6 +131,7 @@ class ChatResponse(BaseModel):
     sources: List[SourceItem] = []
     latency_seconds: float = 0.0
     model_name: str = ""
+    session_id: Optional[str] = None
 
 
 ChatResponse.model_rebuild()
@@ -363,7 +365,7 @@ def create_app():
         """Tải trước toàn bộ mô hình và thực hiện giai đoạn Cold-Start trước khi phục vụ người dùng."""
         logger.info("🚀 [1/2] Đang khởi động và nạp trước RAG Pipeline vào RAM (Pre-warming)...")
         try:
-            pipeline = get_rag_pipeline()
+            pipeline = get_active_pipeline()
             logger.info("🔥 [2/2] Đang thực thi Cold-Start Warmup để làm nóng Embedding ONNX, Reranker, BM25 & LLM...")
             # Thực hiện một truy vấn giả lập để:
             # 1. Kích hoạt bộ tách từ tiếng Việt underthesea
@@ -418,7 +420,7 @@ def create_app():
         """
         Nhận câu hỏi từ Web UI và chuyển tiếp đến RAG Pipeline chính thức trong src/pipeline.py.
         """
-        pipeline = get_rag_pipeline()
+        pipeline = get_active_pipeline()
         if not pipeline:
             raise HTTPException(
                 status_code=500,
@@ -428,10 +430,15 @@ def create_app():
                 },
             )
 
+        # Phase 5.2 (D9): Sinh session_id riêng, bỏ giá trị mặc định chung default_session
+        effective_session_id = request.session_id
+        if not effective_session_id or effective_session_id == "default_session":
+            effective_session_id = str(uuid.uuid4())
+
         with Timer() as timer:
             user_query = UserQuery(
                 query_text=request.query,
-                session_id=request.session_id,
+                session_id=effective_session_id,
             )
             retrieval_top_k = (
                 request.top_k
@@ -484,6 +491,7 @@ def create_app():
             sources=sources_data,
             latency_seconds=round(timer.elapsed, 3),
             model_name=response.model_name or "",
+            session_id=effective_session_id,
         )
 
     @app.post("/api/chat/stream")
@@ -491,7 +499,7 @@ def create_app():
         """
         Streaming SSE endpoint trả về nguồn tham khảo, token câu trả lời và trạng thái hoàn tất.
         """
-        pipeline = get_rag_pipeline()
+        pipeline = get_active_pipeline()
         if not pipeline:
             raise HTTPException(
                 status_code=500,
@@ -501,9 +509,13 @@ def create_app():
                 },
             )
 
+        effective_session_id = request.session_id
+        if not effective_session_id or effective_session_id == "default_session":
+            effective_session_id = str(uuid.uuid4())
+
         user_query = UserQuery(
             query_text=request.query,
-            session_id=request.session_id,
+            session_id=effective_session_id,
         )
 
         def event_generator():
@@ -514,6 +526,40 @@ def create_app():
                         if request.top_k is not None
                         else getattr(pipeline.retriever, "default_top_k", 10)
                     )
+
+                    # Hỗ trợ Agentic RAG Pipeline với JEV LangGraph
+                    if hasattr(pipeline, "agent_graph"):
+                        resp = pipeline.query(user_query, top_k=retrieval_top_k)
+                        sources_data = _build_sources_data(resp.sources)
+                        model_name = resp.model_name or "jev-agentic-rag"
+                        sources_payload = {
+                            "type": "sources",
+                            "sources": [s.model_dump() for s in sources_data],
+                            "model_name": model_name,
+                        }
+                        yield f"data: {json.dumps(sources_payload, ensure_ascii=False)}\n\n"
+
+                        words = (resp.answer or "").split(" ")
+                        chunk_words = []
+                        for w in words:
+                            chunk_words.append(w)
+                            if len(chunk_words) >= 4:
+                                token_payload = {"type": "token", "content": " ".join(chunk_words) + " "}
+                                yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+                                chunk_words = []
+                        if chunk_words:
+                            token_payload = {"type": "token", "content": " ".join(chunk_words)}
+                            yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+
+                        done_payload = {
+                            "type": "done",
+                            "latency_seconds": round(timer.elapsed, 3),
+                            "hide_sources": _is_no_answer_or_out_of_domain(resp.answer),
+                        }
+                        yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+
                     retrieve_kwargs: Dict[str, Any] = {
                         "query": user_query,
                         "top_k": retrieval_top_k,

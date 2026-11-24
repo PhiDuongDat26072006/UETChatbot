@@ -5,6 +5,7 @@ Sử dụng thư viện Rich để mang lại trải nghiệm chat terminal tr�
 
 from __future__ import annotations
 import sys
+import uuid
 from pathlib import Path
 
 # Cấu hình UTF-8 cho console Windows
@@ -20,7 +21,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.base import UserQuery
-from src.pipeline import get_rag_pipeline
+from src.pipeline import get_rag_pipeline, get_active_pipeline
 
 
 def run_cli():
@@ -48,10 +49,12 @@ def run_cli():
     )
 
     with console.status("[bold green]Đang khởi động cỗ máy RAG và tải cơ sở tri thức...[/bold green]"):
-        rag_pipeline = get_rag_pipeline()
+        rag_pipeline = get_active_pipeline()
 
     db_count = rag_pipeline.vector_store.count()
     console.print(f"[green]✔ Hệ thống đã sẵn sàng với [bold]{db_count}[/bold] chunks vector tri thức.[/green]\n")
+
+    cli_session_id = f"cli_{uuid.uuid4().hex[:8]}"
 
     while True:
         try:
@@ -62,12 +65,17 @@ def run_cli():
 
             cmd = user_input.lower()
             if cmd in ["exit", "quit", "q"]:
+                if hasattr(rag_pipeline, "close_session"):
+                    rag_pipeline.close_session(cli_session_id)
                 console.print("[cyan]Tạm biệt! Chúc bạn học tập tốt tại UET.[/cyan]")
                 break
 
             if cmd == "clear":
+                if hasattr(rag_pipeline, "close_session"):
+                    rag_pipeline.close_session(cli_session_id)
                 console.clear()
                 console.print(f"[bold cyan]{banner}[/bold cyan]")
+                cli_session_id = f"cli_{uuid.uuid4().hex[:8]}"
                 continue
 
             if cmd == "stats":
@@ -96,7 +104,7 @@ def run_cli():
 
             # Thực hiện truy vấn RAG
             with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
-                query = UserQuery(query_text=user_input)
+                query = UserQuery(query_text=user_input, session_id=cli_session_id)
                 response = rag_pipeline.query(query)
 
             console.print()
