@@ -93,6 +93,7 @@ class UETLLMClient(BaseLLM):
         self.candidate_models = list(llm_cfg.get("candidate_models", default_provider_candidates))
         self.CANDIDATE_MODELS = self.candidate_models
         self.temperature = float(llm_cfg.get("temperature", 0.2))
+        self.reasoning_effort = llm_cfg.get("reasoning_effort", "none")
 
         # Nạp API Keys cho các providers
         self.groq_keys = self._load_keys_for_provider(
@@ -393,6 +394,17 @@ class UETLLMClient(BaseLLM):
 
         raise RuntimeError(last_error or "Gemini API không phản hồi")
 
+    def _apply_openrouter_reasoning(self, payload: Dict[str, Any]) -> None:
+        """Gắn cấu hình reasoning cho OpenRouter (mặc định tắt để tránh tốn reasoning_tokens)."""
+        raw_eff = getattr(self, "reasoning_effort", None)
+        if not raw_eff:
+            return
+        eff_low = str(raw_eff).strip().lower()
+        if eff_low in ("none", "off", "false", "disabled"):
+            payload["reasoning"] = {"enabled": False}
+        elif eff_low in ("minimal", "low", "medium", "high"):
+            payload["reasoning"] = {"effort": eff_low}
+
     def _call_openrouter(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Gọi OpenRouter API (OpenAI-compatible, mặc định Tencent Hy4)."""
         if not self.openrouter_keys:
@@ -414,13 +426,17 @@ class UETLLMClient(BaseLLM):
             "HTTP-Referer": "https://uet.vnu.edu.vn",
             "X-Title": "UETChatbot",
         }
-        payload = {
+        payload: Dict[str, Any] = {
             "model": target_model,
             "messages": [{"role": "user", "content": prompt_text}],
             "temperature": self.temperature,
         }
+        self._apply_openrouter_reasoning(payload)
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
+        resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
+        if resp.status_code == 400 and "reasoning" in payload and "reasoning" in resp.text.lower():
+            payload.pop("reasoning", None)
+            resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
         if resp.status_code >= 400:
             err_msg = resp.text
             try:
@@ -720,13 +736,14 @@ class UETLLMClient(BaseLLM):
                     "HTTP-Referer": "https://uet.vnu.edu.vn",
                     "X-Title": "UETChatbot",
                 }
-                payload = {
+                payload: Dict[str, Any] = {
                     "model": self.openrouter_model,
                     "messages": [{"role": "user", "content": prompt.formatted_prompt}],
                     "temperature": self.temperature,
                     "stream": True,
                 }
-                with httpx.Client(timeout=90.0) as client:
+                self._apply_openrouter_reasoning(payload)
+                with httpx.Client(timeout=150.0) as client:
                     with client.stream("POST", url, headers=headers, json=payload) as response:
                         if response.status_code == 200:
                             yielded_any = False

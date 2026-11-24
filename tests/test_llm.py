@@ -276,11 +276,35 @@ class TestUETLLMClient(unittest.TestCase):
                 assert "openrouter.ai" in url
                 assert json["model"] == "tencent/hy4-flash"
                 assert json["stream"] is True
+                assert json["reasoning"] == {"enabled": False}
                 return _FakeStreamResp()
 
         with patch("httpx.Client", _FakeHTTPClient):
             chunks = list(client.generate_stream(self.prompt))
         self.assertEqual("".join(chunks), "Xin chào!")
+
+        # Kiểm tra _call_openrouter gốc gửi kèm reasoning={"enabled": False}
+        captured_post = {}
+
+        class _FakePostResp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": "OK no-reasoning"}}], "usage": {}}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured_post["payload"] = json
+            return _FakePostResp()
+
+        raw_client = UETLLMClient(enable_cache=False)
+        raw_client.openrouter_keys = ["sk-or-mock"]
+        self.assertEqual(raw_client.reasoning_effort, "none")
+        with patch("httpx.post", side_effect=fake_post):
+            ans, used_m, _meta = raw_client._call_openrouter("Hỏi test")
+        self.assertEqual(ans, "OK no-reasoning")
+        self.assertEqual(used_m, "tencent/hy4-flash")
+        self.assertEqual(captured_post["payload"]["reasoning"], {"enabled": False})
 
 
 if __name__ == "__main__":

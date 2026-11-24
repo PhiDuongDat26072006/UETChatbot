@@ -506,9 +506,13 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
             and self.reasoning_effort
             and target_model not in self._no_reasoning_models
         ):
-            payload["reasoning"] = {"effort": self.reasoning_effort}
+            eff_low = str(self.reasoning_effort).strip().lower()
+            if eff_low in ("none", "off", "false", "disabled"):
+                payload["reasoning"] = {"enabled": False}
+            else:
+                payload["reasoning"] = {"effort": self.reasoning_effort}
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
+        resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
         if resp.status_code == 400 and (
             "response_format" in payload or "reasoning_effort" in payload or "reasoning" in payload
         ):
@@ -526,7 +530,7 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
                 # Fallback an toàn nếu thông báo 400 không nêu rõ trường
                 self._supports_json_mode = False
                 payload.pop("response_format", None)
-            resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
+            resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
 
         if resp.status_code >= 400:
             err_msg = resp.text

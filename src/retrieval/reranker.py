@@ -364,7 +364,7 @@ class JinaONNXReranker(BaseReranker):
             )
 
             for i in range(0, len(sorted_indices), eff_batch_size):
-                batch_indices = sorted_indices[i : i + self.batch_size]
+                batch_indices = sorted_indices[i : i + eff_batch_size]
                 sentence_pairs = [[query, candidates[idx].text] for idx in batch_indices]
                 inputs = self._tokenizer(
                     sentence_pairs,
