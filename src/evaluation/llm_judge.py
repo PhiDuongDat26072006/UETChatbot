@@ -267,13 +267,13 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
         raw_cfg = config if config is not None else load_yaml_config()
         judge_cfg = raw_cfg.get("evaluation", {}).get("judge", {}) if isinstance(raw_cfg, dict) else {}
 
-        self.provider = (provider or judge_cfg.get("provider") or "groq").lower().strip()
-        self.model_name = model_name or judge_cfg.get("model") or self.DEFAULT_MODELS.get(self.provider, "openai/gpt-oss-120b")
+        self.provider = (provider or judge_cfg.get("provider") or "openrouter").lower().strip()
+        self.model_name = model_name or judge_cfg.get("model") or self.DEFAULT_MODELS.get(self.provider, "tencent/hy4-flash")
         self.candidate_models: List[str] = list(
             candidate_models if candidate_models is not None else (judge_cfg.get("candidate_models") or [])
         )
-        self.fallback_provider = (judge_cfg.get("fallback_provider") or "openrouter").lower().strip()
-        self.fallback_model = judge_cfg.get("fallback_model") or self.DEFAULT_MODELS.get(self.fallback_provider, "tencent/hy4-flash")
+        self.fallback_provider = (judge_cfg.get("fallback_provider") or "groq").lower().strip()
+        self.fallback_model = judge_cfg.get("fallback_model") or self.DEFAULT_MODELS.get(self.fallback_provider, "openai/gpt-oss-120b")
         self.base_url = base_url
 
         self.temperature = float(temperature if temperature is not None else judge_cfg.get("temperature", 0.0))
@@ -501,21 +501,32 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
             and target_model not in self._no_reasoning_models
         ):
             payload["reasoning_effort"] = self.reasoning_effort
+        elif (
+            target_provider == "openrouter"
+            and self.reasoning_effort
+            and target_model not in self._no_reasoning_models
+        ):
+            payload["reasoning"] = {"effort": self.reasoning_effort}
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=60.0)
-        if resp.status_code == 400 and ("response_format" in payload or "reasoning_effort" in payload):
+        resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
+        if resp.status_code == 400 and (
+            "response_format" in payload or "reasoning_effort" in payload or "reasoning" in payload
+        ):
             err_low = resp.text.lower()
             if "reasoning_effort" in err_low:
                 self._no_reasoning_models.add(target_model)
                 payload.pop("reasoning_effort", None)
+            if "reasoning" in err_low:
+                self._no_reasoning_models.add(target_model)
+                payload.pop("reasoning", None)
             if "response_format" in err_low or "json_object" in err_low:
                 self._supports_json_mode = False
                 payload.pop("response_format", None)
-            else:
+            elif "reasoning_effort" not in err_low and "reasoning" not in err_low:
                 # Fallback an toàn nếu thông báo 400 không nêu rõ trường
                 self._supports_json_mode = False
                 payload.pop("response_format", None)
-            resp = httpx.post(url, headers=headers, json=payload, timeout=60.0)
+            resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
 
         if resp.status_code >= 400:
             err_msg = resp.text

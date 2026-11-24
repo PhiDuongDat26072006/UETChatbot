@@ -265,6 +265,7 @@ class JinaONNXReranker(BaseReranker):
         self.batch_size = max(1, int(batch_size))
         self._session = None
         self._tokenizer = None
+        self._active_providers: List[str] = []
         self._fallback = HeuristicReranker()
 
         try:
@@ -295,14 +296,43 @@ class JinaONNXReranker(BaseReranker):
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
             sess_options.inter_op_num_threads = 1
-            self._session = ort.InferenceSession(
-                onnx_path,
-                sess_options=sess_options,
-                providers=["CPUExecutionProvider"],
-            )
+
+            avail_providers = ort.get_available_providers()
+            if "CUDAExecutionProvider" in avail_providers:
+                try:
+                    import torch  # noqa: F401 - preload CUDA runtime shared libraries on Colab/Linux
+                except Exception:
+                    pass
+                if hasattr(ort, "preload_dlls"):
+                    try:
+                        ort.preload_dlls()
+                    except Exception:
+                        pass
+                try:
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    )
+                except Exception as cuda_err:
+                    logger.warning(f"CUDAExecutionProvider lỗi ({cuda_err}); chuyển sang CPUExecutionProvider.")
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CPUExecutionProvider"],
+                    )
+            else:
+                self._session = ort.InferenceSession(
+                    onnx_path,
+                    sess_options=sess_options,
+                    providers=["CPUExecutionProvider"],
+                )
+
+            self._active_providers = list(self._session.get_providers())
             logger.info(
                 f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}' "
-                f"(max_length={self.max_length}, batch_size={self.batch_size}, threads={sess_options.intra_op_num_threads})."
+                f"(providers={self._active_providers}, max_length={self.max_length}, "
+                f"batch_size={self.batch_size}, threads={sess_options.intra_op_num_threads})."
             )
         except Exception as e:
             logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
@@ -325,10 +355,15 @@ class JinaONNXReranker(BaseReranker):
             import numpy as np
 
             all_prob_scores: List[float] = [0.0] * len(candidates)
-            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa trên CPU
+            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa
             sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(candidates[idx].text or ""))
+            eff_batch_size = (
+                max(self.batch_size, 32)
+                if "CUDAExecutionProvider" in getattr(self, "_active_providers", [])
+                else self.batch_size
+            )
 
-            for i in range(0, len(sorted_indices), self.batch_size):
+            for i in range(0, len(sorted_indices), eff_batch_size):
                 batch_indices = sorted_indices[i : i + self.batch_size]
                 sentence_pairs = [[query, candidates[idx].text] for idx in batch_indices]
                 inputs = self._tokenizer(

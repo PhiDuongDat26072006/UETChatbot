@@ -406,7 +406,7 @@ def create_app():
     def health_check() -> Dict[str, Any]:
         """Kiểm tra trạng thái máy chủ và mô hình LLM hiện tại."""
         config = load_yaml_config()
-        model_name = config.get("llm", {}).get("model_name", "qwen/qwen3.8-27b")
+        model_name = config.get("llm", {}).get("model_name", "tencent/hy4-flash")
         return {
             "status": "ok",
             "message": "UET Chatbot RAG Server đang chạy bình thường.",
