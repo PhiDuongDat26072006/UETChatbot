@@ -77,7 +77,23 @@ _COURSE_OR_MAJOR_CODE_RE = re.compile(
 )
 _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 _DECIMAL_PERCENT_FRACTION_RE = re.compile(
-    r"\b\d+\.\d+%?|\b\d+\s*/\s*\d+\b|\b\d+%"
+    r"\b\d+\.\d+%?|\b\d{1,2}/\d{1,2}/(?:19|20)\d{2}\b|(?<!/)\b\d+\s*/\s*\d+\b(?!/)|\b\d+%"
+)
+_DATE_DMY_VERBAL_RE = re.compile(
+    r"\bngày\s+0*(\d{1,2})\s+tháng\s+0*(\d{1,2})\s+năm\s+((?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+_DATE_DMY_SLASH_RE = re.compile(
+    r"(?<!/)\b0*(\d{1,2})\s*/\s*0*(\d{1,2})\s*/\s*((?:19|20)\d{2})\b(?!/|[a-zđ])",
+    re.IGNORECASE,
+)
+_DATE_MY_VERBAL_RE = re.compile(
+    r"\btháng\s+0*(\d{1,2})\s*(?:năm|/|-)\s*((?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+_DATE_MY_SLASH_RE = re.compile(
+    r"(?<!/)\b0*([1-9]|1[0-2])\s*/\s*((?:19|20)\d{2})\b(?!/|[a-zđ-])",
+    re.IGNORECASE,
 )
 _CLAUSE_NUM_RE = re.compile(
     r"\b(điều|khoản|chương|mục|bậc)\s+(\d+)\b",
@@ -133,6 +149,9 @@ def _normalize_number_str(token: str) -> str:
         int_part, frac_part = core.split(".", 1)
         frac_trimmed = frac_part.rstrip("0") or "0"
         return f"{int_part}.{frac_trimmed}{suffix}"
+    if re.fullmatch(r"\d{1,2}/\d{1,2}/(?:19|20)\d{2}", core):
+        day_p, month_p, year_p = core.split("/")
+        return f"{int(day_p)}/{int(month_p)}/{year_p}{suffix}"
     return f"{core}{suffix}"
 
 
@@ -250,6 +269,10 @@ def _prepare_text_for_numeric_scan(text: str, is_answer: bool = False) -> str:
     cleaned = _MD_LINK_RE.sub(r"\1", cleaned)
     cleaned = _BARE_URL_RE.sub(" ", cleaned)
     cleaned = _normalize_decimal_commas(cleaned)
+    cleaned = _DATE_DMY_VERBAL_RE.sub(r"ngày \1/\2/\3", cleaned)
+    cleaned = _DATE_DMY_SLASH_RE.sub(r"\1/\2/\3", cleaned)
+    cleaned = _DATE_MY_VERBAL_RE.sub(r"tháng \1/\2", cleaned)
+    cleaned = _DATE_MY_SLASH_RE.sub(r"\1/\2", cleaned)
     return cleaned.lower()
 
 

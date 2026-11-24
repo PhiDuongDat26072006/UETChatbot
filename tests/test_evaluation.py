@@ -354,6 +354,28 @@ class TestUpgradedOfflineMetrics(unittest.TestCase):
         self.assertGreater(corr["answer_correctness"], 0.7)
         self.assertGreater(compute_keyword_overlap("GPA 3.60", "| 1 | GPA 3.60 |"), 0.7)
 
+    def test_vietnamese_verbal_and_slash_date_grounding(self):
+        res_month = compute_numeric_grounding(
+            answer="Tạp chí ra đời từ tháng 1/2011.",
+            contexts=["Tiếp nối thành công, tháng 1 năm 2011, tạp chí REV ra đời."],
+        )
+        self.assertEqual(res_month["numeric_faithfulness"], 1.0)
+        self.assertEqual(res_month["ungrounded_entities"], [])
+
+        res_dmy = compute_numeric_grounding(
+            answer="Thời gian áp dụng quy định từ 01/05/2022.",
+            contexts=["2. Thời gian áp dụng: từ ngày 01 tháng 5 năm 2022."],
+        )
+        self.assertEqual(res_dmy["numeric_faithfulness"], 1.0)
+        self.assertEqual(res_dmy["ungrounded_entities"], [])
+
+        res_fabricated = compute_numeric_grounding(
+            answer="Thời gian áp dụng quy định từ 15/08/2023.",
+            contexts=["2. Thời gian áp dụng: từ ngày 01 tháng 5 năm 2022."],
+        )
+        self.assertLess(res_fabricated["numeric_faithfulness"], 1.0)
+        self.assertIn("15/8/2023", res_fabricated["ungrounded_entities"])
+
 
 class TestUETLLMJudgeEvaluator(unittest.TestCase):
     """Kiểm thử UETLLMJudgeEvaluator (Structured JSON, retry, error handling, cache)."""
