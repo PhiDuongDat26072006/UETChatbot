@@ -372,7 +372,7 @@ def _serialize_contexts(sources: List[RetrievedContext]) -> List[Dict[str, Any]]
     serialized: List[Dict[str, Any]] = []
     for idx, c in enumerate(sources or [], 1):
         meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
-        serialized.append({
+        entry: Dict[str, Any] = {
             "chunk_id": getattr(c, "chunk_id", None),
             "document_id": meta.get("document_id") or meta.get("doc_id"),
             "rank": getattr(c, "rank", idx),
@@ -380,8 +380,27 @@ def _serialize_contexts(sources: List[RetrievedContext]) -> List[Dict[str, Any]]
             "search_source": meta.get("search_source"),
             "title": meta.get("title"),
             "text": getattr(c, "text", ""),
-        })
+        }
+        if meta.get("page") is not None:
+            entry["page"] = meta.get("page")
+        graph_triples = meta.get("graph_triples") or []
+        if graph_triples:
+            entry["graph_triples"] = [str(t) for t in graph_triples[:5]]
+        serialized.append(entry)
     return serialized
+
+
+def _format_context_dict_for_eval(c: Dict[str, Any]) -> str:
+    """Bổ sung thông tin Trang và Quan hệ Đồ thị Tri thức (nếu có) để Offline/Judge nhìn thấy đủ ngữ cảnh như Generator."""
+    prefixes: List[str] = []
+    if c.get("page") is not None:
+        prefixes.append(f"[Trang {c['page']}]")
+    triples = c.get("graph_triples") or []
+    if triples:
+        prefixes.append(f"[Quan hệ Đồ thị Tri thức: {'; '.join(str(t) for t in triples[:5])}]")
+    if not prefixes:
+        return str(c.get("text", ""))
+    return f"{' '.join(prefixes)}\n{str(c.get('text', '') or '').strip()}"
 
 
 def _recover_generation_error(
@@ -684,7 +703,7 @@ def _score_single_offline_record(
     ground_truth = record.get("ground_truth")
     is_ood = bool(record.get("is_out_of_domain")) or _is_sample_ood(record)
     contexts = (record.get("retrieved_contexts") or [])[:top_k]
-    contexts_text = [str(c.get("text", "")) for c in contexts]
+    contexts_text = [_format_context_dict_for_eval(c) for c in contexts]
 
     ret_metrics = _compute_snapshot_retrieval_metrics(record, top_k=top_k)
 
@@ -825,7 +844,7 @@ def score_predictions(
                     "error": "Skipped judge due to generation error",
                 }
             else:
-                contexts_text = [str(c.get("text", "")) for c in (rec.get("retrieved_contexts") or [])[:eff_top_k]]
+                contexts_text = [_format_context_dict_for_eval(c) for c in (rec.get("retrieved_contexts") or [])[:eff_top_k]]
                 judge_res = active_judge.judge_record(
                     query=rec.get("query", ""),
                     contexts=contexts_text,

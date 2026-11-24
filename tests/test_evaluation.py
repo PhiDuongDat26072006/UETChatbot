@@ -793,6 +793,109 @@ class TestRagasCompatAndNaN(unittest.TestCase):
         self.assertIsNone(_clean_ragas_value(None))
         self.assertEqual(_clean_ragas_value(0.87654), 0.8765)
 
+    def test_openrouter_reasoning_none_and_graph_triples_context(self):
+        from unittest.mock import patch
+        from src.base import RetrievedContext
+        from src.evaluation.evaluator import _serialize_contexts
+
+        captured = {}
+
+        class _FakeResp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "faithfulness": {"score": 5, "unsupported_claims": [], "reason": "ok"},
+                                        "answer_correctness": {"score": 5, "missing_facts": [], "wrong_facts": [], "reason": "ok"},
+                                        "answer_relevance": {"score": 5, "reason": "ok"},
+                                        "context_sufficiency": {"score": 5, "reason": "ok"},
+                                    }
+                                )
+                            }
+                        }
+                    ]
+                }
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured["url"] = url
+            captured["payload"] = json
+            return _FakeResp()
+
+        judge = UETLLMJudgeEvaluator(
+            provider="openrouter",
+            model_name="tencent/hy4-flash",
+            reasoning_effort="none",
+            enable_cache=False,
+            api_key="sk-or-test",
+        )
+        with patch("httpx.post", side_effect=fake_post):
+            raw = judge._call_single_target("openrouter", "tencent/hy4-flash", "prompt test")
+        self.assertIn("faithfulness", raw)
+        self.assertEqual(captured["payload"]["reasoning"], {"enabled": False})
+        self.assertNotIn("reasoning_effort", captured["payload"])
+
+        ctx = RetrievedContext(
+            chunk_id="c1",
+            text="Bộ môn Kỹ thuật Robot công bố định hướng hợp tác.",
+            similarity_score=0.92,
+            rank=1,
+            metadata={
+                "document_id": "d1",
+                "page": 3,
+                "graph_triples": ["Bộ môn Kỹ thuật robot -[QUY_ĐỊNH_VỀ]-> Viện Công nghệ Chiba (2018)"],
+            },
+        )
+        serialized = _serialize_contexts([ctx])
+        self.assertEqual(serialized[0]["page"], 3)
+        self.assertIn("Chiba", serialized[0]["graph_triples"][0])
+
+        seen_prompts = []
+
+        def judge_capture(p):
+            seen_prompts.append(p)
+            return json.dumps({
+                "faithfulness": {"score": 5, "unsupported_claims": [], "reason": "ok"},
+                "answer_correctness": {"score": 5, "missing_facts": [], "wrong_facts": [], "reason": "ok"},
+                "answer_relevance": {"score": 5, "reason": "ok"},
+                "context_sufficiency": {"score": 5, "reason": "ok"},
+            })
+
+        report = score_predictions(
+            {
+                "top_k": 5,
+                "predictions": [
+                    {
+                        "sample_id": "g1",
+                        "query": "Đối tác của Bộ môn Kỹ thuật Robot?",
+                        "ground_truth": "Viện Công nghệ Chiba (2018).",
+                        "is_out_of_domain": False,
+                        "retrieved_contexts": serialized,
+                        "generated_answer": "Bộ môn hợp tác với Viện Công nghệ Chiba năm 2018 (Trang 3).",
+                        "model_name": "tencent/hy4-flash",
+                    }
+                ],
+            },
+            top_k=5,
+            use_judge=True,
+            judge=UETLLMJudgeEvaluator(
+                provider="openrouter",
+                model_name="tencent/hy4-flash",
+                delay_seconds=0.0,
+                enable_cache=False,
+                call_fn=judge_capture,
+            ),
+            enable_semantic=False,
+        )
+        self.assertEqual(report["samples"][0]["offline_metrics"]["numeric_faithfulness"], 1.0)
+        self.assertIn("Quan hệ Đồ thị Tri thức", seen_prompts[0])
+        self.assertIn("Chiba", seen_prompts[0])
+
 
 if __name__ == "__main__":
     unittest.main()

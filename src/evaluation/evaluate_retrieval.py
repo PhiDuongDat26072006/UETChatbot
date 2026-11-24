@@ -802,7 +802,7 @@ def run_eval_retrieval_cli(
     target_k = top_k if top_k is not None else cfg.get("retrieval", {}).get("final_top_k", 5)
 
     if k_values is None:
-        k_values = [target_k]
+        k_values = sorted({k for k in (1, 3, 5, target_k) if k <= target_k})
 
     if eval_dir is None:
         cfg_file = cfg.get("paths", {}).get("eval_dataset_file")

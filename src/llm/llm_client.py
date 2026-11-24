@@ -420,7 +420,7 @@ class UETLLMClient(BaseLLM):
             "temperature": self.temperature,
         }
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=90.0)
+        resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
         if resp.status_code >= 400:
             err_msg = resp.text
             try:
@@ -726,7 +726,7 @@ class UETLLMClient(BaseLLM):
                     "temperature": self.temperature,
                     "stream": True,
                 }
-                with httpx.Client(timeout=90.0) as client:
+                with httpx.Client(timeout=150.0) as client:
                     with client.stream("POST", url, headers=headers, json=payload) as response:
                         if response.status_code == 200:
                             yielded_any = False
