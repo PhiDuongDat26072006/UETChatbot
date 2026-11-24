@@ -239,7 +239,7 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
 
     DEFAULT_MODELS = {
         "groq": "openai/gpt-oss-120b",
-        "openrouter": "tencent/hy4-flash",
+        "openrouter": "deepseek/deepseek-v4.1-flash-1017",
         "sambanova": "DeepSeek-V3.1",
         "gemini": "gemini-2.5-flash",
     }
@@ -268,7 +268,7 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
         judge_cfg = raw_cfg.get("evaluation", {}).get("judge", {}) if isinstance(raw_cfg, dict) else {}
 
         self.provider = (provider or judge_cfg.get("provider") or "openrouter").lower().strip()
-        self.model_name = model_name or judge_cfg.get("model") or self.DEFAULT_MODELS.get(self.provider, "tencent/hy4-flash")
+        self.model_name = model_name or judge_cfg.get("model") or self.DEFAULT_MODELS.get(self.provider, "deepseek/deepseek-v4.1-flash-1017")
         self.candidate_models: List[str] = list(
             candidate_models if candidate_models is not None else (judge_cfg.get("candidate_models") or [])
         )

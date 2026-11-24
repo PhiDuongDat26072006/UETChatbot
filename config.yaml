@@ -164,10 +164,10 @@ prompt:
 evaluation:
   judge:
     provider: "openrouter"
-    model: "tencent/hy4-flash"
+    model: "deepseek/deepseek-v4.1-flash-1017"
     candidate_models:
-      - "tencent/hy4-flash"
-      - "tencent/hy4"
+      - "deepseek/deepseek-v4.1-flash-1017"
+      - "deepseek/deepseek-v4.1-flash"
     fallback_provider: "groq"
     fallback_model: "openai/gpt-oss-120b"
     temperature: 0.0

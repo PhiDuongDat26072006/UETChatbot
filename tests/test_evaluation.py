@@ -827,15 +827,20 @@ class TestRagasCompatAndNaN(unittest.TestCase):
             captured["payload"] = json
             return _FakeResp()
 
+        default_judge = UETLLMJudgeEvaluator(enable_cache=False, api_key="sk-or-test")
+        self.assertEqual(default_judge.provider, "openrouter")
+        self.assertEqual(default_judge.model_name, "deepseek/deepseek-v4.1-flash-1017")
+        self.assertEqual(default_judge.reasoning_effort, "none")
+
         judge = UETLLMJudgeEvaluator(
             provider="openrouter",
-            model_name="tencent/hy4-flash",
+            model_name="deepseek/deepseek-v4.1-flash-1017",
             reasoning_effort="none",
             enable_cache=False,
             api_key="sk-or-test",
         )
         with patch("httpx.post", side_effect=fake_post):
-            raw = judge._call_single_target("openrouter", "tencent/hy4-flash", "prompt test")
+            raw = judge._call_single_target("openrouter", "deepseek/deepseek-v4.1-flash-1017", "prompt test")
         self.assertIn("faithfulness", raw)
         self.assertEqual(captured["payload"]["reasoning"], {"enabled": False})
         self.assertNotIn("reasoning_effort", captured["payload"])
