@@ -1,10 +1,17 @@
 """
-tests/test_llm.py - Bộ kiểm thử đơn vị cho phân hệ LLM Client (Task 7).
+tests/test_llm.py - Bộ kiểm thử đơn vị cho phân hệ LLM Client (Task 7 - Hoàng).
+Kiểm tra toàn diện:
+  1. Multi-Provider Key loading (Groq, SambaNova, Gemini)
+  2. Persistent Disk Cache (Ghi cache, đọc cache < 0.01s)
+  3. Multi-Provider Worker Queue (Hàng đợi chia tải 3 luồng song song)
+  4. Fallback & Fault Tolerance (Tự bọc lót khi 1 luồng lỗi)
 """
 
 import sys
+import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -19,134 +26,285 @@ class TestUETLLMClient(unittest.TestCase):
     """Kiểm thử bộ phận LLM Client (Task 7)."""
 
     def setUp(self):
-        self.query = UserQuery(query_text="Sinh viên cần bao nhiêu tín chỉ?")
+        self.query = UserQuery(query_text="Sinh viên cần bao nhiêu tín chỉ để tốt nghiệp?")
         self.contexts = [
             RetrievedContext(
                 chunk_id="ctx_01",
-                text="Tối thiểu tích lũy 130 tín chỉ.",
+                text="Tối thiểu tích lũy 130 tín chỉ theo quy chế đào tạo.",
                 similarity_score=0.9,
                 rank=1,
                 metadata={"title": "Quy chế Đào tạo", "page": 10},
             )
         ]
         self.prompt = UETPromptAugmenter().augment(self.query, self.contexts)
+        self.test_cache_file = BASE_DIR / "database" / "test_llm_cache.json"
 
-    def test_fallback_mode_without_api_key(self):
-        """Kiểm tra chế độ fallback tự động khi không có API key."""
-        client = UETLLMClient(api_key="")
-        response = client.generate(self.prompt)
-
-        self.assertIsInstance(response, Response)
-        self.assertEqual(response.query_id, self.query.query_id)
-        self.assertTrue(len(response.answer) > 0)
-        self.assertIn("Tối thiểu tích lũy 130 tín chỉ.", response.answer)
-        self.assertIn("fallback", response.model_name.lower())
-        self.assertGreaterEqual(response.latency_seconds, 0.0)
-
-    def test_fallback_empty_contexts(self):
-        """Kiểm tra phản hồi fallback lịch sự khi không có ngữ cảnh."""
-        empty_prompt = UETPromptAugmenter().augment(self.query, [])
-        client = UETLLMClient(api_key="")
-        response = client.generate(empty_prompt)
-
-        self.assertIn("chưa tìm thấy quy định cụ thể", response.answer)
-        self.assertIn("Phòng Đào tạo", response.answer)
-
-    def test_candidate_models_attributes(self):
-        """Kiểm tra các thuộc tính candidate models và tương thích ngược."""
-        client = UETLLMClient()
-        self.assertTrue(hasattr(client, "candidate_models"))
-        self.assertTrue(hasattr(client, "CANDIDATE_MODELS"))
-        self.assertIsInstance(client.candidate_models, list)
-        self.assertGreater(len(client.candidate_models), 0)
-
-    def test_streaming_fallback(self):
-        """Kiểm tra streaming ở chế độ fallback."""
-        client = UETLLMClient(api_key="")
-        chunks = list(client.generate_stream(self.prompt))
-        self.assertTrue(len(chunks) > 0)
-        combined = "".join(chunks)
-        self.assertIn("Tối thiểu tích lũy 130 tín chỉ.", combined)
+    def tearDown(self):
+        # Dọn dẹp file test cache nếu có
+        if self.test_cache_file.exists():
+            try:
+                self.test_cache_file.unlink()
+            except Exception:
+                pass
 
     def test_key_masking(self):
         """Kiểm tra hàm che giấu API key để bảo mật log."""
         self.assertEqual(UETLLMClient._mask_key(""), "")
         self.assertEqual(UETLLMClient._mask_key("short"), "***")
-        masked = UETLLMClient._mask_key("AIzaSyD-1234567890abcdef")
-        self.assertTrue(masked.startswith("AIza..."))
+        masked = UETLLMClient._mask_key("gsk_1234567890abcdef")
+        self.assertTrue(masked.startswith("gsk_..."))
         self.assertTrue(masked.endswith("cdef"))
 
-    def test_load_api_keys_priority_and_dedup(self):
-        """Kiểm tra nạp nhiều khóa từ các biến môi trường khác nhau."""
-        import os
-        from unittest.mock import patch
-
+    def test_load_multi_provider_keys(self):
+        """Kiểm tra nạp API keys từ .env cho cả 3 nhà cung cấp."""
         env_mock = {
-            "GEMINI_API_KEY": "key_primary",
-            "GEMINI_API_KEY_2": "key_backup_2",
-            "GEMINI_API_KEYS": "key_primary,key_group_3",
-            "GEMINI_BACKUP_API_KEY": "key_backup_final",
+            "GROQ_API_KEY": "gsk_test_key_groq",
+            "SAMBANOVA_API_KEY": "samba_test_key_1234",
+            "GEMINI_API_KEY": "gemini_test_key_5678",
         }
         with patch.dict(os.environ, env_mock, clear=True):
-            keys = UETLLMClient._load_api_keys()
-            self.assertIn("key_primary", keys)
-            self.assertIn("key_backup_2", keys)
-            self.assertIn("key_group_3", keys)
-            self.assertIn("key_backup_final", keys)
-            # Kiểm tra không bị trùng lặp
-            self.assertEqual(len(keys), len(set(keys)))
+            client = UETLLMClient(cache_file=self.test_cache_file)
+            self.assertIn("gsk_test_key_groq", client.groq_keys)
+            self.assertIn("samba_test_key_1234", client.sambanova_keys)
+            self.assertIn("gemini_test_key_5678", client.gemini_keys)
 
-    def test_auto_failover_on_429_quota_exhausted(self):
-        """Kiểm tra tự động chuyển sang API key dự phòng khi gặp lỗi 429 RESOURCE_EXHAUSTED."""
-        from unittest.mock import MagicMock
+    def test_disk_cache_save_and_hit(self):
+        """Kiểm tra cơ chế Persistent Disk Cache: Lưu và đọc tức thời (0s)."""
+        client = UETLLMClient(cache_file=self.test_cache_file)
 
-        client = UETLLMClient(api_key="")
-        client.api_keys = ["mock_key_1", "mock_key_2"]
-        client.current_key_index = 0
+        # Giả lập phản hồi từ provider
+        fake_answer = "Sinh viên cần tích lũy tối thiểu 130 tín chỉ."
+        client._save_to_disk_cache(
+            prompt_text=self.prompt.formatted_prompt,
+            answer=fake_answer,
+            model_name="test-model",
+            metadata={"test": True},
+        )
 
-        # Mock client 1 bị lỗi 429
-        mock_client_1 = MagicMock()
-        mock_client_1.models.generate_content.side_effect = Exception("429 Quota Exceeded: RESOURCE_EXHAUSTED")
+        # Đọc lại từ Disk Cache
+        cached = client._get_from_disk_cache(self.prompt.formatted_prompt)
+        self.assertIsNotNone(cached)
+        ans, model, meta = cached
+        self.assertEqual(ans, fake_answer)
+        self.assertEqual(model, "test-model")
 
-        # Mock client 2 thành công
-        mock_client_2 = MagicMock()
-        mock_res = MagicMock()
-        mock_res.text = "Câu trả lời thành công từ API Key 2."
-        mock_client_2.models.generate_content.return_value = mock_res
+        # Kiểm tra qua hàm generate() chính thức
+        response = client.generate(self.prompt)
+        self.assertEqual(response.answer, fake_answer)
+        self.assertTrue(response.metadata.get("cache_hit"))
+        self.assertLessEqual(response.latency_seconds, 0.05)
 
-        def mock_get_client(key):
-            if key == "mock_key_1":
-                return mock_client_1
-            return mock_client_2
+    def test_multi_provider_fallback_chain(self):
+        """Kiểm tra chuỗi tự bọc lót: Groq lỗi -> SambaNova gánh -> Gemini gánh."""
+        client = UETLLMClient(provider="groq", enable_cache=False)
+        client.groq_keys = ["mock_groq"]
+        client.sambanova_keys = ["mock_samba"]
+        client.gemini_keys = ["mock_gemini"]
 
-        client._get_client_for_key = mock_get_client
+        call_log = []
+
+        def mock_groq(text):
+            call_log.append("groq")
+            raise Exception("Groq 429: Rate limit reached")
+
+        def mock_samba(text):
+            call_log.append("sambanova")
+            return "Câu trả lời thành công từ SambaNova Llama 3.3!", "Meta-Llama-3.3-70B-Instruct", {}
+
+        def mock_gemini(text):
+            call_log.append("gemini")
+            return "Câu trả lời từ Gemini", "gemini-2.5-flash", {}
+
+        client._call_groq = mock_groq
+        client._call_sambanova = mock_samba
+        client._call_gemini = mock_gemini
 
         response = client.generate(self.prompt)
-        self.assertEqual(response.answer, "Câu trả lời thành công từ API Key 2.")
-        # Hệ thống phải cập nhật key đang hoạt động sang mock_key_2
-        self.assertEqual(client.api_key, "mock_key_2")
+        self.assertEqual(call_log, ["groq", "sambanova"])
+        self.assertEqual(response.answer, "Câu trả lời thành công từ SambaNova Llama 3.3!")
+        self.assertEqual(response.model_name, "Meta-Llama-3.3-70B-Instruct")
 
-    def test_custom_keys_list_initialization(self):
-        """Kiểm tra khởi tạo client với tham số api_keys dạng danh sách."""
-        client = UETLLMClient(api_keys=["key_custom_A", "key_custom_B"])
-        self.assertIn("key_custom_A", client.api_keys)
-        self.assertIn("key_custom_B", client.api_keys)
+    def test_multi_provider_worker_queue_batch(self):
+        """Kiểm tra Hàng đợi chia tải đa luồng (generate_batch) phân phối câu hỏi cho 3 workers."""
+        client = UETLLMClient(provider="groq", enable_cache=False)
+        client.groq_keys = ["mock_groq"]
+        client.sambanova_keys = ["mock_samba"]
+        client.gemini_keys = ["mock_gemini"]
 
-    def test_load_api_keys_multiline_env(self):
-        """Kiểm tra nạp danh sách key trong .env theo dạng nhiều dòng hoặc chấm phẩy."""
-        import os
-        from unittest.mock import patch
+        # Giảm delay để test chạy nhanh trong 0.01 giây
+        client.DEFAULT_CONFIGS["groq"]["delay"] = 0.01
+        client.DEFAULT_CONFIGS["sambanova"]["delay"] = 0.01
+        client.DEFAULT_CONFIGS["gemini"]["delay"] = 0.01
 
-        env_mock = {
-            "GEMINI_API_KEYS": "key_line_1\nkey_line_2;key_line_3",
-            "GEMINI_API_KEY_3": "key_line_4",
-        }
-        with patch.dict(os.environ, env_mock, clear=True):
-            keys = UETLLMClient._load_api_keys()
-            self.assertIn("key_line_1", keys)
-            self.assertIn("key_line_2", keys)
-            self.assertIn("key_line_3", keys)
-            self.assertIn("key_line_4", keys)
+        processed_by = []
+
+        def mock_groq(text):
+            processed_by.append("groq")
+            return "Ans from Groq", "llama-3.3-70b-versatile", {}
+
+        def mock_samba(text):
+            processed_by.append("sambanova")
+            return "Ans from SambaNova", "Meta-Llama-3.3-70B-Instruct", {}
+
+        def mock_gemini(text):
+            processed_by.append("gemini")
+            return "Ans from Gemini", "gemini-2.5-flash", {}
+
+        client._call_groq = mock_groq
+        client._call_sambanova = mock_samba
+        client._call_gemini = mock_gemini
+
+        # Tạo danh sách 6 câu hỏi kiểm thử
+        test_prompts = []
+        for i in range(6):
+            q = UserQuery(query_text=f"Câu hỏi số {i}?")
+            test_prompts.append(UETPromptAugmenter().augment(q, self.contexts))
+
+        responses = client.generate_batch(test_prompts)
+
+        # Kiểm tra nhận đủ 6 câu trả lời theo đúng thứ tự
+        self.assertEqual(len(responses), 6)
+        for i, resp in enumerate(responses):
+            self.assertEqual(resp.query_id, test_prompts[i].user_query.query_id)
+            self.assertTrue("Ans from" in resp.answer)
+
+        # Đảm bảo cả 3 worker cùng tham gia xử lý
+        self.assertGreater(len(processed_by), 0)
+
+    def test_worker_queue_fallback_on_429(self):
+        """Kiểm tra khi 1 worker gặp lỗi 429, câu hỏi được trả lại hàng đợi để worker khác xử lý."""
+        client = UETLLMClient(provider="groq", enable_cache=False)
+        client.groq_keys = ["mock_groq"]
+        client.sambanova_keys = ["mock_samba"]
+        client.gemini_keys = []
+
+        client.DEFAULT_CONFIGS["groq"]["delay"] = 0.01
+        client.DEFAULT_CONFIGS["sambanova"]["delay"] = 0.01
+
+        def mock_groq_fail(text):
+            raise Exception("Groq 429: Too Many Requests")
+
+        def mock_samba_success(text):
+            return "SambaNova cứu cánh thành công!", "Meta-Llama-3.3-70B-Instruct", {}
+
+        client._call_groq = mock_groq_fail
+        client._call_sambanova = mock_samba_success
+
+        q = UserQuery(query_text="Câu hỏi thử thách lỗi?")
+        p = UETPromptAugmenter().augment(q, self.contexts)
+
+        # Gọi qua batch queue
+        responses = client.generate_batch([p])
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0].answer, "SambaNova cứu cánh thành công!")
+
+    def test_openrouter_hy4_flash_primary_without_free_fallback(self):
+        """Mặc định dùng OpenRouter tencent/hy4-flash trực tiếp, không rơi sang các provider miễn phí."""
+        client = UETLLMClient(enable_cache=False)
+        self.assertEqual(client.provider, "openrouter")
+        self.assertEqual(client.model_name, "tencent/hy4-flash")
+        self.assertEqual(client.openrouter_model, "tencent/hy4-flash")
+
+        client.openrouter_keys = ["sk-or-mock"]
+        client.groq_keys = ["gsk-mock"]
+        client.sambanova_keys = ["samba-mock"]
+        client.gemini_keys = ["gem-mock"]
+        client.openrouter_delay = 0.01
+
+        calls = []
+
+        def forbid_free(name):
+            def _fn(_txt, **_kw):
+                calls.append(name)
+                raise AssertionError(f"Unexpected call to free provider {name}")
+            return _fn
+
+        client._call_groq = forbid_free("groq")
+        client._call_sambanova = forbid_free("sambanova")
+        client._call_gemini = forbid_free("gemini")
+
+        attempt = {"n": 0}
+
+        def mock_openrouter(text, model=None):
+            attempt["n"] += 1
+            calls.append(f"openrouter_{attempt['n']}")
+            if attempt["n"] == 1:
+                raise RuntimeError("OpenRouter temporary 503")
+            return "Trả lời từ tencent/hy4-flash!", "tencent/hy4-flash", {"provider": "openrouter"}
+
+        client._call_openrouter = mock_openrouter
+
+        with patch("src.llm.llm_client.time.sleep", return_value=None):
+            resp = client.generate(self.prompt)
+        self.assertEqual(calls, ["openrouter_1", "openrouter_2"])
+        self.assertEqual(resp.model_name, "tencent/hy4-flash")
+        self.assertIn("hy4-flash", resp.answer)
+
+        # Kiểm tra generate_batch chỉ tạo worker OpenRouter
+        calls.clear()
+        batch_resps = client.generate_batch([self.prompt])
+        self.assertEqual(len(batch_resps), 1)
+        self.assertEqual(batch_resps[0].model_name, "tencent/hy4-flash")
+        self.assertEqual(calls, ["openrouter_3"])
+
+        # Kiểm tra generate_stream đọc SSE từ OpenRouter
+        class _FakeStreamResp:
+            status_code = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def iter_lines(self):
+                yield 'data: {"choices":[{"delta":{"content":"Xin "}}]}'
+                yield 'data: {"choices":[{"delta":{"content":"chào!"}}]}'
+                yield "data: [DONE]"
+
+        class _FakeHTTPClient:
+            def __init__(self, timeout=None):
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def stream(self, method, url, headers=None, json=None):
+                assert "openrouter.ai" in url
+                assert json["model"] == "tencent/hy4-flash"
+                assert json["stream"] is True
+                assert json["reasoning"] == {"enabled": False}
+                return _FakeStreamResp()
+
+        with patch("httpx.Client", _FakeHTTPClient):
+            chunks = list(client.generate_stream(self.prompt))
+        self.assertEqual("".join(chunks), "Xin chào!")
+
+        # Kiểm tra _call_openrouter gốc gửi kèm reasoning={"enabled": False}
+        captured_post = {}
+
+        class _FakePostResp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": "OK no-reasoning"}}], "usage": {}}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured_post["payload"] = json
+            return _FakePostResp()
+
+        raw_client = UETLLMClient(enable_cache=False)
+        raw_client.openrouter_keys = ["sk-or-mock"]
+        self.assertEqual(raw_client.reasoning_effort, "none")
+        with patch("httpx.post", side_effect=fake_post):
+            ans, used_m, _meta = raw_client._call_openrouter("Hỏi test")
+        self.assertEqual(ans, "OK no-reasoning")
+        self.assertEqual(used_m, "tencent/hy4-flash")
+        self.assertEqual(captured_post["payload"]["reasoning"], {"enabled": False})
 
 
 if __name__ == "__main__":

@@ -6,7 +6,9 @@ Hỗ trợ nhiều Backend: FlashRank (ONNX), Cross-Encoder, và Heuristic Cross
 """
 
 from __future__ import annotations
+import os
 import re
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from src.base import RetrievedContext
@@ -183,15 +185,19 @@ class CrossEncoderReranker(BaseReranker):
     Thích hợp khi môi trường có PyTorch hoàn chỉnh hoặc mô hình tiếng Việt chuyên sâu (BGE-Reranker).
     """
 
-    def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
-        self.model_name = model_name
+    def __init__(self, model_name: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"):
+        if "/" not in model_name and not Path(model_name).exists():
+            resolved_model_name = f"cross-encoder/{model_name}"
+        else:
+            resolved_model_name = model_name
+        self.model_name = resolved_model_name
         self._model = None
         self._fallback = HeuristicReranker()
 
         try:
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(model_name)
-            logger.info(f"Đã tải thành công CrossEncoder model '{model_name}'.")
+            self._model = CrossEncoder(resolved_model_name)
+            logger.info(f"Đã tải thành công CrossEncoder model '{resolved_model_name}'.")
         except Exception as e:
             logger.warning(f"Không thể khởi tạo CrossEncoder ({e}). Chuyển sang HeuristicReranker dự phòng.")
 
@@ -234,23 +240,690 @@ class CrossEncoderReranker(BaseReranker):
             return self._fallback.rerank(query, candidates, top_n=top_n)
 
 
+class JinaONNXReranker(BaseReranker):
+    """
+    Reranker sử dụng Jina Reranker V2 Multilingual phiên bản ONNX Runtime.
+    Tối ưu hóa đa ngôn ngữ (tiếng Việt xuất sắc), hỗ trợ context dài tới 1024 tokens,
+    chạy trực tiếp trên ONNX Runtime CPU với tốc độ cao và tiêu tốn ít bộ nhớ.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "jinaai/jina-reranker-v2-base-multilingual",
+        onnx_filename: str = "onnx/model.onnx",
+        max_length: int = 512,
+        batch_size: int = 8,
+    ):
+        if "/" not in model_name and not Path(model_name).exists():
+            repo_id = f"jinaai/{model_name}"
+        else:
+            repo_id = model_name
+
+        self.model_name = repo_id
+        self.onnx_filename = onnx_filename
+        self.max_length = int(max_length)
+        self.batch_size = max(1, int(batch_size))
+        self._session = None
+        self._tokenizer = None
+        self._active_providers: List[str] = []
+        self._fallback = HeuristicReranker()
+
+        try:
+            import onnxruntime as ort
+            from transformers import AutoTokenizer
+            from huggingface_hub import hf_hub_download
+
+            logger.info(f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}'...")
+
+            if Path(onnx_filename).is_file():
+                onnx_path = str(Path(onnx_filename).resolve())
+            elif Path(repo_id).is_file():
+                onnx_path = str(Path(repo_id).resolve())
+            else:
+                rel_filename = onnx_filename if onnx_filename.startswith("onnx/") else f"onnx/{onnx_filename}"
+                onnx_path = hf_hub_download(repo_id=repo_id, filename=rel_filename)
+
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    repo_id,
+                    trust_remote_code=True,
+                    fix_mistral_regex=True,
+                )
+            except TypeError:
+                self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
+
+            sess_options = ort.SessionOptions()
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
+            sess_options.inter_op_num_threads = 1
+
+            avail_providers = ort.get_available_providers()
+            if "CUDAExecutionProvider" in avail_providers:
+                try:
+                    import torch  # noqa: F401 - preload CUDA runtime shared libraries on Colab/Linux
+                except Exception:
+                    pass
+                if hasattr(ort, "preload_dlls"):
+                    try:
+                        ort.preload_dlls()
+                    except Exception:
+                        pass
+                try:
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    )
+                except Exception as cuda_err:
+                    logger.warning(f"CUDAExecutionProvider lỗi ({cuda_err}); chuyển sang CPUExecutionProvider.")
+                    self._session = ort.InferenceSession(
+                        onnx_path,
+                        sess_options=sess_options,
+                        providers=["CPUExecutionProvider"],
+                    )
+            else:
+                self._session = ort.InferenceSession(
+                    onnx_path,
+                    sess_options=sess_options,
+                    providers=["CPUExecutionProvider"],
+                )
+
+            self._active_providers = list(self._session.get_providers())
+            logger.info(
+                f"Đã tải thành công Jina ONNX Reranker từ '{onnx_path}' "
+                f"(providers={self._active_providers}, max_length={self.max_length}, "
+                f"batch_size={self.batch_size}, threads={sess_options.intra_op_num_threads})."
+            )
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo Jina ONNX Reranker ({e}). Chuyển sang HeuristicReranker dự phòng.")
+            self._session = None
+            self._tokenizer = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._session is None or self._tokenizer is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import numpy as np
+
+            all_prob_scores: List[float] = [0.0] * len(candidates)
+            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa
+            sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(candidates[idx].text or ""))
+            eff_batch_size = (
+                max(self.batch_size, 32)
+                if "CUDAExecutionProvider" in getattr(self, "_active_providers", [])
+                else self.batch_size
+            )
+
+            for i in range(0, len(sorted_indices), eff_batch_size):
+                batch_indices = sorted_indices[i : i + eff_batch_size]
+                sentence_pairs = [[query, candidates[idx].text] for idx in batch_indices]
+                inputs = self._tokenizer(
+                    sentence_pairs,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                    return_tensors="np",
+                )
+
+                ort_inputs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"],
+                }
+
+                outputs = self._session.run(None, ort_inputs)
+                raw_logits = outputs[0].squeeze(-1)
+                if raw_logits.ndim == 0:
+                    raw_logits = np.array([raw_logits.item()])
+                prob_scores = 1.0 / (1.0 + np.exp(-raw_logits.astype(np.float64)))
+                for idx, p_score in zip(batch_indices, prob_scores.tolist()):
+                    all_prob_scores[idx] = float(p_score)
+
+            ranked = list(zip(candidates, all_prob_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = f"jina_onnx_{self.model_name}"
+                meta["rerank_score"] = round(float(score), 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(float(score), 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+            logger.info(f"Jina ONNX Reranker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi chạy Jina ONNX Reranker: {err}. Sử dụng heuristic fallback.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
+
+class ViRankerReranker(BaseReranker):
+    """
+    Reranker sử dụng mô hình ViRanker (namdp-ptit/ViRanker) - Cross-Encoder tối ưu riêng cho tiếng Việt.
+    Dựa trên kiến trúc XLMRoberta (BAAI/bge-m3) được huấn luyện tinh chỉnh (fine-tuned) trên bộ dữ liệu
+    MS MARCO tiếng Việt. Cho chất lượng tái xếp hạng ngữ nghĩa tiếng Việt vượt trội.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "weights/ViRanker",
+        max_length: int = 512,
+        batch_size: int = 16,
+    ):
+        self.model_name = model_name
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self._model = None
+        self._tokenizer = None
+        self._device = "cpu"
+        self._fallback = HeuristicReranker()
+
+        self._init_model()
+
+    def _init_model(self) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+            model_path = Path(self.model_name)
+            target = str(model_path.resolve()) if model_path.exists() else self.model_name
+
+            logger.info(f"Đang tải ViRanker từ '{target}'...")
+            self._tokenizer = AutoTokenizer.from_pretrained(target)
+            self._model = AutoModelForSequenceClassification.from_pretrained(target)
+            self._model.eval()
+
+            if torch.cuda.is_available():
+                self._device = "cuda"
+                self._model.to("cuda")
+                logger.info("ViRanker đang sử dụng thiết bị: CUDA (GPU).")
+            else:
+                self._device = "cpu"
+                self._model.to("cpu")
+                logger.info("ViRanker đang sử dụng thiết bị: CPU.")
+
+            logger.info(f"Đã khởi tạo thành công ViRanker từ '{target}'.")
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo ViRanker ({e}). Sẽ dùng HeuristicReranker dự phòng.")
+            self._model = None
+            self._tokenizer = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._model is None or self._tokenizer is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import torch
+
+            pairs = [[query, c.text] for c in candidates]
+            all_scores: List[float] = []
+
+            with torch.no_grad():
+                for i in range(0, len(pairs), self.batch_size):
+                    batch_pairs = pairs[i : i + self.batch_size]
+                    inputs = self._tokenizer(
+                        batch_pairs,
+                        padding=True,
+                        truncation=True,
+                        max_length=self.max_length,
+                        return_tensors="pt",
+                    )
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    outputs = self._model(**inputs, return_dict=True)
+                    logits = outputs.logits.view(-1).float()
+                    probs = torch.sigmoid(logits).cpu().numpy().tolist()
+                    if isinstance(probs, float):
+                        all_scores.append(probs)
+                    else:
+                        all_scores.extend(probs)
+
+            ranked = list(zip(candidates, all_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = f"viranker_{self.model_name}"
+                meta["rerank_score"] = round(float(score), 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(float(score), 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+
+            logger.info(f"ViRanker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi khi thực thi ViRanker ({err}). Chuyển sang HeuristicReranker fallback.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
+class VietnameseReranker(BaseReranker):
+    """
+    Reranker sử dụng mô hình thanhtantran/Vietnamese_Reranker (AITeamVN/Vietnamese_Reranker).
+    Fine-tuned từ BAAI/bge-reranker-v2-m3 trên 1.1M cặp dữ liệu tiếng Việt.
+    Kiến trúc XLMRobertaForSequenceClassification, tái xếp hạng ngữ nghĩa chuẩn xác.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "weights/Vietnamese_Reranker",
+        max_length: int = 512,
+        batch_size: int = 16,
+    ):
+        self.model_name = "Vietnamese_Reranker"
+        self.model_path = model_name
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self._model = None
+        self._tokenizer = None
+        self._device = "cpu"
+        self._fallback = HeuristicReranker()
+
+        self._init_model()
+
+    def _init_model(self) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+            model_path = Path(self.model_path)
+            target = str(model_path.resolve()) if model_path.exists() else self.model_path
+
+            logger.info(f"Đang tải Vietnamese_Reranker từ '{target}'...")
+            self._tokenizer = AutoTokenizer.from_pretrained(target)
+            self._model = AutoModelForSequenceClassification.from_pretrained(target)
+            self._model.eval()
+
+            if torch.cuda.is_available():
+                self._device = "cuda"
+                self._model.to("cuda")
+                logger.info("Vietnamese_Reranker đang sử dụng thiết bị: CUDA (GPU).")
+            else:
+                self._device = "cpu"
+                self._model.to("cpu")
+                logger.info("Vietnamese_Reranker đang sử dụng thiết bị: CPU.")
+
+            logger.info(f"Đã khởi tạo thành công Vietnamese_Reranker từ '{target}'.")
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo Vietnamese_Reranker ({e}). Sẽ dùng HeuristicReranker dự phòng.")
+            self._model = None
+            self._tokenizer = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._model is None or self._tokenizer is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import torch
+
+            pairs = [[query, c.text] for c in candidates]
+            all_scores: List[float] = []
+
+            with torch.no_grad():
+                for i in range(0, len(pairs), self.batch_size):
+                    batch_pairs = pairs[i : i + self.batch_size]
+                    inputs = self._tokenizer(
+                        batch_pairs,
+                        padding=True,
+                        truncation=True,
+                        max_length=self.max_length,
+                        return_tensors="pt",
+                    )
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    outputs = self._model(**inputs, return_dict=True)
+                    logits = outputs.logits.view(-1).float()
+                    probs = torch.sigmoid(logits).cpu().numpy().tolist()
+                    if isinstance(probs, float):
+                        all_scores.append(probs)
+                    else:
+                        all_scores.extend(probs)
+
+            ranked = list(zip(candidates, all_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = "Vietnamese_Reranker"
+                meta["rerank_score"] = round(float(score), 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(float(score), 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+
+            logger.info(f"Vietnamese_Reranker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi khi thực thi Vietnamese_Reranker ({err}). Chuyển sang HeuristicReranker fallback.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
+class PhoRankerReranker(BaseReranker):
+    """
+    Reranker sử dụng mô hình itdainb/PhoRanker (vinai/phobert-base-v2 làm base).
+    Kiến trúc RobertaForSequenceClassification, max context 256 tokens, tối ưu riêng tiếng Việt.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "weights/PhoRanker",
+        max_length: int = 256,
+        batch_size: int = 16,
+    ):
+        self.model_name = "PhoRanker"
+        self.model_path = model_name
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self._model = None
+        self._tokenizer = None
+        self._device = "cpu"
+        self._fallback = HeuristicReranker()
+
+        self._init_model()
+
+    def _init_model(self) -> None:
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+            model_path = Path(self.model_path)
+            target = str(model_path.resolve()) if model_path.exists() else self.model_path
+
+            logger.info(f"Đang tải PhoRanker từ '{target}'...")
+            self._tokenizer = AutoTokenizer.from_pretrained(target)
+            self._model = AutoModelForSequenceClassification.from_pretrained(target)
+            self._model.eval()
+
+            if torch.cuda.is_available():
+                self._device = "cuda"
+                self._model.to("cuda")
+                logger.info("PhoRanker đang sử dụng thiết bị: CUDA (GPU).")
+            else:
+                self._device = "cpu"
+                self._model.to("cpu")
+                logger.info("PhoRanker đang sử dụng thiết bị: CPU.")
+
+            logger.info(f"Đã khởi tạo thành công PhoRanker từ '{target}'.")
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo PhoRanker ({e}). Sẽ dùng HeuristicReranker dự phòng.")
+            self._model = None
+            self._tokenizer = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._model is None or self._tokenizer is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import torch
+
+            pairs = [[query, c.text] for c in candidates]
+            all_scores: List[float] = []
+
+            with torch.no_grad():
+                for i in range(0, len(pairs), self.batch_size):
+                    batch_pairs = pairs[i : i + self.batch_size]
+                    inputs = self._tokenizer(
+                        batch_pairs,
+                        padding=True,
+                        truncation=True,
+                        max_length=self.max_length,
+                        return_tensors="pt",
+                    )
+                    inputs = {k: v.to(self._device) for k, v in inputs.items()}
+                    outputs = self._model(**inputs, return_dict=True)
+                    logits = outputs.logits.view(-1).float()
+                    probs = torch.sigmoid(logits).cpu().numpy().tolist()
+                    if isinstance(probs, float):
+                        all_scores.append(probs)
+                    else:
+                        all_scores.extend(probs)
+
+            ranked = list(zip(candidates, all_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = "PhoRanker"
+                meta["rerank_score"] = round(float(score), 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(float(score), 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+
+            logger.info(f"PhoRanker đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi khi thực thi PhoRanker ({err}). Chuyển sang HeuristicReranker fallback.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
+class VietnameseRerankerGGUF(BaseReranker):
+    """
+    Reranker sử dụng Vietnamese_Reranker định dạng GGUF (AnhNguyen6688/Vietnamese_Reranker_F16_GGUF).
+    Chạy trực tiếp qua llama-cpp-python với chế độ rank pooling (LLAMA_POOLING_TYPE_RANK).
+    Tối ưu hóa bộ nhớ RAM, tốc độ cao trên CPU/GPU.
+    """
+
+    def __init__(
+        self,
+        model_path: str = "weights/Vietnamese_Reranker_GGUF/Vietnamese_Reranker_F16_GGUF.gguf",
+        max_length: int = 2048,
+        batch_size: int = 16,
+    ):
+        self.model_name = "Vietnamese_Reranker_F16_GGUF"
+        self.model_path = model_path
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self._llm = None
+        self._fallback = HeuristicReranker()
+
+        self._init_model()
+
+    def _init_model(self) -> None:
+        try:
+            import llama_cpp
+            from llama_cpp import Llama
+
+            path_obj = Path(self.model_path)
+            target = str(path_obj.resolve()) if path_obj.exists() else self.model_path
+
+            logger.info(f"Đang tải Vietnamese_Reranker_GGUF từ '{target}'...")
+            self._llm = Llama(
+                model_path=target,
+                embedding=True,
+                pooling_type=llama_cpp.LLAMA_POOLING_TYPE_RANK,
+                n_ctx=self.max_length,
+                n_batch=512,
+                n_threads=12,
+                verbose=False,
+            )
+            logger.info(f"Đã khởi tạo thành công Vietnamese_Reranker_GGUF từ '{target}'.")
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo Vietnamese_Reranker_GGUF ({e}). Fallback HeuristicReranker.")
+            self._llm = None
+
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievedContext],
+        top_n: int = 20,
+    ) -> List[RetrievedContext]:
+        if not candidates:
+            return []
+
+        if self._llm is None:
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+        try:
+            import math
+
+            # Giới hạn context text tối đa 600 ký tự đầu để bảo đảm an toàn bộ nhớ và tốc độ
+            inputs = [f"{query}</s></s>{c.text[:600]}" for c in candidates]
+            all_scores: List[float] = []
+
+            for i in range(0, len(inputs), self.batch_size):
+                batch_inputs = inputs[i : i + self.batch_size]
+                res = self._llm.create_embedding(batch_inputs)
+                for d in res["data"]:
+                    all_scores.append(float(d["embedding"][0]))
+
+            ranked = list(zip(candidates, all_scores))
+            ranked.sort(key=lambda x: x[1], reverse=True)
+
+            results: List[RetrievedContext] = []
+            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+                meta = dict(cand.metadata) if cand.metadata else {}
+                meta["reranker_name"] = "Vietnamese_Reranker_F16_GGUF"
+                # Áp dụng sigmoid đưa score về [0, 1] cho hiển thị chuẩn xác
+                try:
+                    prob = 1.0 / (1.0 + math.exp(-score))
+                except OverflowError:
+                    prob = 0.0 if score < 0 else 1.0
+                meta["rerank_score"] = round(prob, 4)
+                results.append(
+                    RetrievedContext(
+                        chunk_id=cand.chunk_id,
+                        text=cand.text,
+                        similarity_score=round(prob, 4),
+                        rank=rank,
+                        metadata=meta,
+                    )
+                )
+
+            logger.info(f"Vietnamese_Reranker_GGUF đã sắp xếp {len(candidates)} ứng viên -> {len(results)} ranked chunks.")
+            return results
+        except Exception as err:
+            logger.warning(f"Lỗi khi thực thi Vietnamese_Reranker_GGUF ({err}). Fallback HeuristicReranker.")
+            return self._fallback.rerank(query, candidates, top_n=top_n)
+
+
 class RerankerFactory:
     """Factory khởi tạo Reranker phù hợp nhất theo cấu hình và thư viện hiện có."""
 
     @staticmethod
-    def create(reranker_type: str = "auto", model_name: Optional[str] = None) -> BaseReranker:
+    def create(
+        reranker_type: str = "auto",
+        model_name: Optional[str] = None,
+        onnx_filename: Optional[str] = None,
+        **kwargs,
+    ) -> BaseReranker:
         rtype = reranker_type.lower()
+        model_str = (model_name or "").lower()
 
         if rtype == "heuristic":
             return HeuristicReranker()
+
+        # 1. GGUF Reranker (AnhNguyen6688/Vietnamese_Reranker_F16_GGUF)
+        if rtype in ("vietnamese_reranker_gguf", "gguf") or "gguf" in model_str:
+            return VietnameseRerankerGGUF(
+                model_path=model_name or "weights/Vietnamese_Reranker_GGUF/Vietnamese_Reranker_F16_GGUF.gguf",
+            )
+
+        # 2. Vietnamese_Reranker (thanhtantran/Vietnamese_Reranker)
+        if rtype in ("vietnamese_reranker", "vietnamese-reranker", "vietnamesereranker") or "vietnamese_reranker" in model_str:
+            return VietnameseReranker(
+                model_name=model_name or "weights/Vietnamese_Reranker",
+            )
+
+        # 3. PhoRanker (itdainb/PhoRanker)
+        if rtype in ("phoranker", "pho_ranker") or "phoranker" in model_str:
+            return PhoRankerReranker(
+                model_name=model_name or "weights/PhoRanker",
+            )
+
+        # 4. ViRanker (namdp-ptit/ViRanker)
+        if rtype in ("viranker", "vi_ranker") or "viranker" in model_str:
+            return ViRankerReranker(
+                model_name=model_name or "weights/ViRanker",
+            )
+
+
+        # Ưu tiên Jina ONNX nếu được chỉ định hoặc model_name chứa 'jina'
+        jina_kwargs: Dict[str, Any] = {}
+        if kwargs.get("max_length") is not None:
+            jina_kwargs["max_length"] = int(kwargs["max_length"])
+        if kwargs.get("batch_size") is not None:
+            jina_kwargs["batch_size"] = int(kwargs["batch_size"])
+
+        if rtype in ("onnx", "jina", "jina_onnx") or "jina" in model_str:
+            return JinaONNXReranker(
+                model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
+                onnx_filename=onnx_filename or "onnx/model.onnx",
+                **jina_kwargs,
+            )
 
         if rtype == "flashrank":
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
 
         if rtype == "cross_encoder":
-            return CrossEncoderReranker(model_name=model_name or "BAAI/bge-reranker-v2-m3")
+            return CrossEncoderReranker(model_name=model_name or "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
 
-        # Chế độ "auto": Tự động phát hiện và chọn backend an toàn nhất
+        # Chế độ "auto": Tự động phát hiện backend an toàn nhất
+        try:
+            import onnxruntime  # noqa: F401
+            return JinaONNXReranker(
+                model_name=model_name or "jinaai/jina-reranker-v2-base-multilingual",
+                onnx_filename=onnx_filename or "onnx/model.onnx",
+                **jina_kwargs,
+            )
+        except Exception:
+            pass
+
         try:
             import flashrank  # noqa: F401
             return FlashRankReranker(model_name=model_name or "ms-marco-MiniLM-L-12-v2")
@@ -259,7 +932,7 @@ class RerankerFactory:
 
         try:
             import sentence_transformers  # noqa: F401
-            return CrossEncoderReranker(model_name=model_name or "cross-encoder/ms-marco-MiniLM-L-6-v2")
+            return CrossEncoderReranker(model_name=model_name or "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
         except Exception:
             pass
 

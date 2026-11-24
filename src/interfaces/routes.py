@@ -5,23 +5,110 @@ Nhiệm vụ: Phục vụ giao diện Web người dùng và chuyển tiếp yê
 """
 
 from __future__ import annotations
-import os
+
+import json
+import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from src.base import UserQuery
 from src.pipeline import get_rag_pipeline
-from src.utils.helpers import get_logger, Timer, load_yaml_config
+from src.utils.helpers import Timer, get_logger, load_yaml_config
 
 logger = get_logger("api")
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+DIST_DIR = STATIC_DIR / "dist"
+
+# Các dấu hiệu nhận diện phản hồi lỗi thô từ LLM client / API provider
+_RAW_ERROR_MARKERS = (
+    "MÔ HÌNH AI TẠM THỜI TỪ CHỐI DỊCH VỤ",
+    "Groq [",
+    "SambaNova [",
+    "Gemini [",
+    "org_",
+    "ITPM",
+    "TPM",
+    "rate_limit",
+    "Request too large",
+    "console.groq.com",
+    "billing",
+    "Traceback",
+)
+
+_RAW_ERROR_MARKERS_LOWER = (
+    "mô hình ai tạm thời từ chối dịch vụ",
+    "request too large",
+    "rate_limit",
+    "traceback (most recent call last)",
+    "resource_exhausted",
+)
+
+_ERROR_STREAM_PREFIXES = (
+    "⚠️",
+    "⚠",
+    "mô hình ai tạm thời từ chối dịch vụ",
+    "groq [",
+    "sambanova [",
+    "gemini [",
+    "traceback",
+)
+
+_FRIENDLY_ERROR_MESSAGES: Dict[str, str] = {
+    "token_limit": (
+        "Nội dung câu hỏi hoặc tài liệu tham chiếu hiện hơi dài vượt quá giới hạn xử lý trong một lượt. "
+        "Bạn hãy thử rút gọn câu hỏi hoặc chia nhỏ thành từng ý để mình hỗ trợ chính xác hơn nhé."
+    ),
+    "rate_limit": (
+        "Hệ thống AI hiện đang tiếp nhận nhiều yêu cầu cùng lúc nên tạm thời quá tải. "
+        "Bạn vui lòng đợi trong giây lát rồi thử gửi lại câu hỏi nhé."
+    ),
+    "network": (
+        "Kết nối đến máy chủ AI tạm thời bị gián đoạn hoặc phản hồi chậm. "
+        "Bạn vui lòng kiểm tra lại kết nối và thử gửi lại sau ít phút nhé."
+    ),
+    "server": (
+        "Hệ thống đang gặp sự cố kỹ thuật tạm thời khi xử lý yêu cầu của bạn. "
+        "Bạn vui lòng thử lại sau ít phút nhé."
+    ),
+}
+
+_RESPONSE_FORMAT_RULES = (
+    "\n\n=== QUY TẮC ĐỊNH DẠNG ĐẦU RA BẮT BUỘC ===\n"
+    "- TUYỆT ĐỐI KHÔNG dùng biểu tượng cảm xúc hay icon trang trí (emoji như 📌, ⚠️, 💡, ✅, 🎓, 📚, 🔹, 👉...) "
+    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**) "
+    "và căn cứ quy chế (**Căn cứ quy chế:**).\n"
+    "- Mọi công thức toán học hoặc công thức tính điểm (như điểm SAT, HSA, GPA, học phí) BẮT BUỘC phải viết "
+    "bằng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng, KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, "
+    "và KHÔNG đặt công thức trong dấu backtick `...`), sử dụng \\frac{tử}{mẫu}, \\times, \\text{...}.\n"
+    "- Khi trình bày bảng quy đổi chứng chỉ ngoại ngữ (IELTS, TOEFL, TOEIC, Cambridge, Aptis, VSTEP), "
+    "giữ nội dung từng ô ngắn gọn, rõ ràng.\n"
+    "- Nếu câu hỏi nằm ngoài phạm vi quy chế đào tạo UET hoặc tài liệu ngữ cảnh không có thông tin để trả lời, "
+    "TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\" và không trích dẫn tài liệu.\n"
+)
+
+_VOICE_RESPONSE_FORMAT_RULES = (
+    "\n\n=== QUY TẮC ĐÀM THOẠI GIỌNG NÓI TRỰC TIẾP (BẮT BUỘC) ===\n"
+    "- Người dùng đang nói chuyện trực tiếp với trợ lý qua giọng nói. Hãy trả lời NGẮN GỌN, ĐÚNG TRỌNG TÂM "
+    "trong khoảng 1 đến 3 câu văn tự nhiên để đọc thành tiếng dễ nghe, dễ hiểu.\n"
+    "- TUYỆT ĐỐI KHÔNG liệt kê bảng biểu, không chèn ký hiệu LaTeX ($, \\frac), không dùng ký tự Markdown rườm rà, "
+    "không dùng emoji hay viết dài dòng như tin nhắn văn bản.\n"
+)
 
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="Nội dung câu hỏi của sinh viên")
     session_id: str = Field(default="default_session", description="Mã phiên hội thoại")
-    top_k: int = Field(default=4, description="Số lượng trích đoạn cần lấy")
+    top_k: Optional[int] = Field(
+        default=None,
+        description="Số lượng trích đoạn cần lấy (mặc định lấy theo config.yaml)",
+    )
+    voice_mode: bool = Field(
+        default=False,
+        description="Chế độ đàm thoại giọng nói trực tiếp (trả lời ngắn gọn, đúng trọng tâm)",
+    )
 
 
 class SourceItem(BaseModel):
@@ -29,7 +116,12 @@ class SourceItem(BaseModel):
     text: str
     similarity_score: float
     rank: int
+    search_type: Optional[str] = None
+    search_source: Optional[str] = None
     metadata: Dict[str, Any] = {}
+
+
+SourceItem.model_rebuild()
 
 
 class ChatResponse(BaseModel):
@@ -40,6 +132,186 @@ class ChatResponse(BaseModel):
     model_name: str = ""
 
 
+ChatResponse.model_rebuild()
+
+
+def _build_sources_data(contexts: Optional[List[Any]]) -> List[SourceItem]:
+    """Chuẩn hóa danh sách RetrievedContext thành danh sách SourceItem trả về cho Web UI."""
+    sources_data: List[SourceItem] = []
+    for ctx in contexts or []:
+        meta = dict(getattr(ctx, "metadata", None) or {})
+        title = meta.get("title")
+        if not title or str(title).startswith("Tài liệu UET ("):
+            if "metadata" in meta and isinstance(meta["metadata"], str):
+                try:
+                    nested = json.loads(meta["metadata"])
+                    if isinstance(nested, dict) and nested.get("title"):
+                        title = nested["title"]
+                        meta["title"] = title
+                except Exception:
+                    pass
+            if not title or str(title).startswith("Tài liệu UET ("):
+                first_line = (getattr(ctx, "text", "") or "").strip().split("\n")[0]
+                m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
+                if m and len(m.group(1).strip()) > 3:
+                    title = m.group(1).strip()
+                    meta["title"] = title
+                elif meta.get("source"):
+                    title = meta["source"]
+                    meta["title"] = title
+
+        search_type = meta.get("search_type")
+        search_source = meta.get("search_source")
+        if not search_type:
+            bm25_rank = meta.get("bm25_rank")
+            vec_rank = meta.get("vector_rank")
+            if bm25_rank is not None and vec_rank is not None:
+                search_type = "hybrid"
+                search_source = "BM25 + Vector Search"
+            elif bm25_rank is not None:
+                search_type = "bm25"
+                search_source = "BM25"
+            elif vec_rank is not None:
+                search_type = "vector"
+                search_source = "Vector Search"
+            else:
+                search_type = "hybrid"
+                search_source = "Hybrid"
+
+        meta["search_type"] = search_type
+        meta["search_source"] = search_source
+
+        sources_data.append(
+            SourceItem(
+                chunk_id=ctx.chunk_id,
+                text=ctx.text,
+                similarity_score=ctx.similarity_score,
+                rank=ctx.rank,
+                search_type=search_type,
+                search_source=search_source,
+                metadata=meta,
+            )
+        )
+    return sources_data
+
+
+def _classify_error_text(raw_text: str) -> Dict[str, Any]:
+    """Phân loại chuỗi lỗi kỹ thuật thành mã HTTP, error_type và thông điệp thân thiện."""
+    lower = (raw_text or "").lower()
+
+    if (
+        "413" in lower
+        or "request too large" in lower
+        or "itpm" in lower
+        or "context_length" in lower
+        or "maximum context" in lower
+    ):
+        error_type = "token_limit"
+        status_code = 413
+    elif (
+        "429" in lower
+        or "rate limit" in lower
+        or "rate_limit" in lower
+        or "quota" in lower
+        or "resource_exhausted" in lower
+        or "too many requests" in lower
+    ):
+        error_type = "rate_limit"
+        status_code = 429
+    elif "tpm" in lower or "tokens" in lower:
+        error_type = "token_limit"
+        status_code = 413
+    elif (
+        "timeout" in lower
+        or "timed out" in lower
+        or "connecterror" in lower
+        or "readtimeout" in lower
+        or "connecttimeout" in lower
+        or "connection" in lower
+        or "network" in lower
+        or "không phản hồi" in lower
+    ):
+        error_type = "network"
+        status_code = 503
+    else:
+        error_type = "server"
+        status_code = 500
+
+    return {
+        "error_type": error_type,
+        "status_code": status_code,
+        "message": _FRIENDLY_ERROR_MESSAGES[error_type],
+    }
+
+
+def _classify_exception(exc: Exception) -> Dict[str, Any]:
+    """Phân loại Python exception phát sinh khi gọi RAG/LLM thành thông điệp an toàn cho client."""
+    exc_name = type(exc).__name__
+    exc_str = str(exc or "")
+    combined = f"{exc_name}: {exc_str}"
+
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return {
+            "error_type": "network",
+            "status_code": 503,
+            "message": _FRIENDLY_ERROR_MESSAGES["network"],
+        }
+
+    return _classify_error_text(combined)
+
+
+def _detect_and_classify_llm_error(
+    answer: str,
+    model_name: str = "",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Phát hiện lỗi kỹ thuật bị nhúng trong Response.answer (ví dụ fallback từ UETLLMClient).
+    Trả về dict {error_type, status_code, message} nếu là lỗi, ngược lại trả về None.
+    """
+    text = answer or ""
+    lower_text = text.lower()
+    meta_errors = metadata.get("errors") if isinstance(metadata, dict) else None
+
+    is_fallback_model = (model_name or "").strip().lower() == "multi-provider-fallback"
+    has_meta_errors = bool(meta_errors)
+    has_marker = any(marker in text for marker in _RAW_ERROR_MARKERS) or any(
+        marker in lower_text for marker in _RAW_ERROR_MARKERS_LOWER
+    )
+
+    if not (is_fallback_model or has_meta_errors or has_marker):
+        return None
+
+    extra_detail = " ".join(str(err) for err in meta_errors) if isinstance(meta_errors, list) else str(meta_errors or "")
+    combined = f"{text}\n{extra_detail}".strip()
+    return _classify_error_text(combined)
+
+
+_NO_ANSWER_MARKERS = (
+    "chưa có thông tin cụ thể",
+    "không có thông tin cụ thể",
+    "không có thông tin về",
+    "không tìm thấy thông tin",
+    "chưa tìm thấy thông tin",
+    "tài liệu quy chế lưu trữ chưa có",
+    "tài liệu lưu trữ chưa có",
+    "ngoài phạm vi",
+    "không thuộc phạm vi",
+    "không nằm trong phạm vi",
+    "chưa được đề cập",
+    "không được đề cập",
+    "vui lòng liên hệ trực tiếp phòng đào tạo",
+)
+
+
+def _is_no_answer_or_out_of_domain(answer: str) -> bool:
+    """Nhận diện phản hồi từ chối / không có thông tin / ngoài domain để ẩn tài liệu tham khảo."""
+    lower = (answer or "").strip().lower()
+    if not lower:
+        return True
+    return any(marker in lower for marker in _NO_ANSWER_MARKERS)
+
+
 def create_app():
     """
     Khởi tạo ứng dụng FastAPI phục vụ API và Giao diện Web.
@@ -47,7 +319,7 @@ def create_app():
     try:
         from fastapi import FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import FileResponse
+        from fastapi.responses import FileResponse, StreamingResponse
         from fastapi.staticfiles import StaticFiles
     except ImportError:
         logger.warning("Chưa cài đặt FastAPI. Vui lòng chạy: pip install fastapi uvicorn")
@@ -67,26 +339,74 @@ def create_app():
         allow_headers=["*"],
     )
 
-    # Phục vụ thư mục static (CSS, JS, assets)
+    # Chống trình duyệt lưu cache file tĩnh trong quá trình phát triển
+    @app.middleware("http")
+    async def add_no_cache_headers(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.startswith("/static") or path.startswith("/assets"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+    # Phục vụ assets bundle (Vite build) và thư mục static gốc
+    dist_assets_dir = DIST_DIR / "assets"
+    if dist_assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(dist_assets_dir)), name="dist_assets")
+
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    @app.on_event("startup")
+    def startup_warmup():
+        """Tải trước toàn bộ mô hình và thực hiện giai đoạn Cold-Start trước khi phục vụ người dùng."""
+        logger.info("🚀 [1/2] Đang khởi động và nạp trước RAG Pipeline vào RAM (Pre-warming)...")
+        try:
+            pipeline = get_rag_pipeline()
+            logger.info("🔥 [2/2] Đang thực thi Cold-Start Warmup để làm nóng Embedding ONNX, Reranker, BM25 & LLM...")
+            # Thực hiện một truy vấn giả lập để:
+            # 1. Kích hoạt bộ tách từ tiếng Việt underthesea
+            # 2. Kích hoạt đồ thị suy luận ONNX FP32 của BGE-M3 Embedding
+            # 3. Kích hoạt bộ nhớ đệm ChromaDB Vector Search
+            # 4. Kích hoạt đồ thị suy luận ONNX của Jina Reranker
+            # 5. Thiết lập kết nối mạng ban đầu (SSL Handshake) tới LLM API
+            warmup_query = UserQuery(
+                query_text="Tiêu chuẩn xét học bổng khuyến khích học tập UET",
+                session_id="system_cold_start",
+            )
+            pipeline.query(warmup_query, top_k=2)
+            logger.info("✨ Giai đoạn Cold-Start hoàn tất! Toàn bộ hệ thống đã sẵn sàng 100%, câu hỏi đầu tiên sẽ phản hồi tức thì!")
+        except Exception as e:
+            logger.warning(f"Lỗi khởi động hoặc Cold-Start Warmup: {e}")
+
     @app.get("/")
     def serve_homepage():
-        """Phục vụ trang chủ Web UI."""
+        """Phục vụ trang chủ Web UI (ưu tiên React dist build, fallback static/index.html)."""
+        dist_index = DIST_DIR / "index.html"
+        if dist_index.exists():
+            return FileResponse(
+                dist_index,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"},
+            )
         index_file = STATIC_DIR / "index.html"
         if index_file.exists():
             return FileResponse(
                 index_file,
-                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"},
             )
         return {"message": "UET Chatbot API is running. index.html not found."}
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        from fastapi.responses import Response
+        return Response(status_code=204)
 
     @app.get("/api/health")
     def health_check() -> Dict[str, Any]:
         """Kiểm tra trạng thái máy chủ và mô hình LLM hiện tại."""
         config = load_yaml_config()
-        model_name = config.get("llm", {}).get("model_name", "gemini-3.8-flash")
+        model_name = config.get("llm", {}).get("model_name", "tencent/hy4-flash")
         return {
             "status": "ok",
             "message": "UET Chatbot RAG Server đang chạy bình thường.",
@@ -100,32 +420,231 @@ def create_app():
         """
         pipeline = get_rag_pipeline()
         if not pipeline:
-            raise HTTPException(status_code=500, detail="RAG Pipeline chưa sẵn sàng.")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Hệ thống RAG hiện chưa sẵn sàng. Bạn vui lòng thử lại sau ít phút nhé.",
+                    "error_type": "server",
+                },
+            )
 
         with Timer() as timer:
             user_query = UserQuery(
                 query_text=request.query,
                 session_id=request.session_id,
             )
-            response = pipeline.query(user_query, top_k=request.top_k)
-
-        sources_data = [
-            SourceItem(
-                chunk_id=ctx.chunk_id,
-                text=ctx.text,
-                similarity_score=ctx.similarity_score,
-                rank=ctx.rank,
-                metadata=ctx.metadata,
+            retrieval_top_k = (
+                request.top_k
+                if request.top_k is not None
+                else getattr(pipeline.retriever, "default_top_k", 10)
             )
-            for ctx in response.sources
-        ]
+            try:
+                response = pipeline.query(user_query, top_k=retrieval_top_k)
+            except Exception as exc:
+                logger.exception("Lỗi trong pipeline.query tại POST /api/chat: %s", exc)
+                classified = _classify_exception(exc)
+                raise HTTPException(
+                    status_code=classified["status_code"],
+                    detail={
+                        "message": classified["message"],
+                        "error_type": classified["error_type"],
+                    },
+                )
+
+        detected_error = _detect_and_classify_llm_error(
+            response.answer,
+            response.model_name or "",
+            response.metadata,
+        )
+        if detected_error is not None:
+            logger.error(
+                "LLM fallback/error detected in POST /api/chat [%s] model=%s metadata=%s raw=%s",
+                detected_error["error_type"],
+                response.model_name,
+                response.metadata,
+                response.answer,
+            )
+            raise HTTPException(
+                status_code=detected_error["status_code"],
+                detail={
+                    "message": detected_error["message"],
+                    "error_type": detected_error["error_type"],
+                },
+            )
+
+        sources_data = (
+            []
+            if _is_no_answer_or_out_of_domain(response.answer)
+            else _build_sources_data(response.sources)
+        )
 
         return ChatResponse(
             query=request.query,
             answer=response.answer,
             sources=sources_data,
             latency_seconds=round(timer.elapsed, 3),
-            model_name=response.model_name,
+            model_name=response.model_name or "",
+        )
+
+    @app.post("/api/chat/stream")
+    def chat_stream_endpoint(request: ChatRequest):
+        """
+        Streaming SSE endpoint trả về nguồn tham khảo, token câu trả lời và trạng thái hoàn tất.
+        """
+        pipeline = get_rag_pipeline()
+        if not pipeline:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Hệ thống RAG hiện chưa sẵn sàng. Bạn vui lòng thử lại sau ít phút nhé.",
+                    "error_type": "server",
+                },
+            )
+
+        user_query = UserQuery(
+            query_text=request.query,
+            session_id=request.session_id,
+        )
+
+        def event_generator():
+            with Timer() as timer:
+                try:
+                    retrieval_top_k = (
+                        request.top_k
+                        if request.top_k is not None
+                        else getattr(pipeline.retriever, "default_top_k", 10)
+                    )
+                    retrieve_kwargs: Dict[str, Any] = {
+                        "query": user_query,
+                        "top_k": retrieval_top_k,
+                    }
+                    if user_query.filters is not None:
+                        retrieve_kwargs["filters"] = user_query.filters
+
+                    contexts = pipeline.retriever.retrieve(**retrieve_kwargs)
+                    sources_data = _build_sources_data(contexts)
+                    model_name = getattr(getattr(pipeline, "llm", None), "model_name", "") or ""
+
+                    sources_payload = {
+                        "type": "sources",
+                        "sources": [s.model_dump() for s in sources_data],
+                        "model_name": model_name,
+                    }
+                    yield f"data: {json.dumps(sources_payload, ensure_ascii=False)}\n\n"
+
+                    augmented_prompt = pipeline.prompt_augmenter.augment(
+                        query=user_query,
+                        contexts=contexts,
+                    )
+                    format_rules = (
+                        _VOICE_RESPONSE_FORMAT_RULES
+                        if request.voice_mode
+                        else _RESPONSE_FORMAT_RULES
+                    )
+                    if hasattr(augmented_prompt, "model_copy") and isinstance(
+                        getattr(augmented_prompt, "formatted_prompt", None), str
+                    ):
+                        augmented_prompt = augmented_prompt.model_copy(
+                            update={
+                                "formatted_prompt": augmented_prompt.formatted_prompt
+                                + format_rules
+                            }
+                        )
+
+                    accumulated = ""
+                    pending_prefix = ""
+                    prefix_checked = False
+
+                    for chunk in pipeline.llm.generate_stream(augmented_prompt):
+                        if not chunk:
+                            continue
+                        accumulated += chunk
+
+                        detected = (
+                            _detect_and_classify_llm_error(accumulated)
+                            or _detect_and_classify_llm_error(chunk)
+                        )
+                        if detected is not None:
+                            logger.error(
+                                "LLM error detected in POST /api/chat/stream [%s] model=%s raw=%s",
+                                detected["error_type"],
+                                model_name,
+                                accumulated,
+                            )
+                            err_payload = {
+                                "type": "error",
+                                "error_type": detected["error_type"],
+                                "message": detected["message"],
+                            }
+                            yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+
+                        if not prefix_checked:
+                            pending_prefix += chunk
+                            stripped = pending_prefix.lstrip().lower()
+                            maybe_error_prefix = any(
+                                header.startswith(stripped) or stripped.startswith(header)
+                                for header in _ERROR_STREAM_PREFIXES
+                            )
+                            if maybe_error_prefix and len(pending_prefix) < 100:
+                                continue
+
+                            prefix_checked = True
+                            token_payload = {"type": "token", "content": pending_prefix}
+                            pending_prefix = ""
+                            yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+                        else:
+                            token_payload = {"type": "token", "content": chunk}
+                            yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+
+                    if pending_prefix:
+                        detected = _detect_and_classify_llm_error(pending_prefix)
+                        if detected is not None:
+                            logger.error(
+                                "LLM error detected at end of stream [%s] model=%s raw=%s",
+                                detected["error_type"],
+                                model_name,
+                                pending_prefix,
+                            )
+                            err_payload = {
+                                "type": "error",
+                                "error_type": detected["error_type"],
+                                "message": detected["message"],
+                            }
+                            yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+
+                        token_payload = {"type": "token", "content": pending_prefix}
+                        yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+
+                    done_payload = {
+                        "type": "done",
+                        "latency_seconds": round(timer.elapsed, 3),
+                        "hide_sources": _is_no_answer_or_out_of_domain(accumulated),
+                    }
+                    yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as exc:
+                    logger.exception("Lỗi trong quá trình streaming /api/chat/stream: %s", exc)
+                    classified = _classify_exception(exc)
+                    err_payload = {
+                        "type": "error",
+                        "error_type": classified["error_type"],
+                        "message": classified["message"],
+                    }
+                    yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return app
@@ -134,9 +653,9 @@ def create_app():
 def run_web(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True):
     """Khởi chạy API Server và Giao diện Web với FastAPI và Uvicorn."""
     try:
-        import uvicorn
-        import webbrowser
         import threading
+        import webbrowser
+        import uvicorn
 
         app = create_app()
         if app is None:
@@ -149,9 +668,24 @@ def run_web(host: str = "127.0.0.1", port: int = 8000, open_browser: bool = True
         print("💡 Nhấn Ctrl+C để dừng server.\n")
 
         if open_browser:
-            threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+            def wait_and_open_browser():
+                import time
+                import urllib.request
+                health_url = f"{url}/api/health"
+                # Chờ server hoàn tất khởi động và Cold-Start warmup rồi mới bật trình duyệt
+                for _ in range(120):
+                    time.sleep(0.5)
+                    try:
+                        with urllib.request.urlopen(health_url, timeout=1.0) as resp:
+                            if resp.status == 200:
+                                time.sleep(0.2)
+                                webbrowser.open(url)
+                                break
+                    except Exception:
+                        pass
+
+            threading.Thread(target=wait_and_open_browser, daemon=True).start()
 
         uvicorn.run(app, host=host, port=port)
     except ImportError:
         print("Lỗi: Cần cài đặt uvicorn để chạy server (pip install uvicorn)")
-

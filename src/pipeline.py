@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 from urllib.parse import urlparse
-from typing import Any, Dict, Generator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -46,10 +46,12 @@ from src.ingestion import UETDataLoader, clean_whitespace, DataManifestTracker
 from src.chunking import UETChunker
 from src.embeddings import UETEmbedder
 from src.vectordb import UETVectorStore
-from src.retrieval import UETRetriever
 from src.prompts import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
 from src.llm import UETLLMClient
 from src.indexing.chunks import load_chunks_from_dir
+
+if TYPE_CHECKING:
+    from src.retrieval import UETRetriever
 
 logger = get_logger("pipeline")
 
@@ -94,7 +96,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
     Hỗ trợ điều phối chặng linh hoạt (Multi-Stage Ingestion) và chống xử lý trùng lặp (Deduplication).
     """
 
-    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data"]
+    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data", "graph_data"]
 
     def __init__(
         self,
@@ -117,17 +119,44 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             config=cfg,
         )
 
-        emb = embedding_model or UETEmbedder()
-        vs = vector_store or UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=emb)
+        self._embedding_model: Optional[BaseEmbeddingModel] = embedding_model
+        self._vector_store: Optional[BaseVectorStore] = vector_store
         super().__init__(
             crawler=crawler or UETDataLoader(),
             preprocessor=preprocessor or UETPreprocessor(),
             chunker=active_chunker,
-            embedding_model=emb,
-            vector_store=vs,
+            embedding_model=embedding_model,
+            vector_store=vector_store,
         )
         self.config = cfg
         self.manifest = manifest or DataManifestTracker(manifest_path=BASE_DIR / "data" / ".ingest_manifest.json")
+
+    @property
+    def embedding_model(self) -> BaseEmbeddingModel:
+        """Khởi tạo lazy mô hình embedding để tránh tải bge-m3 ở các chặng không dùng vector."""
+        if self._embedding_model is None:
+            self._embedding_model = UETEmbedder()
+            if self._vector_store is not None and getattr(self._vector_store, "embedding_model", None) is None:
+                self._vector_store.embedding_model = self._embedding_model
+        return self._embedding_model
+
+    @embedding_model.setter
+    def embedding_model(self, value: Optional[BaseEmbeddingModel]) -> None:
+        self._embedding_model = value
+
+    @property
+    def vector_store(self) -> BaseVectorStore:
+        """Khởi tạo lazy VectorStore khi thực sự cần truy cập ChromaDB."""
+        if self._vector_store is None:
+            self._vector_store = UETVectorStore(
+                persist_dir=BASE_DIR / "database" / "vector_db",
+                embedding_model=self._embedding_model,
+            )
+        return self._vector_store
+
+    @vector_store.setter
+    def vector_store(self, value: Optional[BaseVectorStore]) -> None:
+        self._vector_store = value
 
     def run(self, sources: List[DataSource], clear_existing: bool = False) -> Dict[str, Any]:
         """
@@ -364,9 +393,15 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         }
 
     def _run_chunked_to_vectordb(
-        self, batch_size: int = 500
+        self, batch_size: int = 500, clear_existing: bool = False
     ) -> Dict[str, int]:
         """Chuyển đổi dữ liệu từ chunked -> vectordb (nhúng vector và lưu vào ChromaDB)."""
+        if clear_existing:
+            logger.info("⚠️  --clear được bật: Xóa sạch toàn bộ dữ liệu cũ trong ChromaDB và manifest stage 'vectordb'...")
+            self.vector_store.clear()
+            self.manifest.clear_stage("vectordb")
+            self.manifest.save()
+            logger.info("✅ Đã xóa sạch ChromaDB và manifest stage 'vectordb'.")
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         jsonl_files = sorted(chunked_dir.glob("*.jsonl"))
 
@@ -424,21 +459,28 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self.manifest.save()
         return {"chunks_indexed": total_indexed, "skipped_chunks": skipped_chunks, "total_in_db": self.vector_store.count()}
 
-    def _run_chunked_to_indexed_data(self) -> Dict[str, Any]:
+    def _run_chunked_to_indexed_data(self, clear_existing: bool = False) -> Dict[str, Any]:
         """
         Lập chỉ mục BM25 trực tiếp từ data/chunked_data/*.jsonl và lưu ra database/bm25_index.pkl.
         Được thực hiện bởi phân hệ Lập chỉ mục (src.indexing), tách biệt hoàn toàn khỏi phân hệ Retrieval.
         """
         from src.indexing.chunks import load_chunks_from_dir
-        from src.indexing.sparse import BM25Index
+        from src.indexing import UETIndexer
 
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         chunks = load_chunks_from_dir(chunked_dir)
 
-        bm25 = BM25Index(chunks)
         out_path = BASE_DIR / "database" / "bm25_index.pkl"
-        bm25.save(out_path)
+        if clear_existing and out_path.exists():
+            out_path.unlink()
 
+        indexer = UETIndexer(
+            vector_store=self.vector_store,
+            sparse_path=out_path,
+        )
+        result = indexer.index_chunks(chunks, clear_existing=clear_existing)
+
+        # Chỉ cập nhật manifest khi kiểm tra và lưu BM25 thành công.
         for chunk in chunks:
             self.manifest.mark_processed(
                 chunk.chunk_id,
@@ -448,9 +490,83 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         self.manifest.save()
 
         return {
-            "chunks_indexed": bm25.count(),
+            "chunks_indexed": result["indexed_chunks"],
             "sparse_file": str(out_path),
-            "status": "success",
+            "status": result["status"],
+        }
+
+    def _run_chunked_to_graph_data(
+        self,
+        clear_existing: bool = False,
+        domain: Optional[str] = None,
+        max_chunks: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Xây dựng chỉ mục GraphRAG (Graph Vector Index) từ data/chunked_data/*.jsonl
+        và lưu ra database/graph_index.pkl. Hỗ trợ giới hạn domain / số chunk để thử nghiệm an toàn.
+        """
+        from src.indexing.chunks import load_chunks_from_dir
+        from src.indexing.graph import GraphIndex
+
+        paths_cfg = self.config.get("paths", {})
+        graph_cfg = self.config.get("graph", {})
+
+        chunked_dir = BASE_DIR / "data" / "chunked_data"
+        effective_max_chunks = max_chunks if max_chunks is not None else graph_cfg.get("max_chunks")
+        chunks = load_chunks_from_dir(
+            chunked_dir,
+            domain=domain,
+            max_chunks=effective_max_chunks,
+        )
+
+        out_path = Path(paths_cfg.get("graph_index_file", "database/graph_index.pkl"))
+        if not out_path.is_absolute():
+            out_path = BASE_DIR / out_path
+
+        cache_path = Path(paths_cfg.get("graph_llm_cache_file", "database/graph_llm_cache.json"))
+        if not cache_path.is_absolute():
+            cache_path = BASE_DIR / cache_path
+
+        if clear_existing and out_path.exists():
+            out_path.unlink()
+
+        enable_llm = bool(graph_cfg.get("enable_llm_extraction", False))
+        llm_provider = str(graph_cfg.get("llm_provider", "openrouter"))
+        llm_client = UETLLMClient(provider=llm_provider) if enable_llm else None
+
+        active_store = self.vector_store
+        fallback_emb = self._embedding_model if active_store.count() > 0 else self.embedding_model
+
+        graph_index = GraphIndex(
+            chunks=chunks,
+            embedding_model=fallback_emb,
+            vector_store=active_store,
+            llm_client=llm_client,
+            enable_llm_extraction=enable_llm,
+            llm_provider=llm_provider,
+            llm_model=graph_cfg.get("llm_model", "tencent/hy4-flash"),
+            llm_domains=graph_cfg.get("llm_domains"),
+            max_llm_chunks=graph_cfg.get("max_llm_chunks"),
+            embed_batch_size=int(graph_cfg.get("embed_batch_size", 256)),
+            cache_path=cache_path,
+        )
+        graph_index.save(out_path)
+
+        for chunk in chunks:
+            self.manifest.mark_processed(
+                chunk.chunk_id,
+                "graph_data",
+                content_hash=self.manifest.compute_hash(chunk.text),
+            )
+        self.manifest.save()
+
+        return {
+            "chunks_indexed": graph_index.count(),
+            "entities_count": graph_index.entity_count(),
+            "triples_count": graph_index.triple_count(),
+            "llm_calls": graph_index.llm_calls_count,
+            "graph_file": str(out_path),
+            "status": "success" if chunks else "empty",
         }
 
     def run_stages(
@@ -458,13 +574,25 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         from_stage: str = "raw",
         to_stage: str = "vectordb",
         batch_size: int = 500,
+        clear: bool = False,
+        clear_existing: Optional[bool] = None,
+        domain: Optional[str] = None,
+        max_chunks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Kích hoạt chạy luồng dữ liệu từ một giai đoạn đến một giai đoạn cụ thể.
         Tự động điều phối các bước trung gian hợp lệ:
         - Tuyến Vector DB: raw -> processed -> chunked -> vectordb
         - Tuyến Sparse Index: raw -> processed -> chunked -> indexed_data
+
+        Nếu clear=True: xóa toàn bộ dữ liệu cũ (chunked_data, vectordb, BM25 index, manifest)
+        trước khi chạy lại, đảm bảo nạp mới hoàn toàn.
         """
+        if clear_existing is not None:
+            clear = clear or clear_existing
+
+        import shutil
+
         from_stage = from_stage.lower().strip()
         to_stage = to_stage.lower().strip()
 
@@ -474,12 +602,70 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 f"Nhận được: from='{from_stage}', to='{to_stage}'"
             )
 
-        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3}
+        if to_stage in ("indexed_data", "graph_data") and from_stage in ["raw", "processed"]:
+            raise ValueError(
+                "Để đảm bảo tính toàn vẹn và đồng bộ ID giữa ChromaDB, BM25 và GraphRAG, "
+                "vui lòng thực hiện theo 2 bước tuần tự:\n"
+                f"  • Bước 1: python main.py --ingest --from {from_stage} --to vectordb --clear\n"
+                f"  • Bước 2: python main.py --ingest --from chunked --to {to_stage} --clear"
+            )
+
+        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3, "graph_data": 3}
         if stage_order[from_stage] >= stage_order[to_stage]:
             raise ValueError(
                 f"from_stage '{from_stage}' phải đứng trước to_stage '{to_stage}'. "
-                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data"
+                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data / graph_data"
             )
+
+        # ---- XÓA DỮ LIỆU CŨ nếu --clear được bật ----
+        if clear:
+            logger.info("🗑️ [--clear] Bắt đầu xóa dữ liệu cũ trước khi chạy lại...")
+            stages_to_reset = set()
+
+            # 1. Reset processed nếu chạy từ raw
+            if from_stage == "raw":
+                stages_to_reset.add("processed")
+
+            # 2. Xóa các file trong folder chunked_data nếu đi qua chặng processed->chunked
+            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
+                chunked_dir = BASE_DIR / "data" / "chunked_data"
+                if chunked_dir.exists():
+                    shutil.rmtree(chunked_dir)
+                    chunked_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info("✅ Đã dọn sạch các file trong folder data/chunked_data")
+                stages_to_reset.add("chunked")
+
+            # 3. Xóa toàn bộ vectors trong ChromaDB nếu đích là vectordb
+            if to_stage == "vectordb":
+                try:
+                    self.vector_store.clear()
+                    logger.info("✅ Đã xóa toàn bộ vectors trong ChromaDB")
+                except Exception as e:
+                    logger.warning(f"⚠️ Không thể xóa vectordb: {e}")
+                stages_to_reset.add("vectordb")
+
+            # 4. Xóa file BM25 index cũ nếu đích là indexed_data
+            if to_stage == "indexed_data":
+                bm25_path = BASE_DIR / "database" / "bm25_index.pkl"
+                if bm25_path.exists():
+                    bm25_path.unlink()
+                    logger.info("✅ Đã xóa file BM25 index cũ (database/bm25_index.pkl)")
+                stages_to_reset.add("indexed_data")
+
+            # 4b. Xóa file GraphRAG index cũ nếu đích là graph_data
+            if to_stage == "graph_data":
+                graph_rel = self.config.get("paths", {}).get("graph_index_file", "database/graph_index.pkl")
+                graph_path = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+                if graph_path.exists():
+                    graph_path.unlink()
+                    logger.info(f"✅ Đã xóa file GraphRAG index cũ ({graph_rel})")
+                stages_to_reset.add("graph_data")
+
+            # 5. Reset manifest entries cho các chặng tương ứng
+            if stages_to_reset:
+                self.manifest.reset_stages(list(stages_to_reset))
+                logger.info(f"✅ Đã reset manifest tracking cho các chặng: {list(stages_to_reset)}")
+
 
         results: Dict[str, Any] = {
             "from_stage": from_stage,
@@ -489,14 +675,14 @@ class UETIngestionPipeline(BaseIngestionPipeline):
 
         with Timer() as timer:
             # Chặng 1: raw -> processed
-            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb", "indexed_data"]:
+            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: raw -> processed")
                 res_1 = self._run_raw_to_processed()
                 results["transitions"]["raw_to_processed"] = res_1
                 logger.info(f"✔ Hoàn thành raw -> processed: {res_1}")
 
             # Chặng 2: processed -> chunked
-            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb", "indexed_data"]:
+            if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: processed -> chunked")
                 res_2 = self._run_processed_to_chunked()
                 results["transitions"]["processed_to_chunked"] = res_2
@@ -505,20 +691,32 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             # Chặng 3a: chunked -> vectordb
             if from_stage in ["raw", "processed", "chunked"] and to_stage == "vectordb":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> vectordb")
-                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size)
+                res_3 = self._run_chunked_to_vectordb(batch_size=batch_size, clear_existing=clear)
                 results["transitions"]["chunked_to_vectordb"] = res_3
                 logger.info(f"✔ Hoàn thành chunked -> vectordb: {res_3}")
 
             # Chặng 3b: chunked -> indexed_data
-            if from_stage in ["raw", "processed", "chunked"] and to_stage == "indexed_data":
+            if from_stage == "chunked" and to_stage == "indexed_data":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> indexed_data (BM25 Sparse Index)")
-                res_4 = self._run_chunked_to_indexed_data()
+                res_4 = self._run_chunked_to_indexed_data(clear_existing=clear)
                 results["transitions"]["chunked_to_indexed_data"] = res_4
                 logger.info(f"✔ Hoàn thành chunked -> indexed_data: {res_4}")
+
+            # Chặng 3c: chunked -> graph_data
+            if from_stage == "chunked" and to_stage == "graph_data":
+                logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> graph_data (GraphRAG Vector Index)")
+                res_5 = self._run_chunked_to_graph_data(
+                    clear_existing=clear,
+                    domain=domain,
+                    max_chunks=max_chunks,
+                )
+                results["transitions"]["chunked_to_graph_data"] = res_5
+                logger.info(f"✔ Hoàn thành chunked -> graph_data: {res_5}")
 
         results["latency_seconds"] = round(timer.elapsed, 2)
         logger.info(f"Hoàn thành toàn bộ tiến trình từ '{from_stage}' đến '{to_stage}' trong {results['latency_seconds']}s")
         return results
+
 
     def get_stage_stats(self) -> Dict[str, Any]:
         """Thống kê tổng số lượng dữ liệu hiện có ở từng giai đoạn."""
@@ -550,6 +748,10 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         db_count = self.vector_store.count()
         bm25_exists = bm25_file.exists()
         bm25_size_mb = round(bm25_file.stat().st_size / (1024 * 1024), 2) if bm25_exists else 0.0
+        graph_rel = self.config.get("paths", {}).get("graph_index_file", "database/graph_index.pkl")
+        graph_file = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+        graph_exists = graph_file.exists()
+        graph_size_mb = round(graph_file.stat().st_size / (1024 * 1024), 2) if graph_exists else 0.0
 
         return {
             "stages": {
@@ -558,6 +760,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 "chunked": {"path": str(chunked_dir.relative_to(BASE_DIR)), "chunk_count": chunk_count},
                 "vectordb": {"path": "database/vector_db", "vector_count": db_count},
                 "indexed_data": {"path": "database/bm25_index.pkl", "exists": bm25_exists, "size_mb": bm25_size_mb},
+                "graph_data": {"path": str(graph_rel), "exists": graph_exists, "size_mb": graph_size_mb},
             },
             "manifest_tracking": self.manifest.get_stats(),
         }
@@ -595,23 +798,27 @@ class UETRAGPipeline(BaseRAGPipeline):
         )
 
         # UETRetriever điều phối quy trình BM25 + Vector + Hybrid RRF + Reranker
-        self.retriever = retriever or UETRetriever(
-            embedding_model=self.embedding_model,
-            vector_store=self.vector_store,
-        )
+        if retriever is None:
+            from src.retrieval import UETRetriever
+            retriever = UETRetriever(
+                embedding_model=self.embedding_model,
+                vector_store=self.vector_store,
+            )
+        self.retriever = retriever
 
-    def query(self, query: UserQuery, top_k: int = 5) -> Response:
+    def query(self, query: UserQuery, top_k: Optional[int] = None) -> Response:
         """
         Thực thi quy trình trả lời câu hỏi:
         1. Gọi UETRetriever: BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K
         2. Ghép ngữ cảnh vào Prompt (AugmentedPrompt) theo chuẩn BaseRAGPipeline
         3. Gọi LLM sinh câu trả lời
         """
+        k = top_k if top_k is not None else getattr(self.retriever, "default_top_k", 10)
         with Timer() as timer:
             # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever
             contexts = self.retriever.retrieve(
                 query=query,
-                top_k=top_k,
+                top_k=k,
                 filters=query.filters,
             )
 
@@ -622,13 +829,14 @@ class UETRAGPipeline(BaseRAGPipeline):
         response.latency_seconds = round(timer.elapsed, 3)
         return response
 
-    def query_stream(self, query: UserQuery, top_k: int = 5) -> Generator[str, None, None]:
+    def query_stream(self, query: UserQuery, top_k: Optional[int] = None) -> Generator[str, None, None]:
         """
         Sinh phản hồi dạng luồng (streaming) cho giao diện Web/Chatbot.
         """
+        k = top_k if top_k is not None else getattr(self.retriever, "default_top_k", 10)
         contexts = self.retriever.retrieve(
             query=query,
-            top_k=top_k,
+            top_k=k,
             filters=query.filters,
         )
         augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
@@ -653,54 +861,11 @@ def get_rag_pipeline() -> UETRAGPipeline:
 
     # Nếu ChromaDB chưa có dữ liệu hoặc chạy lần đầu, nạp 5 chunk quy chế mẫu dự phòng
     if vector_store.count() == 0:
-        logger.info("Chưa có cơ sở dữ liệu database/vector_db/, nạp 5 chunk quy chế mẫu dự phòng...")
-        initial_chunks = [
-            DataChunk(
-                text="Điều kiện để sinh viên được xét công nhận tốt nghiệp đại học tại UET:\n"
-                     "1. Cho đến thời điểm xét tốt nghiệp không bị truy cứu trách nhiệm hình sự hoặc không đang trong thời gian bị kỷ luật ở mức đình chỉ học tập.\n"
-                     "2. Tích lũy đủ số học phần và số tín chỉ quy định trong chương trình đào tạo của ngành học.\n"
-                     "3. Điểm trung bình chung tích lũy toàn khóa học đạt từ 2,00 trở lên (theo thang điểm 4).\n"
-                     "4. Đạt chuẩn đầu ra về Ngoại ngữ (tối thiểu B2 hoặc tương đương VSTEP bậc 4) và Tin học theo quy định của ĐHQGHN.\n"
-                     "5. Có chứng chỉ Giáo dục Quốc phòng - An ninh và chứng chỉ Giáo dục Thể chất.",
-                metadata={"title": "Quy định điều kiện xét tốt nghiệp đại học chính quy UET", "page": 42, "file_path": "quy_che_tot_nghiep_dhcq.pdf"},
-            ),
-            DataChunk(
-                text="Quy định xét cấp học bổng khuyến khích học tập tại UET (Theo Quyết định số 4616/QĐ-ĐHQGHN):\n"
-                     "- Học bổng loại Xuất sắc: Sinh viên có điểm trung bình chung học tập (GPA) từ 3.60 trở lên và điểm rèn luyện đạt loại Xuất sắc (từ 90 đến 100 điểm). Mức học bổng bằng 120% mức trần học phí của ngành.\n"
-                     "- Học bổng loại Giỏi: Sinh viên có điểm GPA từ 3.20 đến 3.59 và điểm rèn luyện đạt loại Tốt trở lên (từ 80 đến 89 điểm). Mức học bổng bằng 100% mức trần học phí.\n"
-                     "- Học bổng loại Khá: Điểm GPA từ 2.50 đến 3.19 và điểm rèn luyện đạt loại Khá trở lên (từ 65 đến 79 điểm).\n"
-                     "Lưu ý: Không bị kỷ luật từ mức khiển trách trở lên và không có học phần nào bị điểm F trong kỳ xét.",
-                metadata={"title": "Quy chế xét học bổng khuyến khích học tập UET", "page": 6, "file_path": "quy_che_hoc_bong_uet.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Cảnh báo kết quả học tập và Buộc thôi học tại UET:\n"
-                     "- Sinh viên bị cảnh báo kết quả học tập nếu thuộc một trong các trường hợp sau:\n"
-                     "  + Điểm trung bình chung học kỳ đạt dưới 0,80 đối với học kỳ đầu của khóa học;\n"
-                     "  + Điểm trung bình chung học kỳ đạt dưới 1,00 đối với các học kỳ tiếp theo;\n"
-                     "  + Tổng số tín chỉ chưa tích lũy tính từ đầu khóa học vượt quá 24 tín chỉ.\n"
-                     "- Sinh viên bị buộc thôi học nếu bị cảnh báo học tập 2 lần liên tiếp hoặc có thời gian học tập vượt quá thời gian tối đa cho phép theo quy định.",
-                metadata={"title": "Quy chế đào tạo đại học chính quy ĐHQGHN", "page": 21, "file_path": "quy_che_canh_bao_hoc_tap.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Đăng ký học phần, Hủy học phần và Học cải thiện điểm:\n"
-                     "- Rút bớt học phần: Sinh viên được nộp đơn xin rút bớt học phần trong vòng 2 tuần kể từ đầu học kỳ chính. Học phần xin rút không được hoàn học phí và nhận điểm W (không tính vào GPA).\n"
-                     "- Học cải thiện điểm: Sinh viên có học phần đạt điểm D, D+, C, C+ được phép đăng ký học lại để cải thiện điểm trung bình chung tích lũy. Điểm học phần mới sẽ thay thế điểm cũ.",
-                metadata={"title": "Hướng dẫn đăng ký học phần & học vụ UET", "page": 12, "file_path": "huong_dan_dang_ky_tin_chi.pdf"},
-            ),
-            DataChunk(
-                text="Quy định về Đánh giá kết quả rèn luyện của sinh viên UET:\n"
-                     "Khung điểm đánh giá rèn luyện sinh viên theo thang điểm 100:\n"
-                     "- Từ 90 đến 100 điểm: Xếp loại Xuất sắc\n"
-                     "- Từ 80 đến dưới 90 điểm: Xếp loại Tốt\n"
-                     "- Từ 65 đến dưới 80 điểm: Xếp loại Khá\n"
-                     "- Từ 50 đến dưới 65 điểm: Xếp loại Trung bình\n"
-                     "- Dưới 50 điểm: Xếp loại Yếu/Kém. Sinh viên xếp loại rèn luyện Yếu, Kém trong 2 học kỳ liên tiếp sẽ bị xem xét tạm dừng học tập.",
-                metadata={"title": "Quy định đánh giá điểm rèn luyện sinh viên ĐHQGHN", "page": 15, "file_path": "quy_che_diem_ren_luyen.pdf"},
-            ),
-        ]
-        vector_store.store(initial_chunks)
+        logger.info("Chưa có cơ sở dữ liệu vector_db/, nạp 5 chunk quy chế mẫu dự phòng...")
     else:
         logger.info(f"Đã kết nối và sử dụng {vector_store.count()} vectors thực tế từ database/vector_db/")
+
+    from src.retrieval import UETRetriever
 
     prompt_augmenter = UETPromptAugmenter()
     llm = UETLLMClient()
@@ -731,6 +896,8 @@ def get_retriever() -> UETRetriever:
     """
     [Phân hệ Retrieval]: Khởi tạo và cung cấp UETRetriever điều phối tìm kiếm đa tầng.
     """
+    from src.retrieval import UETRetriever
+
     embedding_model = UETEmbedder()
     vector_store = UETVectorStore(persist_dir=BASE_DIR / "database" / "vector_db", embedding_model=embedding_model)
     return UETRetriever(
@@ -739,15 +906,35 @@ def get_retriever() -> UETRetriever:
     )
 
 
-def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
+def run_ingest_cli(
+    from_stage: str = "raw",
+    to_stage: str = "vectordb",
+    clear: bool = False,
+    clear_existing: Optional[bool] = None,
+    domain: Optional[str] = None,
+    max_chunks: Optional[int] = None,
+):
+    if clear_existing is not None:
+        clear = clear or clear_existing
     """Khởi chạy quy trình điều phối và nạp dữ liệu đa chặng với báo cáo kết quả trên terminal."""
     print("\n" + "=" * 65)
+    if clear:
+        print("🗑️  [--clear] Đã bật cờ làm mới: Dữ liệu cũ sẽ bị xóa và nạp lại toàn bộ!")
     print(f"📦 BẮT ĐẦU ĐIỀU PHỐI DỮ LIỆU ĐA CHẶNG: [{from_stage.upper()}] ──> [{to_stage.upper()}]")
+    if domain or max_chunks:
+        print(f"   • Phạm vi thử nghiệm: domain={domain or 'ALL'}, max_chunks={max_chunks or 'ALL'}")
     print("=" * 65)
 
     pipeline = get_ingestion_pipeline()
     try:
-        res = pipeline.run_stages(from_stage=from_stage, to_stage=to_stage)
+        res = pipeline.run_stages(
+            from_stage=from_stage,
+            to_stage=to_stage,
+            clear=clear,
+            clear_existing=clear,
+            domain=domain,
+            max_chunks=max_chunks,
+        )
     except Exception as e:
         print(f"\n❌ Lỗi trong quá trình điều phối dữ liệu: {e}")
         return
@@ -772,6 +959,14 @@ def run_ingest_cli(from_stage: str = "raw", to_stage: str = "vectordb"):
         t = transitions["chunked_to_indexed_data"]
         print(f"  • Chặng [chunked ──> indexed_data] : {t.get('chunks_indexed', 0)} chunks đã lập chỉ mục BM25")
         print(f"    File lưu trữ BM25 index: {t.get('sparse_file')}")
+    if "chunked_to_graph_data" in transitions:
+        t = transitions["chunked_to_graph_data"]
+        print(
+            f"  • Chặng [chunked ──> graph_data]   : {t.get('chunks_indexed', 0)} chunks -> "
+            f"{t.get('entities_count', 0)} entities, {t.get('triples_count', 0)} triples "
+            f"(OpenRouter LLM calls: {t.get('llm_calls', 0)})"
+        )
+        print(f"    File lưu trữ Graph index: {t.get('graph_file')}")
 
     print(f"\n⏱️  Tổng thời gian thực thi: {res.get('latency_seconds', 0)}s")
     print("=" * 65 + "\n")
@@ -794,6 +989,9 @@ def run_ingest_status_cli():
     idx_info = stages.get("indexed_data", {})
     status_str = f"Sẵn sàng ({idx_info.get('size_mb')} MB)" if idx_info.get("exists") else "Chưa tạo"
     print(f"  5. Giai đoạn [INDEXED_DATA]: {status_str} ({idx_info.get('path')})")
+    graph_info = stages.get("graph_data", {})
+    g_status_str = f"Sẵn sàng ({graph_info.get('size_mb')} MB)" if graph_info.get("exists") else "Chưa tạo"
+    print(f"  6. Giai đoạn [GRAPH_DATA]  : {g_status_str} ({graph_info.get('path')})")
 
     print("\n📋 Sổ cái theo dõi chống trùng lặp (Manifest Tracker):")
     print(f"  • Tổng tài liệu đang theo dõi : {manifest.get('total_tracked_documents', 0)}")
@@ -802,6 +1000,7 @@ def run_ingest_status_cli():
     print(f"  • Hoàn thành chặng chunked    : {comp.get('chunked', 0)}")
     print(f"  • Hoàn thành chặng vectordb   : {comp.get('vectordb', 0)}")
     print(f"  • Hoàn thành chặng indexed_data: {comp.get('indexed_data', 0)}")
+    print(f"  • Hoàn thành chặng graph_data  : {comp.get('graph_data', 0)}")
     print(f"  • Lần cập nhật gần nhất       : {manifest.get('last_updated') or 'Chưa có'}")
     print("=" * 65 + "\n")
 

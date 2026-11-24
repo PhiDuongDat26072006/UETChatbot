@@ -1,16 +1,17 @@
-"""Shared chunk loading, dense indexing, and persistent Vietnamese BM25 indexing."""
-
+"""Chunk loading, persistent BM25, and GraphRAG index; heavy dependencies load on demand."""
 from src.indexing.chunks import load_chunks_from_dir
 
-try:
-    from src.indexing.indexer import UETIndexer
-except ImportError:
-    UETIndexer = None
+__all__ = ["UETIndexer", "load_chunks_from_dir", "BM25Index", "GraphIndex"]
 
-try:
-    from src.indexing.sparse import BM25Index
-except ImportError:
-    BM25Index = None
 
-__all__ = ["UETIndexer", "load_chunks_from_dir", "BM25Index"]
-
+def __getattr__(name):
+    if name == "UETIndexer":
+        from src.indexing.indexer import UETIndexer
+        return UETIndexer
+    if name == "BM25Index":
+        from src.indexing.sparse import BM25Index
+        return BM25Index
+    if name == "GraphIndex":
+        from src.indexing.graph import GraphIndex
+        return GraphIndex
+    raise AttributeError(name)
