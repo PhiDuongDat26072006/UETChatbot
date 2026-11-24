@@ -6,6 +6,7 @@ Nhiệm vụ: Phục vụ giao diện Web người dùng và chuyển tiếp yê
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -78,15 +79,15 @@ _FRIENDLY_ERROR_MESSAGES: Dict[str, str] = {
 _RESPONSE_FORMAT_RULES = (
     "\n\n=== QUY TẮC ĐỊNH DẠNG ĐẦU RA BẮT BUỘC ===\n"
     "- TUYỆT ĐỐI KHÔNG dùng biểu tượng cảm xúc hay icon trang trí (emoji như 📌, ⚠️, 💡, ✅, 🎓, 📚, 🔹, 👉...) "
-    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**) "
-    "và căn cứ quy chế (**Căn cứ quy chế:**).\n"
-    "- Mọi công thức toán học hoặc công thức tính điểm (như điểm SAT, HSA, GPA, học phí) BẮT BUỘC phải viết "
-    "bằng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng, KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, "
-    "và KHÔNG đặt công thức trong dấu backtick `...`), sử dụng \\frac{tử}{mẫu}, \\times, \\text{...}.\n"
+    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**).\n"
+    "- TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\", không liệt kê URL, link hay trích dẫn tên tài liệu tham khảo ở cuối câu trả lời.\n"
+    "- ĐIỂM SỐ VÀ CÁC CON SỐ ĐƠN THUẦN (như điểm chuẩn, điểm trúng tuyển, điểm GPA, số tín chỉ, học phí, năm học, mã ngành...): "
+    "BẮT BUỘC viết tự nhiên bằng chữ và số thông thường trên cùng dòng văn bản (ví dụ: viết '**25 điểm**', '**28.19 điểm**', '**GPA 3.2**', '**24 tín chỉ**'), "
+    "TUYỆT ĐỐI KHÔNG bọc các con số đơn thuần này trong cú pháp LaTeX $$...$$ hay $...$ (TUYỆT ĐỐI KHÔNG viết $$25$$, $$28.19$$, $$2026$$ đứng riêng một dòng).\n"
+    "- CHỈ sử dụng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng) khi trình bày CÔNG THỨC TOÁN HỌC phức tạp có phép tính (chứa phân số \\frac{tử}{mẫu}, phép nhân \\times, cộng trừ nhiều biến), "
+    "KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, và KHÔNG đặt công thức trong dấu backtick `...`.\n"
     "- Khi trình bày bảng quy đổi chứng chỉ ngoại ngữ (IELTS, TOEFL, TOEIC, Cambridge, Aptis, VSTEP), "
     "giữ nội dung từng ô ngắn gọn, rõ ràng.\n"
-    "- Nếu câu hỏi nằm ngoài phạm vi quy chế đào tạo UET hoặc tài liệu ngữ cảnh không có thông tin để trả lời, "
-    "TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\" và không trích dẫn tài liệu.\n"
 )
 
 _VOICE_RESPONSE_FORMAT_RULES = (
@@ -135,64 +136,31 @@ class ChatResponse(BaseModel):
 ChatResponse.model_rebuild()
 
 
+class VoiceTranscribeRequest(BaseModel):
+    audio_base64: str = Field(..., description="Dữ liệu âm thanh mã hóa Base64")
+    mime_type: str = Field(
+        default="audio/webm",
+        description="MIME type từ MediaRecorder (vd: audio/webm, audio/ogg)",
+    )
+    language: str = Field(default="vi", description="Mã ngôn ngữ nhận dạng")
+
+
+class VoiceTranscribeResponse(BaseModel):
+    text: str
+    model_name: str = ""
+    latency_seconds: float = 0.0
+
+
+VoiceTranscribeRequest.model_rebuild()
+VoiceTranscribeResponse.model_rebuild()
+
+
 def _build_sources_data(contexts: Optional[List[Any]]) -> List[SourceItem]:
-    """Chuẩn hóa danh sách RetrievedContext thành danh sách SourceItem trả về cho Web UI."""
-    sources_data: List[SourceItem] = []
-    for ctx in contexts or []:
-        meta = dict(getattr(ctx, "metadata", None) or {})
-        title = meta.get("title")
-        if not title or str(title).startswith("Tài liệu UET ("):
-            if "metadata" in meta and isinstance(meta["metadata"], str):
-                try:
-                    nested = json.loads(meta["metadata"])
-                    if isinstance(nested, dict) and nested.get("title"):
-                        title = nested["title"]
-                        meta["title"] = title
-                except Exception:
-                    pass
-            if not title or str(title).startswith("Tài liệu UET ("):
-                first_line = (getattr(ctx, "text", "") or "").strip().split("\n")[0]
-                m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
-                if m and len(m.group(1).strip()) > 3:
-                    title = m.group(1).strip()
-                    meta["title"] = title
-                elif meta.get("source"):
-                    title = meta["source"]
-                    meta["title"] = title
-
-        search_type = meta.get("search_type")
-        search_source = meta.get("search_source")
-        if not search_type:
-            bm25_rank = meta.get("bm25_rank")
-            vec_rank = meta.get("vector_rank")
-            if bm25_rank is not None and vec_rank is not None:
-                search_type = "hybrid"
-                search_source = "BM25 + Vector Search"
-            elif bm25_rank is not None:
-                search_type = "bm25"
-                search_source = "BM25"
-            elif vec_rank is not None:
-                search_type = "vector"
-                search_source = "Vector Search"
-            else:
-                search_type = "hybrid"
-                search_source = "Hybrid"
-
-        meta["search_type"] = search_type
-        meta["search_source"] = search_source
-
-        sources_data.append(
-            SourceItem(
-                chunk_id=ctx.chunk_id,
-                text=ctx.text,
-                similarity_score=ctx.similarity_score,
-                rank=ctx.rank,
-                search_type=search_type,
-                search_source=search_source,
-                metadata=meta,
-            )
-        )
-    return sources_data
+    """
+    Hệ thống đã tắt tính năng hiển thị tài liệu tham khảo và URL trích dẫn.
+    Trả về danh sách rỗng để đảm bảo UI không hiển thị khối nguồn.
+    """
+    return []
 
 
 def _classify_error_text(raw_text: str) -> Dict[str, Any]:
@@ -301,6 +269,9 @@ _NO_ANSWER_MARKERS = (
     "chưa được đề cập",
     "không được đề cập",
     "vui lòng liên hệ trực tiếp phòng đào tạo",
+    "không liên quan",
+    "không liên quan đến",
+    "không phải là thông tin thuộc",
 )
 
 
@@ -310,6 +281,132 @@ def _is_no_answer_or_out_of_domain(answer: str) -> bool:
     if not lower:
         return True
     return any(marker in lower for marker in _NO_ANSWER_MARKERS)
+
+
+_HALLUCINATION_SUBSTRINGS = (
+    "subscribe cho kênh",
+    "đăng ký kênh",
+    "la la school",
+    "ghiền mì gõ",
+    "faptv",
+    "kem xôi",
+    "để không bỏ lỡ những video",
+    "không bỏ lỡ các video",
+    "những video hấp dẫn",
+    "video mới nhất",
+    "like và subscribe",
+    "nhấn chuông",
+    "bấm chuông",
+    "cảm ơn các bạn đã theo dõi",
+    "cảm ơn các bạn đã xem",
+    "hẹn gặp lại các bạn",
+    "phụ đề được thực hiện bởi",
+    "subtitles by",
+    "amara.org",
+    "translated by",
+)
+
+_REPEATED_PHRASE_RE = re.compile(
+    r"(?:^|[\s,.!?])([^\s,.!?]+(?:\s+[^\s,.!?]+){0,2})(?:\s*[,.\s]+\1){3,}(?:$|[\s,.!?])",
+    re.IGNORECASE,
+)
+
+
+def _is_whisper_hallucination(text: str) -> bool:
+    """Nhận diện các câu ảo giác phổ biến của Whisper khi gặp khoảng lặng hoặc tạp âm."""
+    cleaned = re.sub(r"\s+", " ", (text or "")).strip()
+    if not cleaned:
+        return True
+    if not re.search(r"[0-9A-Za-zÀ-ỹ]", cleaned):
+        return True
+    lowered = cleaned.lower()
+    if any(marker in lowered for marker in _HALLUCINATION_SUBSTRINGS):
+        return True
+    if _REPEATED_PHRASE_RE.search(lowered):
+        return True
+    return False
+
+
+def _extract_clean_transcript(transcription: Any) -> str:
+    """Trích xuất văn bản sạch từ verbose_json, lọc bỏ segment no_speech cao và ảo giác."""
+    segments = (
+        transcription.get("segments")
+        if isinstance(transcription, dict)
+        else getattr(transcription, "segments", None)
+    )
+    if isinstance(segments, list) and segments:
+        kept_parts: List[str] = []
+        for seg in segments:
+            seg_text = (
+                seg.get("text", "")
+                if isinstance(seg, dict)
+                else getattr(seg, "text", "")
+            )
+            seg_text = re.sub(r"\s+", " ", str(seg_text or "")).strip()
+            if not seg_text:
+                continue
+
+            raw_no_speech = (
+                seg.get("no_speech_prob", 0.0)
+                if isinstance(seg, dict)
+                else getattr(seg, "no_speech_prob", 0.0)
+            )
+            raw_avg_logprob = (
+                seg.get("avg_logprob", 0.0)
+                if isinstance(seg, dict)
+                else getattr(seg, "avg_logprob", 0.0)
+            )
+            try:
+                no_speech_prob = float(raw_no_speech or 0.0)
+            except (TypeError, ValueError):
+                no_speech_prob = 0.0
+            try:
+                avg_logprob = float(raw_avg_logprob or 0.0)
+            except (TypeError, ValueError):
+                avg_logprob = 0.0
+
+            if no_speech_prob > 0.6 or (no_speech_prob > 0.45 and avg_logprob < -0.85):
+                continue
+            if _is_whisper_hallucination(seg_text):
+                continue
+            kept_parts.append(seg_text)
+        text = " ".join(kept_parts).strip()
+    else:
+        raw_text = (
+            transcription.get("text", "")
+            if isinstance(transcription, dict)
+            else getattr(transcription, "text", "")
+        )
+        text = re.sub(r"\s+", " ", str(raw_text or "")).strip()
+
+    if _is_whisper_hallucination(text):
+        return ""
+    return text
+
+
+def _guess_audio_ext(mime_type: str) -> str:
+    lower = (mime_type or "").lower()
+    if "ogg" in lower:
+        return "ogg"
+    if "mp4" in lower or "m4a" in lower:
+        return "m4a"
+    if "wav" in lower:
+        return "wav"
+    if "mpeg" in lower or "mp3" in lower:
+        return "mp3"
+    return "webm"
+
+
+def _resolve_stt_groq_keys(pipeline: Any) -> List[str]:
+    llm = getattr(pipeline, "llm", None) if pipeline else None
+    keys = list(getattr(llm, "groq_keys", None) or [])
+    if keys:
+        return keys
+    try:
+        from src.llm.llm_client import UETLLMClient
+        return list(UETLLMClient._load_keys_for_provider("GROQ"))
+    except Exception:
+        return []
 
 
 def create_app():
@@ -646,6 +743,111 @@ def create_app():
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.post("/api/voice/transcribe", response_model=VoiceTranscribeResponse)
+    def voice_transcribe_endpoint(request: VoiceTranscribeRequest):
+        """
+        Chuyển đổi âm thanh thu từ trình duyệt (đặc biệt cho Firefox khi không có Web Speech STT)
+        thành văn bản tiếng Việt thông qua Groq Whisper API.
+        """
+        raw_b64 = (request.audio_base64 or "").strip()
+        if "," in raw_b64 and raw_b64.lower().startswith("data:"):
+            raw_b64 = raw_b64.split(",", 1)[1].strip()
+
+        if not raw_b64:
+            return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
+
+        try:
+            audio_bytes = base64.b64decode(raw_b64, validate=True)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Dữ liệu âm thanh không hợp lệ, vui lòng thử thu âm lại.",
+                    "error_type": "server",
+                },
+            )
+
+        if len(audio_bytes) < 400:
+            return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
+
+        if len(audio_bytes) > 12 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "message": "Đoạn ghi âm quá dài vượt quá giới hạn cho phép. Bạn vui lòng nói câu ngắn hơn nhé.",
+                    "error_type": "token_limit",
+                },
+            )
+
+        pipeline = get_rag_pipeline()
+        groq_keys = _resolve_stt_groq_keys(pipeline)
+        if not groq_keys:
+            logger.error("Không tìm thấy GROQ_API_KEY cho tính năng voice transcribe.")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "Máy chủ hiện chưa cấu hình dịch vụ nhận dạng giọng nói. Vui lòng thử lại sau.",
+                    "error_type": "server",
+                },
+            )
+
+        try:
+            import groq
+        except ImportError:
+            logger.error("Thư viện groq chưa được cài đặt trong môi trường.")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "Hệ thống tạm thời chưa hỗ trợ chuyển đổi giọng nói. Vui lòng thử lại sau.",
+                    "error_type": "server",
+                },
+            )
+
+        clean_mime = (request.mime_type or "audio/webm").split(";", 1)[0].strip() or "audio/webm"
+        ext = _guess_audio_ext(clean_mime)
+        lang = (request.language or "vi").strip() or "vi"
+        models = ("whisper-large-v3-turbo", "whisper-large-v3")
+
+        last_exc: Optional[Exception] = None
+        with Timer() as timer:
+            for model_name in models:
+                for api_key in groq_keys:
+                    try:
+                        client = groq.Groq(api_key=api_key, timeout=25.0)
+                        transcription = client.audio.transcriptions.create(
+                            model=model_name,
+                            file=(f"voice.{ext}", audio_bytes, clean_mime),
+                            language=lang,
+                            response_format="verbose_json",
+                            temperature=0.0,
+                        )
+                        text = _extract_clean_transcript(transcription)
+                        return VoiceTranscribeResponse(
+                            text=text,
+                            model_name=model_name,
+                            latency_seconds=round(timer.elapsed, 3),
+                        )
+                    except Exception as exc:
+                        last_exc = exc
+                        logger.warning(
+                            "Groq Whisper thất bại với model=%s: %s",
+                            model_name,
+                            type(exc).__name__,
+                        )
+
+        if last_exc is not None:
+            logger.exception("Tất cả key Groq Whisper đều thất bại trong /api/voice/transcribe: %s", last_exc)
+            classified = _classify_exception(last_exc)
+            raise HTTPException(
+                status_code=classified["status_code"],
+                detail={
+                    "message": classified["message"],
+                    "error_type": classified["error_type"],
+                },
+            )
+
+        return VoiceTranscribeResponse(text="", model_name="none", latency_seconds=0.0)
 
     return app
 

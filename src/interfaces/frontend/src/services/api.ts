@@ -419,12 +419,84 @@ export class UETApiClient {
       throw new ApiClientError(classified);
     }
   }
+
+  async transcribeAudio(
+    audioBase64: string,
+    mimeType = "audio/webm",
+    externalSignal?: AbortSignal
+  ): Promise<string> {
+    const cleanB64 = (audioBase64 || "").trim();
+    if (!cleanB64) return "";
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 30_000);
+    const unlink = linkAbortSignals(externalSignal, controller);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/voice/transcribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          audio_base64: cleanB64,
+          mime_type: mimeType,
+          language: "vi",
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+      unlink();
+
+      const data = (await response.json().catch(() => ({}))) as {
+        text?: unknown;
+        detail?: unknown;
+      };
+
+      if (!response.ok) {
+        const classified = classifyApiError(data, response.status);
+        throw new ApiClientError(classified);
+      }
+
+      return typeof data.text === "string" ? data.text.trim() : "";
+    } catch (err) {
+      clearTimeout(timer);
+      unlink();
+
+      if (!timedOut && externalSignal?.aborted) {
+        return "";
+      }
+      if (err instanceof ApiClientError) {
+        throw err;
+      }
+      if (timedOut) {
+        throw new ApiClientError(
+          classifyApiError(new Error("Request timeout"), 504)
+        );
+      }
+      throw new ApiClientError(classifyApiError(err));
+    }
+  }
 }
 
 export const defaultApiClient = new UETApiClient();
 
 export function getHealth(): Promise<HealthStatus> {
   return defaultApiClient.getHealth();
+}
+
+export function transcribeAudio(
+  audioBase64: string,
+  mimeType = "audio/webm",
+  signal?: AbortSignal
+): Promise<string> {
+  return defaultApiClient.transcribeAudio(audioBase64, mimeType, signal);
 }
 
 export function sendQuery(

@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowUp,
   AudioLines,
+  Loader2,
   Mic,
   MicOff,
   Paperclip,
@@ -24,66 +25,21 @@ import {
   Square,
   X,
 } from "lucide-react";
+import { transcribeAudio } from "../../services/api";
 import { formatFileSize } from "../../utils/formatters";
 import { playVoiceRecordStartSound } from "../../utils/sound";
+import {
+  detectBrowserName,
+  getSpeechRecognitionConstructor,
+  requestMicrophoneStream,
+  startAudioSilenceRecorder,
+  VoiceAccessError,
+  type AudioSilenceRecorderHandle,
+  type SpeechRecognitionCtrl,
+  type SpeechRecognitionErrEvtLike,
+  type SpeechRecognitionEvtLike,
+} from "../../utils/voice";
 import type { ToastType } from "../../types/chat";
-
-interface SpeechRecognitionAlternativeLike {
-  transcript: string;
-  confidence: number;
-}
-
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  length: number;
-  [index: number]: SpeechRecognitionAlternativeLike;
-}
-
-interface SpeechRecognitionEventLike extends Event {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: SpeechRecognitionResultLike;
-  };
-}
-
-interface SpeechRecognitionErrorEventLike extends Event {
-  error: string;
-  message?: string;
-}
-
-interface SpeechRecognitionInstance extends EventTarget {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onstart: ((this: SpeechRecognitionInstance, ev: Event) => void) | null;
-  onresult:
-    | ((
-        this: SpeechRecognitionInstance,
-        ev: SpeechRecognitionEventLike
-      ) => void)
-    | null;
-  onerror:
-    | ((
-        this: SpeechRecognitionInstance,
-        ev: SpeechRecognitionErrorEventLike
-      ) => void)
-    | null;
-  onend: ((this: SpeechRecognitionInstance, ev: Event) => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  }
-}
 
 export interface ChatComposerProps {
   isGenerating: boolean;
@@ -95,26 +51,6 @@ export interface ChatComposerProps {
   onOpenVoiceChat?: () => void;
   onShowToast?: (message: string, type?: ToastType, durationMs?: number) => void;
   draftInsertTrigger?: { text: string; id: number } | null;
-}
-
-function detectBrowserName():
-  | "Edge"
-  | "Chrome"
-  | "Firefox"
-  | "Safari"
-  | "Other" {
-  if (typeof navigator === "undefined") return "Other";
-  const ua = navigator.userAgent;
-  if (/Edg\//i.test(ua)) return "Edge";
-  if (/Firefox\//i.test(ua)) return "Firefox";
-  if (/Chrome\//i.test(ua) || /CriOS\//i.test(ua)) return "Chrome";
-  if (/Safari\//i.test(ua)) return "Safari";
-  return "Other";
-}
-
-function getSpeechRecognitionConstructor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") return null;
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
 const MAX_TEXTAREA_HEIGHT_PX = 144;
@@ -141,13 +77,17 @@ export function ChatComposer({
   const [text, setText] = useState("");
   const [isMultiline, setIsMultiline] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionCtrl | null>(null);
+  const audioRecorderRef = useRef<AudioSilenceRecorderHandle | null>(null);
+  const sttAbortRef = useRef<AbortController | null>(null);
   const baseSpeechTextRef = useRef("");
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     if (!isAttachMenuOpen) return;
@@ -193,7 +133,9 @@ export function ChatComposer({
   }, [draftInsertTrigger, resizeTextarea]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -202,156 +144,296 @@ export function ChatComposer({
         }
         recognitionRef.current = null;
       }
+      if (audioRecorderRef.current) {
+        audioRecorderRef.current.cancel();
+        audioRecorderRef.current = null;
+      }
+      if (sttAbortRef.current) {
+        sttAbortRef.current.abort();
+        sttAbortRef.current = null;
+      }
     };
   }, []);
 
   const canSend =
-    !isGenerating && (text.trim().length > 0 || selectedFiles.length > 0);
-  const showMicButton = !isGenerating && (text.length === 0 || isRecording);
+    !isGenerating &&
+    !isTranscribing &&
+    (text.trim().length > 0 || selectedFiles.length > 0);
+  const showMicButton =
+    !isGenerating && (text.length === 0 || isRecording || isTranscribing);
 
-  const handleToggleVoiceInput = useCallback(() => {
-    if (isRecording) {
+  const applySpokenText = useCallback(
+    (spokenText: string) => {
+      const cleaned = spokenText.trim();
+      const prefix = baseSpeechTextRef.current;
+      const nextText = prefix
+        ? cleaned
+          ? `${prefix} ${cleaned}`
+          : prefix
+        : cleaned;
+      setText(nextText);
+      requestAnimationFrame(() => resizeTextarea());
+    },
+    [resizeTextarea]
+  );
+
+  const startWebSpeechDictation = useCallback(
+    (SpeechRecognitionCtor: NonNullable<ReturnType<typeof getSpeechRecognitionConstructor>>) => {
       try {
-        recognitionRef.current?.stop();
+        const recognition = new SpeechRecognitionCtor();
+        recognition.lang = "vi-VN";
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognitionRef.current = recognition;
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          playVoiceRecordStartSound();
+        };
+
+        recognition.onresult = (event: SpeechRecognitionEvtLike) => {
+          const parts: string[] = [];
+          for (let i = 0; i < event.results.length; i += 1) {
+            const transcript = event.results[i]?.[0]?.transcript?.trim();
+            if (transcript) parts.push(transcript);
+          }
+          applySpokenText(parts.join(" "));
+        };
+
+        recognition.onerror = (event: SpeechRecognitionErrEvtLike) => {
+          if (event.error === "aborted") {
+            setIsRecording(false);
+            recognitionRef.current = null;
+            return;
+          }
+
+          if (
+            event.error === "not-allowed" ||
+            event.error === "service-not-allowed"
+          ) {
+            onShowToast?.(
+              "Vui lòng cấp quyền truy cập micro cho trình duyệt để thu âm.",
+              "warning",
+              3500
+            );
+          } else if (event.error === "audio-capture") {
+            onShowToast?.(
+              "Không tìm thấy thiết bị micro khả dụng.",
+              "warning",
+              3200
+            );
+          } else if (event.error === "no-speech") {
+            onShowToast?.(
+              "Không phát hiện giọng nói, vui lòng thử lại.",
+              "info",
+              2500
+            );
+          } else if (event.error === "network") {
+            onShowToast?.(
+              "Không thể kết nối dịch vụ nhận dạng giọng nói của trình duyệt.",
+              "warning",
+              3200
+            );
+          } else {
+            onShowToast?.(
+              "Không thể khởi tạo nhận dạng giọng nói trên trình duyệt.",
+              "warning",
+              3000
+            );
+          }
+          setIsRecording(false);
+          recognitionRef.current = null;
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          recognitionRef.current = null;
+          requestAnimationFrame(() => {
+            resizeTextarea();
+            textareaRef.current?.focus();
+          });
+        };
+
+        recognition.start();
       } catch {
         setIsRecording(false);
         recognitionRef.current = null;
+        onShowToast?.(
+          "Không thể bắt đầu thu âm giọng nói trên trình duyệt.",
+          "warning",
+          3000
+        );
+      }
+    },
+    [applySpokenText, onShowToast, resizeTextarea]
+  );
+
+  const handleToggleVoiceInput = useCallback(async () => {
+    if (isTranscribing) return;
+
+    if (isRecording) {
+      try {
+        recognitionRef.current?.stop();
+        audioRecorderRef.current?.stop();
+      } catch {
+        setIsRecording(false);
+        recognitionRef.current = null;
+        audioRecorderRef.current = null;
       }
       return;
     }
 
+    baseSpeechTextRef.current = text.trim();
     const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
-    if (!SpeechRecognitionCtor) {
-      const browser = detectBrowserName();
-      if (browser === "Firefox") {
-        onShowToast?.(
-          "Trình duyệt Firefox chưa hỗ trợ sẵn nhập liệu giọng nói (Web Speech API). Vui lòng dùng Chrome, Edge hoặc Safari.",
-          "warning",
-          3800
-        );
-      } else {
-        onShowToast?.(
-          "Trình duyệt hiện tại chưa hỗ trợ nhập liệu bằng giọng nói.",
-          "warning",
-          3200
-        );
+    const browser = detectBrowserName();
+
+    // Đường dẫn A: Chrome / Edge / Safari dùng Web Speech API
+    if (SpeechRecognitionCtor) {
+      // Safari yêu cầu gọi recognition.start() đồng bộ trong click handler; Safari tự bật popup xin quyền mic
+      if (browser === "Safari") {
+        startWebSpeechDictation(SpeechRecognitionCtor);
+        return;
       }
+
+      // Chrome & Edge: chủ động hỏi quyền Micro trước qua getUserMedia ở lần đầu
+      try {
+        await requestMicrophoneStream({ keepStream: false });
+      } catch (err) {
+        const msg =
+          err instanceof VoiceAccessError
+            ? err.message
+            : "Vui lòng cấp quyền truy cập micro cho trình duyệt để thu âm.";
+        onShowToast?.(msg, "warning", 3500);
+        return;
+      }
+
+      if (!isMountedRef.current) return;
+      startWebSpeechDictation(SpeechRecognitionCtor);
       return;
     }
 
-    if (typeof window !== "undefined" && !window.isSecureContext) {
-      onShowToast?.(
-        "Tính năng thu âm giọng nói yêu cầu kết nối HTTPS hoặc localhost.",
-        "warning",
-        3500
-      );
+    // Đường dẫn B: Firefox hoặc trình duyệt không có SpeechRecognition -> xin quyền Mic + MediaRecorder + Whisper STT backend
+    let stream: MediaStream | null = null;
+    try {
+      stream = await requestMicrophoneStream({ keepStream: true });
+    } catch (err) {
+      const msg =
+        err instanceof VoiceAccessError
+          ? err.message
+          : "Không thể truy cập micro trên trình duyệt.";
+      onShowToast?.(msg, "warning", 3600);
+      return;
+    }
+
+    if (!stream || !isMountedRef.current) {
       return;
     }
 
     try {
-      const recognition = new SpeechRecognitionCtor();
-      recognition.lang = "vi-VN";
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+      setIsRecording(true);
+      playVoiceRecordStartSound();
 
-      baseSpeechTextRef.current = text.trim();
-      recognitionRef.current = recognition;
-
-      recognition.onstart = () => {
-        setIsRecording(true);
-        playVoiceRecordStartSound();
-      };
-
-      recognition.onresult = (event: SpeechRecognitionEventLike) => {
-        const parts: string[] = [];
-        for (let i = 0; i < event.results.length; i += 1) {
-          const transcript = event.results[i]?.[0]?.transcript?.trim();
-          if (transcript) parts.push(transcript);
-        }
-        const spokenText = parts.join(" ").trim();
-        const prefix = baseSpeechTextRef.current;
-        const nextText = prefix
-          ? spokenText
-            ? `${prefix} ${spokenText}`
-            : prefix
-          : spokenText;
-
-        setText(nextText);
-        requestAnimationFrame(() => resizeTextarea());
-      };
-
-      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
-        if (event.error === "aborted") {
+      audioRecorderRef.current = startAudioSilenceRecorder(stream, {
+        autoStopOnSilence: true,
+        silenceDurationMs: 1400,
+        noSpeechTimeoutMs: 10000,
+        onNoSpeech: () => {
+          if (!isMountedRef.current) return;
           setIsRecording(false);
-          recognitionRef.current = null;
-          return;
-        }
-
-        if (
-          event.error === "not-allowed" ||
-          event.error === "service-not-allowed"
-        ) {
-          onShowToast?.(
-            "Vui lòng cấp quyền truy cập micro cho trình duyệt để thu âm.",
-            "warning",
-            3500
-          );
-        } else if (event.error === "audio-capture") {
-          onShowToast?.(
-            "Không tìm thấy thiết bị micro khả dụng.",
-            "warning",
-            3200
-          );
-        } else if (event.error === "no-speech") {
+          audioRecorderRef.current = null;
           onShowToast?.(
             "Không phát hiện giọng nói, vui lòng thử lại.",
             "info",
             2500
           );
-        } else if (event.error === "network") {
-          onShowToast?.(
-            "Không thể kết nối dịch vụ nhận dạng giọng nói của trình duyệt.",
-            "warning",
-            3200
-          );
-        } else {
-          onShowToast?.(
-            "Không thể khởi tạo nhận dạng giọng nói trên trình duyệt.",
-            "warning",
-            3000
-          );
-        }
-        setIsRecording(false);
-        recognitionRef.current = null;
-      };
+        },
+        onError: (msg) => {
+          if (!isMountedRef.current) return;
+          setIsRecording(false);
+          audioRecorderRef.current = null;
+          onShowToast?.(msg, "warning", 3200);
+        },
+        onComplete: (audioBase64, mimeType, hasSpoken) => {
+          if (!isMountedRef.current) return;
+          setIsRecording(false);
+          audioRecorderRef.current = null;
 
-      recognition.onend = () => {
-        setIsRecording(false);
-        recognitionRef.current = null;
-        requestAnimationFrame(() => {
-          resizeTextarea();
-          textareaRef.current?.focus();
-        });
-      };
+          if (!hasSpoken || !audioBase64) {
+            onShowToast?.(
+              "Không phát hiện giọng nói, vui lòng thử lại.",
+              "info",
+              2400
+            );
+            return;
+          }
 
-      recognition.start();
-    } catch {
+          setIsTranscribing(true);
+          const controller = new AbortController();
+          sttAbortRef.current = controller;
+
+          void transcribeAudio(audioBase64, mimeType, controller.signal)
+            .then((transcript) => {
+              if (!isMountedRef.current || controller.signal.aborted) return;
+              if (!transcript) {
+                onShowToast?.(
+                  "Không nghe rõ nội dung, vui lòng thử nói lại.",
+                  "info",
+                  2400
+                );
+                return;
+              }
+              applySpokenText(transcript);
+              requestAnimationFrame(() => {
+                resizeTextarea();
+                textareaRef.current?.focus();
+              });
+            })
+            .catch((err: unknown) => {
+              if (!isMountedRef.current || controller.signal.aborted) return;
+              const msg =
+                err instanceof Error && err.message
+                  ? err.message
+                  : "Không thể chuyển giọng nói thành văn bản.";
+              onShowToast?.(msg, "warning", 3500);
+            })
+            .finally(() => {
+              if (sttAbortRef.current === controller) {
+                sttAbortRef.current = null;
+              }
+              if (isMountedRef.current) {
+                setIsTranscribing(false);
+              }
+            });
+        },
+      });
+    } catch (err) {
       setIsRecording(false);
-      recognitionRef.current = null;
-      onShowToast?.(
-        "Không thể bắt đầu thu âm giọng nói trên trình duyệt.",
-        "warning",
-        3000
-      );
+      audioRecorderRef.current = null;
+      const msg =
+        err instanceof VoiceAccessError
+          ? err.message
+          : "Không thể bắt đầu thu âm trên trình duyệt.";
+      onShowToast?.(msg, "warning", 3200);
     }
-  }, [isRecording, onShowToast, resizeTextarea, text]);
+  }, [
+    applySpokenText,
+    isRecording,
+    isTranscribing,
+    onShowToast,
+    resizeTextarea,
+    startWebSpeechDictation,
+    text,
+  ]);
 
   const submitCurrent = useCallback(() => {
     if (!canSend) return;
-    if (isRecording && recognitionRef.current) {
+    if (isRecording) {
       try {
-        recognitionRef.current.stop();
+        recognitionRef.current?.stop();
+        audioRecorderRef.current?.cancel();
+        audioRecorderRef.current = null;
       } catch {
         // ignore stop errors when submitting
       }
@@ -553,30 +635,39 @@ export function ChatComposer({
               {showMicButton && (
                 <motion.button
                   type="button"
-                  onClick={handleToggleVoiceInput}
+                  disabled={isTranscribing}
+                  onClick={() => void handleToggleVoiceInput()}
                   initial={{ opacity: 0, scale: 0.85 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ scale: 1.06 }}
-                  whileTap={{ scale: 0.92 }}
+                  whileHover={!isTranscribing ? { scale: 1.06 } : undefined}
+                  whileTap={!isTranscribing ? { scale: 0.92 } : undefined}
                   transition={{ type: "spring", stiffness: 460, damping: 25 }}
                   style={{ willChange: "transform" }}
                   className={`btn-bar-action btn-voice-input flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full transition-colors ${
                     isRecording
                       ? "bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-600"
-                      : "text-[var(--text-secondary)] hover:bg-[rgba(8,117,201,0.1)] hover:text-[var(--primary)] dark:hover:bg-white/10 dark:hover:text-[#38BDF8]"
+                      : isTranscribing
+                      ? "cursor-wait bg-[rgba(8,117,201,0.12)] text-[var(--primary)] dark:text-[#6AB3F3]"
+                      : "text-[var(--text-secondary)] hover:bg-[rgba(8,117,201,0.1)] hover:text-[var(--primary)] dark:hover:bg-white/10 dark:hover:text-[#6AB3F3]"
                   }`}
                   title={
-                    isRecording
+                    isTranscribing
+                      ? "Đang nhận dạng giọng nói..."
+                      : isRecording
                       ? "Đang nghe... Bấm để dừng thu âm"
                       : "Nhập câu hỏi bằng giọng nói"
                   }
                   aria-label={
-                    isRecording
+                    isTranscribing
+                      ? "Đang nhận dạng giọng nói"
+                      : isRecording
                       ? "Dừng thu âm giọng nói"
                       : "Nhập câu hỏi bằng giọng nói"
                   }
                 >
-                  {isRecording ? (
+                  {isTranscribing ? (
+                    <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                  ) : isRecording ? (
                     <MicOff className="h-[18px] w-[18px]" strokeWidth={2.2} />
                   ) : (
                     <Mic className="h-[18px] w-[18px]" strokeWidth={2.2} />
@@ -584,7 +675,10 @@ export function ChatComposer({
                 </motion.button>
               )}
 
-              {onOpenVoiceChat && text.length === 0 && !isRecording && (
+              {onOpenVoiceChat &&
+                text.length === 0 &&
+                !isRecording &&
+                !isTranscribing && (
                 <motion.button
                   type="button"
                   onClick={() => onOpenVoiceChat()}
