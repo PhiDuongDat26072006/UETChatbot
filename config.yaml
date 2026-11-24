@@ -41,31 +41,33 @@ embedding:
   dimension: 1024
 
 retrieval:
-  bm25_top_k: 100              # Số ứng viên BM25 lấy ra
-  vector_top_k: 100            # Số ứng viên Vector search lấy ra
-  candidate_pool_size: 100     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
-  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
-  final_top_k: 10              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
-  fusion_method: "rrf"         # Thuật toán ghép: "rrf" (Reciprocal Rank Fusion)
-  rrf_k: 60                    # Hằng số làm mượt RRF
-  vector_weight: 0.6           # Trọng số nhánh Vector Search
-  bm25_weight: 0.4             # Trọng số nhánh BM25 Search
-  bm25_top_k: 50              # Số ứng viên BM25 lấy ra
-  vector_top_k: 50            # Số ứng viên Vector search lấy ra
-  candidate_pool_size: 50     # Số ứng viên sau khi ghép Hybrid Search (~100 chunks)
-  
-  # Cấu hình Maximal Marginal Relevance (MMR) đa dạng hóa ngữ cảnh trước Reranker
-  enable_mmr: true                      # Bật/tắt tầng đa dạng hóa MMR trước Reranker
-  mmr_lambda: 0.7                       # Cân bằng giữa Relevance (1.0) và Diversity (0.0). Khuyến nghị: 0.5 - 0.7
-  mmr_top_n: 40                         # Số lượng ứng viên đa dạng giữ lại sau MMR để chuyển tiếp cho Reranker
+  bm25_top_k: 60               # Số ứng viên BM25 lấy ra
+  vector_top_k: 60             # Số ứng viên Vector search lấy ra
+  candidate_pool_size: 60      # Số ứng viên sau khi ghép Hybrid Search
+  fusion_method: "rrf"         # Thuật toán ghép: "rrf" hoặc "linear"
+  rrf_k: 30                    # Hằng số làm mượt RRF (ưu ái Top ranks rõ hơn)
+  bm25_weight: 0.60            # Trọng số nhánh BM25 Search (ưu tiên từ khóa chính xác/mã ngành/năm)
+  vector_weight: 0.20          # Trọng số nhánh Vector Search
 
-  # cấu hình reranker
-  rerank_top_n: 20             # Số đoạn giữ lại sau Reranker (20 chunks)
-  final_top_k: 10              # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
+  # Cấu hình Maximal Marginal Relevance (MMR)
+  enable_mmr: false            # Tắt trước Reranker để không đuổi chunk bảng/quy chế; dùng hậu kiểm nếu bật
+  mmr_stage: "post_rerank"     # "pre_rerank" hoặc "post_rerank"
+  mmr_lambda: 0.75             # Cân bằng giữa Relevance (1.0) và Diversity (0.0)
+  mmr_top_n: 40                # Số lượng ứng viên giữ lại nếu bật MMR
+  mmr_similarity_threshold: 0.92  # Chỉ phạt redundancy khi cosine >= ngưỡng này
+  mmr_protect_tabular: true    # Không phạt các chunk thuộc cùng tài liệu dạng bảng (tabular)
+
+  # Cấu hình Reranker & Score Blending
   reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx", "viranker"
   reranker_model: "weights/jina-reranker-v2-base-multilingual"
   onnx_filename: "weights/jina-reranker-v2-base-multilingual/onnx/model.onnx"
-  score_threshold: null        # Ngưỡng điểm tối thiểu (tùy chọn)
+  rerank_top_n: 20                      # Số đoạn giữ lại sau Reranker
+  rerank_max_length: 512                # Tối ưu tốc độ CPU cho chunk ~800 ký tự
+  rerank_batch_size: 8                  # Micro-batch sắp xếp theo độ dài giảm padding dư thừa
+  rerank_blend_alpha: 0.65              # Hòa trộn 0.65 * Rerank + 0.35 * Hybrid (giữ khớp năm/mã)
+  enable_entity_anchor_boost: true      # Boost nhẹ khi khớp chính xác năm (2025/2026) / mã học phần / số QĐ
+  final_top_k: 10                       # Số đoạn cuối cùng trả về cho LLM
+  score_threshold: null                 # Ngưỡng điểm tối thiểu (tùy chọn)
 
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
@@ -75,8 +77,8 @@ retrieval:
 
   # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
   enable_graph: true
-  graph_top_k: 50
-  graph_weight: 0.35
+  graph_top_k: 60
+  graph_weight: 0.30
   graph_max_hops: 2
   graph_seed_top_m: 10
 
