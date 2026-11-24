@@ -21,9 +21,11 @@ from src.retrieval import (
     BM25Index,
     HybridSearcher,
     HeuristicReranker,
+    BaseReranker,
     RerankerFactory,
     UETRetriever,
 )
+from src.indexing.sparse import tokenize as bm25_tokenize
 
 
 class MockEmbeddingModel(BaseEmbeddingModel):
@@ -91,16 +93,14 @@ class TestRetrievalPipeline(unittest.TestCase):
 
     def test_bm25_tokenization_and_search(self):
         """1. Kiểm tra BM25 tokenization tiếng Việt và tìm kiếm từ khóa."""
-        index = BM25Index()
-        # Test tokenization
-        tokens = index.tokenize("Học bổng khuyến khích học tập UET")
-        self.assertIn("học", tokens)
-        self.assertIn("bổng", tokens)
-        self.assertIn("học_bổng", tokens)  # Bigram tiếng Việt
+        tokens = bm25_tokenize("Học bổng khuyến khích học tập UET")
+        self.assertIn("học_bổng", tokens)
+        self.assertIn("khuyến_khích", tokens)
+        self.assertIn("uet", tokens)
 
-        # Test index chunks
-        count = index.index_chunks(self.sample_chunks)
-        self.assertEqual(count, 3)
+        # Test index chunks qua constructor chuẩn của src.indexing.sparse.BM25Index
+        index = BM25Index(self.sample_chunks)
+        self.assertEqual(index.count(), 3)
 
         # Test tìm kiếm
         results = index.search("học bổng xuất sắc", top_k=2)
@@ -115,7 +115,7 @@ class TestRetrievalPipeline(unittest.TestCase):
         self.assertEqual(index.search("bất kỳ câu nào"), [])
 
         # Index xong nhưng query rỗng
-        index.index_chunks(self.sample_chunks)
+        index = BM25Index(self.sample_chunks)
         self.assertEqual(index.search(""), [])
         self.assertEqual(index.search("   "), [])
 
@@ -189,7 +189,12 @@ class TestRetrievalPipeline(unittest.TestCase):
         """7. Kiểm tra UETRetriever toàn bộ quy trình: Query -> K chunks."""
         embedder = MockEmbeddingModel()
         store = MockVectorStore(self.sample_chunks)
-        retriever = UETRetriever(embedding_model=embedder, vector_store=store)
+        retriever = UETRetriever(
+            embedding_model=embedder,
+            vector_store=store,
+            reranker=HeuristicReranker(),
+            config={"retrieval": {"reranker_type": "heuristic", "enable_mmr": False}},
+        )
         retriever.index_chunks(self.sample_chunks)
 
         query = UserQuery(query_text="Điều kiện xét học bổng khuyến khích học tập")
@@ -202,10 +207,15 @@ class TestRetrievalPipeline(unittest.TestCase):
         self.assertIn("retrieval_method", results[0].metadata)
 
     def test_partial_data_handling(self):
-        """8. Kiểm tra khi dữ liệu chưa đầy đủ hoặc rỗng (theo yêu cầu người dùng)."""
+        """8. Kiểm tra khi dữ liệu chưa đầy đủ hoặc rỗng."""
         embedder = MockEmbeddingModel()
         empty_store = MockVectorStore(chunks=[])
-        retriever = UETRetriever(embedding_model=embedder, vector_store=empty_store)
+        retriever = UETRetriever(
+            embedding_model=embedder,
+            vector_store=empty_store,
+            reranker=HeuristicReranker(),
+            config={"retrieval": {"reranker_type": "heuristic", "enable_mmr": False}},
+        )
 
         # Chạy truy vấn trên store rỗng -> Không được văng exception, trả về []
         query = UserQuery(query_text="Câu hỏi khi chưa có dữ liệu")
@@ -222,6 +232,123 @@ class TestRetrievalPipeline(unittest.TestCase):
         results_after = retriever.retrieve(query, top_k=5)
         self.assertGreaterEqual(len(results_after), 1)
         self.assertEqual(results_after[0].chunk_id, "chunk_single")
+
+    def test_score_blending_and_year_anchor_boost(self):
+        """9. Kiểm tra hòa trộn điểm Hybrid + Rerank và boost khớp năm học (2025 vs 2026)."""
+
+        class _MockCrossEncoder(BaseReranker):
+            def rerank(self, query: str, candidates: List[RetrievedContext], top_n: int = 20) -> List[RetrievedContext]:
+                out = []
+                for c in candidates:
+                    # Giả lập Cross-Encoder chấm bản 2026 hơi nhỉnh hơn 2025 một chút
+                    score = 0.78 if "2026" in c.text else 0.75
+                    out.append(
+                        RetrievedContext(
+                            chunk_id=c.chunk_id,
+                            text=c.text,
+                            similarity_score=score,
+                            rank=1,
+                            metadata=dict(c.metadata or {}),
+                        )
+                    )
+                out.sort(key=lambda x: x.similarity_score, reverse=True)
+                return out[:top_n]
+
+        c_2025 = DataChunk(
+            chunk_id="c_2025",
+            text="[Điểm trúng tuyển năm 2025]\nĐiểm trúng tuyển ngành CN8 năm 2025 là 27.86.",
+            metadata={"title": "Điểm trúng tuyển năm 2025", "document_id": "d_2025"},
+        )
+        c_2026 = DataChunk(
+            chunk_id="c_2026",
+            text="[Thông tin tuyển sinh năm 2026]\nThông tin điểm chuẩn năm 2026 dự kiến.",
+            metadata={"title": "Thông tin tuyển sinh năm 2026", "document_id": "d_2026"},
+        )
+        embedder = MockEmbeddingModel()
+        store = MockVectorStore([c_2026, c_2025])
+        retriever = UETRetriever(
+            embedding_model=embedder,
+            vector_store=store,
+            reranker=_MockCrossEncoder(),
+            config={
+                "retrieval": {
+                    "bm25_weight": 0.60,
+                    "vector_weight": 0.20,
+                    "rrf_k": 30,
+                    "enable_mmr": False,
+                    "rerank_blend_alpha": 0.65,
+                    "enable_entity_anchor_boost": True,
+                }
+            },
+        )
+        retriever.index_chunks([c_2025, c_2026])
+        res = retriever.retrieve(UserQuery(query_text="Điểm trúng tuyển năm 2025 ngành CN8 là bao nhiêu?"), top_k=2)
+        self.assertEqual(res[0].chunk_id, "c_2025")
+        self.assertIn("blended_score", res[0].metadata)
+
+    def test_adjacent_chunk_expansion_contiguous_merge(self):
+        """10. Kiểm tra mở rộng ngữ cảnh liền kề (±1) gộp bảng biểu mà giữ nguyên chunk_id & rank."""
+        chunks = [
+            DataChunk(
+                chunk_id="tab_0",
+                document_id="doc_table",
+                chunk_index=0,
+                text="[Điểm chuẩn 2025]\n[META: Bảng điểm]\n- CN1: 26.5",
+                metadata={"document_id": "doc_table", "chunk_index": 0, "data_type": "tabular"},
+            ),
+            DataChunk(
+                chunk_id="tab_1",
+                document_id="doc_table",
+                chunk_index=1,
+                text="[Điểm chuẩn 2025]\n[META: Bảng điểm]\n- CN8 Khoa học máy tính: 27.86",
+                metadata={"document_id": "doc_table", "chunk_index": 1, "data_type": "tabular"},
+            ),
+            DataChunk(
+                chunk_id="tab_2",
+                document_id="doc_table",
+                chunk_index=2,
+                text="[Điểm chuẩn 2025]\n[META: Bảng điểm]\n- CN15 Mạng máy tính: 26.73",
+                metadata={"document_id": "doc_table", "chunk_index": 2, "data_type": "tabular"},
+            ),
+        ]
+
+        class _TargetedStore(MockVectorStore):
+            def search(self, query_vector, top_k: int = 5, filters=None):
+                c = chunks[1]
+                return [RetrievedContext(chunk_id=c.chunk_id, text=c.text, similarity_score=0.95, rank=1, metadata=c.metadata)]
+
+        class _TargetedBM25:
+            def __init__(self, all_chunks):
+                self.chunks = all_chunks
+
+            def search(self, query: str, top_k: int = 50):
+                c = chunks[1]
+                return [RetrievedContext(chunk_id=c.chunk_id, text=c.text, similarity_score=10.0, rank=1, metadata=c.metadata)]
+
+        retriever = UETRetriever(
+            embedding_model=MockEmbeddingModel(),
+            vector_store=_TargetedStore(),
+            bm25_index=_TargetedBM25(chunks),
+            reranker=HeuristicReranker(),
+            config={
+                "retrieval": {
+                    "enable_mmr": False,
+                    "enable_adjacent_expansion": True,
+                    "adjacent_expansion_top_k": 3,
+                    "adjacent_window_size": 1,
+                    "merge_contiguous_chunks": True,
+                }
+            },
+        )
+        res = retriever.retrieve(UserQuery(query_text="Điểm chuẩn CN8"), top_k=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].chunk_id, "tab_1")
+        self.assertEqual(res[0].metadata["expanded_chunk_ids"], ["tab_0", "tab_1", "tab_2"])
+        self.assertIn("CN1: 26.5", res[0].text)
+        self.assertIn("CN8 Khoa học máy tính: 27.86", res[0].text)
+        self.assertIn("CN15 Mạng máy tính: 26.73", res[0].text)
+        # Không lặp header [META: Bảng điểm] của neighbor
+        self.assertEqual(res[0].text.count("[META: Bảng điểm]"), 1)
 
 
 if __name__ == "__main__":
