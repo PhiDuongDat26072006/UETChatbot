@@ -112,6 +112,7 @@ llm:
     - "tencent/hy4"
     - "tencent/hy4-preview"
   temperature: 0.2
+  reasoning_effort: "none"     # Tắt reasoning tokens thừa trên OpenRouter hy4-flash để phản hồi nhanh (~4-7s)
   top_k_retrieval: 5
   enable_disk_cache: true
   cache_file: "database/llm_cache.json"
