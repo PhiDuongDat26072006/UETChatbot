@@ -386,13 +386,19 @@ def _serialize_contexts(sources: List[RetrievedContext]) -> List[Dict[str, Any]]
         graph_triples = meta.get("graph_triples") or []
         if graph_triples:
             entry["graph_triples"] = [str(t) for t in graph_triples[:5]]
+        lightrag_overview = meta.get("lightrag_overview")
+        if isinstance(lightrag_overview, str) and lightrag_overview.strip():
+            entry["lightrag_overview"] = lightrag_overview.strip()
         serialized.append(entry)
     return serialized
 
 
 def _format_context_dict_for_eval(c: Dict[str, Any]) -> str:
-    """Bổ sung thông tin Trang và Quan hệ Đồ thị Tri thức (nếu có) để Offline/Judge nhìn thấy đủ ngữ cảnh như Generator."""
+    """Bổ sung thông tin Trang, Bản đồ LightRAG 2 tầng và Quan hệ Đồ thị để Offline/Judge nhìn thấy đủ ngữ cảnh như Generator."""
     prefixes: List[str] = []
+    overview = c.get("lightrag_overview")
+    if isinstance(overview, str) and overview.strip():
+        prefixes.append(f"[BẢN ĐỒ LIÊN KẾT QUY CHẾ (LIGHTRAG 2-TẦNG)]\n{overview.strip()}")
     if c.get("page") is not None:
         prefixes.append(f"[Trang {c['page']}]")
     triples = c.get("graph_triples") or []
@@ -400,7 +406,7 @@ def _format_context_dict_for_eval(c: Dict[str, Any]) -> str:
         prefixes.append(f"[Quan hệ Đồ thị Tri thức: {'; '.join(str(t) for t in triples[:5])}]")
     if not prefixes:
         return str(c.get("text", ""))
-    return f"{' '.join(prefixes)}\n{str(c.get('text', '') or '').strip()}"
+    return f"{'\n'.join(prefixes)}\n{str(c.get('text', '') or '').strip()}"
 
 
 def _recover_generation_error(

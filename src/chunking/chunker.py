@@ -122,6 +122,15 @@ class UETChunker(BaseChunker):
                 return candidate
         return document_title or "Bảng dữ liệu"
 
+    @staticmethod
+    def _clean_table_cell_text(value: str) -> str:
+        """Làm sạch ký hiệu Markdown (####, **, __) và dấu ' ; ' sinh từ thẻ <br> trong ô bảng."""
+        cleaned = re.sub(r"#{1,6}\s*", "", value or "")
+        cleaned = cleaned.replace("**", "").replace("__", "")
+        cleaned = re.sub(r"\s+;\s+", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned
+
     def _chunk_markdown_table(
         self,
         doc: ProcessedData,
@@ -130,19 +139,31 @@ class UETChunker(BaseChunker):
         rows: List[str],
     ) -> List[DataChunk]:
         """Làm giàu từng hàng bằng tiêu đề bảng/cột rồi chia theo cửa sổ trượt."""
-        prefix = f"[{doc.title}]\n" if doc.title else ""
-        injected_title = f"[META: {table_title}]\n"
+        clean_doc_title = (doc.title or "").strip()
+        clean_table_title = self._clean_table_cell_text(table_title) or clean_doc_title or "Bảng dữ liệu"
+        prefix = f"[{clean_doc_title}]\n" if clean_doc_title else ""
+        # Không tiêm lặp dòng [META: ...] nếu tiêu đề bảng trùng khớp hoàn toàn với tiêu đề văn bản
+        injected_title = (
+            f"[META: {clean_table_title}]\n"
+            if clean_table_title.lower() != clean_doc_title.lower()
+            else ""
+        )
         chunk_prefix = prefix + injected_title
         budget = max(1, self.chunk_size - len(chunk_prefix))
+        clean_headers = [
+            self._clean_table_cell_text(col) or f"Cột {idx + 1}"
+            for idx, col in enumerate(headers)
+        ]
         enriched_rows = []
         for row in rows:
             values = self._table_cells(row)
-            if len(values) < len(headers):
-                values = values + [""] * (len(headers) - len(values))
+            if len(values) < len(clean_headers):
+                values = values + [""] * (len(clean_headers) - len(values))
             pairs = []
-            for index, (column, value) in enumerate(zip(headers, values)):
+            for index, (column, value) in enumerate(zip(clean_headers, values)):
                 label = column or f"Cột {index + 1}"
-                pairs.append(f"{label}: {value}")
+                clean_val = self._clean_table_cell_text(value)
+                pairs.append(f"{label}: {clean_val}")
             enriched_rows.append("- " + " | ".join(pairs))
 
         groups: List[str] = []
@@ -175,20 +196,29 @@ class UETChunker(BaseChunker):
                 next_start += 1
             start = max(start + 1, next_start)
 
+        doc_meta = doc.metadata or {}
+        res_type = str(doc_meta.get("resource_type") or "document").lower()
+
         result = []
         total = len(groups)
         for idx, body in enumerate(groups):
             enriched = chunk_prefix + body
-            meta = dict(doc.metadata or {})
-            meta.update({
-                "title": doc.title,
+            meta = {
                 "document_id": doc.id,
+                "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                "resource_type": res_type,
+                "breadcrumb": doc.title,
+                "heading": table_title,
+                "data_type": "tabular",
+                "table_title": table_title,
                 "chunk_index": idx,
                 "total_chunks": total,
                 "char_count": len(enriched),
-                "data_type": "tabular",
-                "table_title": table_title,
-            })
+            }
+            for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                if k in doc_meta and doc_meta[k] is not None:
+                    meta[k] = doc_meta[k]
+
             result.append(DataChunk(document_id=doc.id, text=enriched, chunk_index=idx, metadata=meta))
         return result
 
@@ -504,6 +534,9 @@ class UETChunker(BaseChunker):
         if not text.strip():
             return []
 
+        doc_meta = doc.metadata or {}
+        res_type = str(doc_meta.get("resource_type") or "document").lower()
+
         sections = self._split_into_sections(doc.title, text)
         result: List[DataChunk] = []
 
@@ -539,15 +572,19 @@ class UETChunker(BaseChunker):
                     if header_prefix and not segment.startswith(header_prefix)
                     else segment
                 )
-                meta = dict(doc.metadata or {})
-                meta.update({
-                    "title": doc.title,
+                meta = {
                     "document_id": doc.id,
+                    "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                    "resource_type": res_type,
                     "breadcrumb": breadcrumb_str,
                     "heading": heading_name,
-                    "char_count": len(enriched),
                     "data_type": "text",
-                })
+                    "char_count": len(enriched),
+                }
+                for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                    if k in doc_meta and doc_meta[k] is not None:
+                        meta[k] = doc_meta[k]
+
                 result.append(DataChunk(
                     document_id=doc.id,
                     text=enriched,
@@ -598,28 +635,35 @@ class UETChunker(BaseChunker):
 
         # Nếu độ dài toàn bộ tài liệu nhỏ hơn hoặc bằng chunk_size và không có cấu trúc phân cấp -> 1 chunk duy nhất
         if len(sections) <= 1 and len(raw_text) <= self.chunk_size:
-            chunk_metadata = dict(doc.metadata) if doc.metadata else {}
             enriched_text = (
                 f"[{doc.title}]\n{raw_text}"
                 if doc.title and not raw_text.startswith(f"[{doc.title}]")
                 else raw_text
             )
-            chunk_metadata.update({
-                "title": doc.title,
+            doc_meta = doc.metadata or {}
+            res_type = str(doc_meta.get("resource_type") or "document").lower()
+
+            meta = {
                 "document_id": doc.id,
-                "chunk_index": 0,
-                "total_chunks": 1,
+                "title": doc.title or doc_meta.get("title") or "Tài liệu đào tạo UET",
+                "resource_type": res_type,
                 "breadcrumb": doc.title,
                 "heading": doc.title,
-                "char_count": len(enriched_text),
                 "data_type": "text",
-            })
+                "chunk_index": 0,
+                "total_chunks": 1,
+                "char_count": len(enriched_text),
+            }
+            for k in ("site", "faculty", "unit", "published_at", "domain", "year", "page"):
+                if k in doc_meta and doc_meta[k] is not None:
+                    meta[k] = doc_meta[k]
+
             return [
                 DataChunk(
                     document_id=doc.id,
                     text=enriched_text,
                     chunk_index=0,
-                    metadata=chunk_metadata,
+                    metadata=meta,
                 )
             ]
 

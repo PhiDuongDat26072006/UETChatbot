@@ -78,15 +78,16 @@ _FRIENDLY_ERROR_MESSAGES: Dict[str, str] = {
 _RESPONSE_FORMAT_RULES = (
     "\n\n=== QUY TẮC ĐỊNH DẠNG ĐẦU RA BẮT BUỘC ===\n"
     "- TUYỆT ĐỐI KHÔNG dùng biểu tượng cảm xúc hay icon trang trí (emoji như 📌, ⚠️, 💡, ✅, 🎓, 📚, 🔹, 👉...) "
-    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**) "
-    "và căn cứ quy chế (**Căn cứ quy chế:**).\n"
-    "- Mọi công thức toán học hoặc công thức tính điểm (như điểm SAT, HSA, GPA, học phí) BẮT BUỘC phải viết "
-    "bằng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng, KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, "
-    "và KHÔNG đặt công thức trong dấu backtick `...`), sử dụng \\frac{tử}{mẫu}, \\times, \\text{...}.\n"
+    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề và luôn dùng khối trích dẫn Markdown "
+    "(> **Lưu ý quan trọng:** ...) cho phần lưu ý quan trọng.\n"
+    "- TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\", không liệt kê URL, link hay trích dẫn tên tài liệu tham khảo ở cuối câu trả lời.\n"
+    "- ĐIỂM SỐ VÀ CÁC CON SỐ ĐƠN THUẦN (như điểm chuẩn, điểm trúng tuyển, điểm GPA, số tín chỉ, học phí, năm học, mã ngành...): "
+    "BẮT BUỘC viết tự nhiên bằng chữ và số thông thường trên cùng dòng văn bản (ví dụ: viết '**25 điểm**', '**28.19 điểm**', '**GPA 3.2**', '**24 tín chỉ**'), "
+    "TUYỆT ĐỐI KHÔNG bọc các con số đơn thuần này trong cú pháp LaTeX $$...$$ hay $...$ (TUYỆT ĐỐI KHÔNG viết $$25$$, $$28.19$$, $$2026$$ đứng riêng một dòng).\n"
+    "- CHỈ sử dụng cú pháp LaTeX chuẩn ($$...$$ đứng riêng một dòng) khi trình bày CÔNG THỨC TOÁN HỌC phức tạp có phép tính (chứa phân số \\frac{tử}{mẫu}, phép nhân \\times, cộng trừ nhiều biến), "
+    "KHÔNG để khoảng trắng thừa sát dấu $, KHÔNG đặt công thức dài vào trong ô bảng hẹp, và KHÔNG đặt công thức trong dấu backtick `...`.\n"
     "- Khi trình bày bảng quy đổi chứng chỉ ngoại ngữ (IELTS, TOEFL, TOEIC, Cambridge, Aptis, VSTEP), "
     "giữ nội dung từng ô ngắn gọn, rõ ràng.\n"
-    "- Nếu câu hỏi nằm ngoài phạm vi quy chế đào tạo UET hoặc tài liệu ngữ cảnh không có thông tin để trả lời, "
-    "TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\" và không trích dẫn tài liệu.\n"
 )
 
 _VOICE_RESPONSE_FORMAT_RULES = (
@@ -136,63 +137,11 @@ ChatResponse.model_rebuild()
 
 
 def _build_sources_data(contexts: Optional[List[Any]]) -> List[SourceItem]:
-    """Chuẩn hóa danh sách RetrievedContext thành danh sách SourceItem trả về cho Web UI."""
-    sources_data: List[SourceItem] = []
-    for ctx in contexts or []:
-        meta = dict(getattr(ctx, "metadata", None) or {})
-        title = meta.get("title")
-        if not title or str(title).startswith("Tài liệu UET ("):
-            if "metadata" in meta and isinstance(meta["metadata"], str):
-                try:
-                    nested = json.loads(meta["metadata"])
-                    if isinstance(nested, dict) and nested.get("title"):
-                        title = nested["title"]
-                        meta["title"] = title
-                except Exception:
-                    pass
-            if not title or str(title).startswith("Tài liệu UET ("):
-                first_line = (getattr(ctx, "text", "") or "").strip().split("\n")[0]
-                m = re.match(r"^\[(.*?)\]", first_line) or re.match(r"^#+\s*(.*)", first_line)
-                if m and len(m.group(1).strip()) > 3:
-                    title = m.group(1).strip()
-                    meta["title"] = title
-                elif meta.get("source"):
-                    title = meta["source"]
-                    meta["title"] = title
-
-        search_type = meta.get("search_type")
-        search_source = meta.get("search_source")
-        if not search_type:
-            bm25_rank = meta.get("bm25_rank")
-            vec_rank = meta.get("vector_rank")
-            if bm25_rank is not None and vec_rank is not None:
-                search_type = "hybrid"
-                search_source = "BM25 + Vector Search"
-            elif bm25_rank is not None:
-                search_type = "bm25"
-                search_source = "BM25"
-            elif vec_rank is not None:
-                search_type = "vector"
-                search_source = "Vector Search"
-            else:
-                search_type = "hybrid"
-                search_source = "Hybrid"
-
-        meta["search_type"] = search_type
-        meta["search_source"] = search_source
-
-        sources_data.append(
-            SourceItem(
-                chunk_id=ctx.chunk_id,
-                text=ctx.text,
-                similarity_score=ctx.similarity_score,
-                rank=ctx.rank,
-                search_type=search_type,
-                search_source=search_source,
-                metadata=meta,
-            )
-        )
-    return sources_data
+    """
+    Hệ thống đã tắt tính năng hiển thị tài liệu tham khảo và URL trích dẫn.
+    Trả về danh sách rỗng để đảm bảo UI không hiển thị khối nguồn.
+    """
+    return []
 
 
 def _classify_error_text(raw_text: str) -> Dict[str, Any]:
@@ -301,6 +250,9 @@ _NO_ANSWER_MARKERS = (
     "chưa được đề cập",
     "không được đề cập",
     "vui lòng liên hệ trực tiếp phòng đào tạo",
+    "không liên quan",
+    "không liên quan đến",
+    "không phải là thông tin thuộc",
 )
 
 

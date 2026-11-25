@@ -278,40 +278,63 @@ class UETLLMClient(BaseLLM):
     # CALL PROVIDERS (GROQ, SAMBANOVA, GEMINI)
     # -------------------------------------------------------------------------
 
-    def _call_groq(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
-        """Gọi Groq API."""
+    def _call_groq(
+        self,
+        prompt_text: str,
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """Gọi Groq API với cơ chế tự động fallback qua candidate_models khi dính 429/413/404/503."""
         if not self.groq_keys:
             raise RuntimeError("Chưa cấu hình GROQ_API_KEY trong .env")
 
         import httpx
 
-        target_model = model or self.DEFAULT_CONFIGS["groq"]["model"]
+        candidate_models = (
+            [model]
+            if model
+            else list(self.DEFAULT_CONFIGS["groq"].get("candidate_models", [self.DEFAULT_CONFIGS["groq"]["model"]]))
+        )
         url = f"{self.DEFAULT_CONFIGS['groq']['base_url']}/chat/completions"
         key = self.groq_keys[0]
-
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": target_model,
-            "messages": [{"role": "user", "content": prompt_text}],
-            "temperature": self.temperature,
-        }
 
-        resp = httpx.post(url, headers=headers, json=payload, timeout=25.0)
-        if resp.status_code >= 400:
-            err_msg = resp.text
+        last_error = ""
+        for target_model in candidate_models:
+            payload: Dict[str, Any] = {
+                "model": target_model,
+                "messages": [{"role": "user", "content": prompt_text}],
+                "temperature": self.temperature,
+            }
+            if max_tokens is not None:
+                payload["max_tokens"] = max_tokens
+
             try:
-                err_msg = resp.json().get("error", {}).get("message", resp.text)
-            except Exception:
-                pass
-            raise RuntimeError(f"Groq [{resp.status_code}]: {err_msg}")
+                resp = httpx.post(url, headers=headers, json=payload, timeout=25.0)
+                if resp.status_code < 400:
+                    data = resp.json()
+                    answer = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+                    usage = data.get("usage", {})
+                    return answer.strip(), target_model, {"provider": "groq", "usage": usage}
 
-        data = resp.json()
-        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        usage = data.get("usage", {})
-        return answer.strip(), target_model, {"provider": "groq", "usage": usage}
+                err_msg = resp.text
+                try:
+                    err_msg = resp.json().get("error", {}).get("message", resp.text)
+                except Exception:
+                    pass
+                last_error = f"Groq [{resp.status_code}]: {err_msg}"
+                # Tự động thử model dự phòng khác trên Groq khi dính rate limit / quá kích thước / 404 / 503
+                if resp.status_code in (404, 413, 429, 503):
+                    continue
+                break
+            except Exception as e:
+                last_error = f"Groq ({target_model}): {e}"
+                continue
+
+        raise RuntimeError(last_error or "Groq API không phản hồi")
 
     def _call_sambanova(self, prompt_text: str, model: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
         """Gọi SambaNova API (OpenAI-compatible)."""
@@ -385,7 +408,7 @@ class UETLLMClient(BaseLLM):
                 except Exception:
                     pass
                 last_error = f"Gemini [{resp.status_code}]: {err_msg}"
-                if resp.status_code == 404:
+                if resp.status_code in (404, 429, 503):
                     continue
                 else:
                     break

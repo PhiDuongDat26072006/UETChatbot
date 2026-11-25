@@ -69,24 +69,31 @@ retrieval:
   final_top_k: 10                       # Số đoạn cuối cùng trả về cho LLM
   score_threshold: null                 # Ngưỡng điểm tối thiểu (tùy chọn)
 
+  # Cấu hình phân bổ slot trong chế độ Hybrid (LightRAG + Vector)
+  hybrid_graph_ratio: 0.2               # Tỷ lệ slot tối đa dành cho ngữ cảnh đồ thị LightRAG (20%)
+  hybrid_max_graph_k: 2                 # Trần số lượng ngữ cảnh LightRAG tối đa để không lấn át Vector chunks
+
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
   adjacent_expansion_top_k: 3           # Chỉ mở rộng ngữ cảnh cho Top K chunk điểm cao nhất (Top 3)
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
   merge_contiguous_chunks: true         # Tự động gộp các chunk nối tiếp trong cùng văn bản thành 1 khối
 
-  # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
+  # Cấu hình Nhánh Đồ thị Chính (LightRAG-First + Cầu nối ChunkBridge/Regex phụ trợ)
   enable_graph: true
   graph_top_k: 60
   graph_weight: 0.30
+  lightrag_hybrid_weight: 0.40          # Tăng trọng số nhánh LightRAG trong 3-Way RRF khi câu hỏi mang tính quan hệ/đa thực thể
   graph_max_hops: 2
   graph_seed_top_m: 10
 
 graph:
-  enable_llm_extraction: true           # Bật gọi OpenRouter Hy4-flash bóc tách sâu bổ sung ngoài tầng Regex
+  merge_lightrag_kg: true               # Hợp nhất tri thức 2-Pass từ LightRAG (graph.json + entity_chroma) vào graph_index.pkl
+  auto_sync_on_reindex: true            # Tự động đồng bộ lại graph_index.pkl (0 LLM) mỗi khi cập nhật indexed_data
+  enable_llm_extraction: false          # Tắt gọi LLM lẻ theo chunk vì đã có sẵn 14.037 nodes / 28.089 cạnh tinh luyện từ LightRAG
   llm_provider: "openrouter"
   llm_model: "tencent/hy4-flash"
-  max_llm_chunks: 5                     # Giới hạn cứng số chunk gọi LLM mỗi lần chạy để test an toàn, tránh đốt quota
+  max_llm_chunks: 5                     # Giới hạn cứng số chunk gọi LLM nếu bật thử nghiệm bổ sung
   max_chunks: null                      # Tùy chọn giới hạn tổng số chunk nạp vào graph (null = toàn bộ hoặc theo --samples)
   llm_domains:                          # Ưu tiên gọi LLM trên các tập dữ liệu quy chế/học vụ cốt lõi (~1.155 chunks)
     - "handbook"
@@ -132,6 +139,50 @@ llm:
       model: "tencent/hy4-flash"
       delay_seconds: 1.5       # OpenRouter (Tencent Hy4-flash)
 
+lightrag:
+  # =========================================================================
+  # CẤU HÌNH LIGHTRAG KNOWLEDGE GRAPH
+  # =========================================================================
+  enabled: true                         # Bật/tắt truy xuất qua LightRAG (đặt true khi kích hoạt Knowledge Graph)
+
+  # Đường dẫn lưu trữ
+  graph_path: "database/lightrag_db/graph.json"
+  entity_vector_dir: "database/lightrag_db/entity_chroma"
+  thesaurus_file: "src/graph/academic_thesaurus.json"
+  semantic_units_cache: "database/lightrag_db/semantic_units_cache.jsonl"
+
+  # Cấu hình Adaptive Extractor
+  extractor:
+    max_unit_chars: 3000                # Giới hạn ký tự mỗi Semantic Unit (~1.200 tokens)
+    min_unit_chars: 50                  # Bỏ qua unit quá ngắn
+
+  # Cấu hình Indexer (Offline KG Extraction)
+  indexer:
+    llm_provider: "openrouter"          # Provider dùng cho trích xuất thực thể: "openrouter", "groq", "gemini"
+    max_workers: 5                      # Số luồng gọi LLM song song (khuyến nghị 4-6 cho VPN + OpenRouter)
+    delay_between_calls: 0.5            # Giây nghỉ giữa 2 lượt gọi LLM trên mỗi luồng (key trả phí OpenRouter: 0.5s)
+    max_pass2_retries: 2                # Số lần retry khi LLM trả về lỗi
+    checkpoint_every: 10                # Lưu checkpoint sau mỗi N tài liệu
+    header_max_chars: 2000              # Số ký tự đầu tài liệu dùng cho Chặng 1
+
+  # Cấu hình Retrieval, Dual-Output & Cầu nối bổ khuyết (feat/graph helper)
+  retrieval_mode: "hybrid"              # "low_level", "high_level", "hybrid"
+  max_entities_per_query: 15            # Số thực thể tối đa nhận diện từ query
+  subgraph_depth: 2                     # Bán kính lan truyền đồ thị (k-hop neighbors)
+  supplement_weight: 0.65               # Trọng số phụ (0.65x) của tầng Regex/Vector supplement so với LightRAG Primary (1.0x)
+  enable_synthesis_overview: true       # Đính kèm Bản đồ Liên kết Quy chế 2 tầng lên đầu Prompt LLM cho câu hỏi quan hệ
+  synthesis_max_chars: 900              # Giới hạn ký tự khối tổng hợp 2 tầng (~180-220 từ)
+  use_llm_query_extraction: true        # Bật/tắt dùng LLM bóc tách thực thể câu hỏi ở nhánh LightRAG (PA1)
+  llm_extraction_timeout: 3.5           # Timeout tối đa (giây) cho lời gọi LLM bóc thực thể (quá hạn tự fallback PA2)
+  entity_similarity_threshold: 0.72     # Ngưỡng Cosine Similarity tối thiểu khi khớp thực thể qua entity_chroma
+  entity_vector_top_k: 3                # Số node ứng viên lấy từ entity_chroma cho mỗi thực thể truy vấn
+
+  # Cấu hình Query Router & Smart PA1 Trigger (Lựa chọn 1)
+  router:
+    mode: "auto"                        # "auto", "always_hybrid", "always_lightrag", "always_vector"
+    llm_extraction_mode: "auto"         # "auto" (chỉ bật PA1 LLM cho câu quan hệ/khẩu ngữ), "always", "off"
+    confidence_threshold: 0.65
+
 api:
   host: "127.0.0.1"
   port: 8000
@@ -143,23 +194,18 @@ prompt:
     Bạn là trợ lý ảo AI chuyên viên tư vấn quy chế đào tạo và học vụ của Trường Đại học Công nghệ - ĐHQGHN (UET Chatbot).
     Nhiệm vụ của bạn là giải đáp thắc mắc của sinh viên một cách chính xác, thân thiện, rõ ràng và chuyên nghiệp dựa trên các tài liệu quy chế được cung cấp.
 
-    QUY TẮC BẮT BUỘC:
-    1. CHỈ SỬ DỤNG THÔNG TIN TRONG [NGỮ CẢNH ĐƯỢC CUNG CẤP]: Mọi khẳng định, điều kiện, số liệu (điểm GPA, số tín chỉ, mốc thời gian, học phí...) phải có căn cứ rõ ràng từ các tài liệu được trích xuất. Tuyệt đối không suy diễn, suy đoán hoặc tự bịa đặt thông tin ngoài tài liệu.
-    2. NGUYÊN TẮC TRUNG THỰC: Nếu ngữ cảnh không có thông tin hoặc không đủ để trả lời câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự suy diễn.
-    3. NGUYÊN TẮC TRÌNH BÀY ĐẸP, GỌN GÀNG & BẮT BUỘC SỬ DỤNG BẢNG (MARKDOWN TABLE):
-       - Tuyệt đối không viết thành một khối văn bản dài toàn chữ. Hãy tổ chức bố cục trực quan, đẹp mắt, có phân cấp rõ ràng:
-         + Dùng 1-2 câu mở đầu tóm tắt trực diện câu trả lời.
-         + BẮT BUỘC SỬ DỤNG BẢNG MARKDOWN (| Cột 1 | Cột 2 | ...) để tổng hợp, so sánh hoặc hệ thống hóa dữ liệu bất cứ khi nào câu hỏi liên quan đến:
-           * Chuẩn đầu ra ngoại ngữ (bảng quy đổi chứng chỉ IELTS, TOEFL, TOEIC, VSTEP, Aptis, JLPT... theo Bậc 3 CTĐT chuẩn và Bậc 4 CTĐT CLC).
-           * Tiêu chuẩn, điều kiện xét học bổng, làm khóa luận tốt nghiệp, xét tốt nghiệp, khen thưởng.
-           * Thang điểm, xếp loại học lực, quy đổi điểm (GPA, điểm hệ 4, hệ 10, điểm chữ A/B/C/D/F).
-           * Định mức số tín chỉ (tối thiểu, tối đa), mốc thời gian đăng ký học phần, rút bớt học phần, học cải thiện điểm.
-           * Các mức cảnh báo học tập, buộc thôi học, mức độ kỷ luật học vụ.
-           * Quy trình, thủ tục hành chính học vụ (Bước | Nội dung thực hiện | Thời hạn / Đơn vị tiếp nhận).
-         + ĐẶC BIỆT QUAN TRỌNG: Nếu trong ngữ cảnh được cung cấp có bảng số liệu hoặc bảng quy đổi chuẩn (như bảng chứng chỉ ngoại ngữ, bảng điểm, bảng tín chỉ), BẮT BUỘC phải tái hiện lại đầy đủ dưới dạng Bảng Markdown (| Cột 1 | Cột 2 | ...), TUYỆT ĐỐI KHÔNG tự ý rút gọn hay tóm tắt thành các gạch đầu dòng toàn chữ.
-         + Bảng phải có tiêu đề rõ ràng, các cột cân đối, nội dung từng ô ngắn gọn, dễ nắm bắt.
-         + Sau bảng, dùng danh sách gạch đầu dòng (•) hoặc khối trích dẫn (> Lưu ý quan trọng) để nhấn mạnh các lưu ý, điều kiện kèm theo hoặc trường hợp đặc biệt.
-    4. NÊU RÕ VĂN BẢN CĂN CỨ: Cuối câu trả lời, luôn ghi rõ nguồn tham khảo: "📌 Căn cứ quy chế: [Tên file / văn bản / số quyết định / trang]".
+    === QUY TẮC BẮT BUỘC (RAG GUARDRAILS ĐỂ ĐẠT CHỈ SỐ FAITHFULNESS & RELEVANCE TỐI ĐA) ===
+    1. CHỈ SỬ DỤNG THÔNG TIN TRONG [NGỮ CẢNH ĐƯỢC CUNG CẤP]: Mọi khẳng định, điều kiện, số liệu (điểm GPA, số tín chỉ, mốc thời gian, học phí...) phải có căn cứ rõ ràng từ các tài liệu được trích xuất. Tuyệt đối không suy diễn, suy đoán hoặc bổ sung kiến thức ngoài tài liệu.
+    2. NGUYÊN TẮC TRUNG THỰC (FAITHFULNESS): Nếu ngữ cảnh không có thông tin hoặc không đủ để khẳng định câu hỏi, hãy trả lời lịch sự: "Xin lỗi em, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Em vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé." Tuyệt đối không tự bịa đặt thông tin.
+    3. NGUYÊN TẮC TRÌNH BÀY KHOA HỌC, LINH HOẠT VÀ TỰ NHIÊN:
+       - Dùng 1-2 câu mở đầu trả lời trực diện câu hỏi của sinh viên.
+       - LINH HOẠT LỰA CHỌN ĐỊNH DẠNG PHÙ HỢP:
+         + KHI NÀO SỬ DỤNG BẢNG MARKDOWN (| Cột 1 | Cột 2 | ...):
+           * Chỉ dùng bảng khi câu hỏi yêu cầu so sánh đối chiếu giữa các đối tượng (các loại học bổng, các hệ đào tạo) hoặc cần tái hiện bảng quy đổi số liệu phức tạp (như bảng quy đổi chứng chỉ ngoại ngữ IELTS/TOEIC/VSTEP, bảng quy đổi thang điểm chữ - hệ 4 - hệ 10).
+           * Bảng phải có tiêu đề rõ ràng, các cột cân đối, nội dung từng ô ngắn gọn.
+         + KHI NÀO SỬ DỤNG GẠCH ĐẦU DÒNG (•) HOẶC ĐOẠN VĂN:
+           * Với các câu hỏi giải thích khái niệm, điều kiện tiêu chuẩn đơn lẻ, định mức số tín chỉ, thời hạn hoặc quy trình từng bước: ƯU TIÊN dùng danh sách gạch đầu dòng (•) kèm in đậm từ khóa chính để câu trả lời thân thiện, mạch lạc và dễ đọc.
+         + Dùng khối trích dẫn (> **Lưu ý quan trọng:** ...) để bổ sung các điều kiện kèm theo hoặc trường hợp đặc biệt.
 
 evaluation:
   judge:
