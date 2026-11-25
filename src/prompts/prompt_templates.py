@@ -14,9 +14,7 @@ from src.prompts.prompts import (
 )
 from src.utils.helpers import get_logger, load_yaml_config
 
-logger = get_logger("prompts")
-
-class UETPromptAugmenter(BasePromptAugmenter):
+logger = get_logclass UETPromptAugmenter(BasePromptAugmenter):
     """
     Bộ ghép nối Prompt tăng cường cho UET Chatbot.
     Tự động đọc mẫu prompt từ config.yaml nếu không truyền trực tiếp.
@@ -108,6 +106,11 @@ class UETPromptAugmenter(BasePromptAugmenter):
             few_shot_section=few_shot_section,
             context_block=context_block,
             query=query.query_text,
+lf.system_prompt,
+            few_shot_section=few_shot_section,
+            context_block=context_block,
+            query=query.query_text,
+>>>>>>> 563baeb (feat: init agent rag)
         )
 
         return AugmentedPrompt(
