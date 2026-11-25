@@ -21,7 +21,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.base import UserQuery
-from src.pipeline import get_rag_pipeline, get_active_pipeline
+from src.pipeline import get_rag_pipeline, get_active_pipeline, describe_pipeline_mode
 
 
 def run_cli():
@@ -52,7 +52,11 @@ def run_cli():
         rag_pipeline = get_active_pipeline()
 
     db_count = rag_pipeline.vector_store.count()
-    console.print(f"[green]✔ Hệ thống đã sẵn sàng với [bold]{db_count}[/bold] chunks vector tri thức.[/green]\n")
+    active_mode_label = describe_pipeline_mode(rag_pipeline)
+    console.print(
+        f"[green]✔ Hệ thống đã sẵn sàng với [bold]{db_count}[/bold] chunks vector tri thức "
+        f"| Chế độ: [bold cyan]{active_mode_label}[/bold cyan].[/green]\n"
+    )
 
     cli_session_id = f"cli_{uuid.uuid4().hex[:8]}"
 
@@ -82,6 +86,7 @@ def run_cli():
                 table = Table(title="📊 Thống kê Hệ thống RAG UET")
                 table.add_column("Thông số", style="cyan")
                 table.add_column("Giá trị", style="green")
+                table.add_row("Chế độ đang chạy", active_mode_label)
                 table.add_row("Cơ sở dữ liệu Vector", "ChromaDB (database/vector_db/)")
                 table.add_row("Số lượng văn bản đã lập chỉ mục", str(db_count))
                 table.add_row("Mô hình LLM", rag_pipeline.llm.model_name)

@@ -107,7 +107,11 @@ class UETLLMClient(BaseLLM):
         llm_cfg = config.get("llm", {})
         custom_cfg = llm_cfg.get("custom_api", {})
 
-        raw_provider = (provider or llm_cfg.get("provider", "openrouter")).strip().lower()
+        raw_provider = (
+            provider
+            or os.getenv("LLM_PROVIDER")
+            or llm_cfg.get("provider", "openrouter")
+        ).strip().lower()
         self.provider = "custom_api" if raw_provider in ("api", "custom", "custom_api") else raw_provider
 
         # Cấu hình Custom API (OpenAI-compatible / Cloudflare Tunnel giống tests/test_gemma_host.py)
@@ -135,12 +139,34 @@ class UETLLMClient(BaseLLM):
         self.custom_api_enable_thinking = bool(custom_cfg.get("enable_thinking", False))
         self.custom_api_stream = bool(custom_cfg.get("stream", True))
 
+        providers_cfg = llm_cfg.get("providers", {})
+        openrouter_cfg = providers_cfg.get("openrouter", {})
+        self.openrouter_model = (
+            model_name
+            if (model_name and self.provider == "openrouter")
+            else openrouter_cfg.get("model", self.DEFAULT_CONFIGS["openrouter"]["model"])
+        )
+        self.openrouter_delay = float(
+            openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
+        )
+        raw_routing = openrouter_cfg.get("provider_routing")
+        self.openrouter_provider_routing: Optional[Dict[str, Any]] = (
+            dict(raw_routing) if isinstance(raw_routing, dict) and raw_routing else None
+        )
+
+        # Tự động khớp model theo provider đang chọn (chỉ cần đổi llm.provider hoặc --llm)
         if model_name:
             self._model_name = model_name
         elif self.provider == "custom_api":
             self._model_name = self.custom_api_model
+        elif self.provider == "openrouter":
+            self._model_name = self.openrouter_model
         else:
-            self._model_name = llm_cfg.get("model_name", "tencent/hy4-flash")
+            self._model_name = (
+                providers_cfg.get(self.provider, {}).get("model")
+                or llm_cfg.get("model_name")
+                or self.DEFAULT_CONFIGS.get(self.provider, {}).get("model", "tencent/hy4-flash")
+            )
 
         default_provider_candidates = self.DEFAULT_CONFIGS.get(
             self.provider, self.DEFAULT_CONFIGS["openrouter"]
@@ -168,16 +194,6 @@ class UETLLMClient(BaseLLM):
             "OPENROUTER",
             custom_key=api_key if self.provider == "openrouter" else None,
             custom_keys=api_keys if self.provider == "openrouter" else None,
-        )
-
-        openrouter_cfg = llm_cfg.get("providers", {}).get("openrouter", {})
-        self.openrouter_model = (
-            model_name
-            if (model_name and self.provider == "openrouter")
-            else openrouter_cfg.get("model", self.DEFAULT_CONFIGS["openrouter"]["model"])
-        )
-        self.openrouter_delay = float(
-            openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
         )
 
         # Tự động nhận diện nếu key trong GROQ_API_KEY là OpenRouter key (sk-or-...)
@@ -664,6 +680,12 @@ class UETLLMClient(BaseLLM):
         elif eff_low in ("minimal", "low", "medium", "high"):
             payload["reasoning"] = {"effort": eff_low}
 
+    def _apply_openrouter_provider_routing(self, payload: Dict[str, Any]) -> None:
+        """Gắn cấu hình định tuyến provider (vd: order=['wafer/us']) cho OpenRouter nếu có."""
+        routing = getattr(self, "openrouter_provider_routing", None)
+        if isinstance(routing, dict) and routing:
+            payload["provider"] = dict(routing)
+
     def _call_openrouter(
         self,
         prompt_text: str,
@@ -697,6 +719,7 @@ class UETLLMClient(BaseLLM):
             "temperature": self.temperature if temperature is None else temperature,
         }
         self._apply_openrouter_reasoning(payload)
+        self._apply_openrouter_provider_routing(payload)
 
         resp = httpx.post(url, headers=headers, json=payload, timeout=150.0)
         if resp.status_code == 400 and "reasoning" in payload and "reasoning" in resp.text.lower():
@@ -1105,6 +1128,7 @@ class UETLLMClient(BaseLLM):
                     "stream": True,
                 }
                 self._apply_openrouter_reasoning(payload)
+                self._apply_openrouter_provider_routing(payload)
                 with httpx.Client(timeout=150.0) as client:
                     with client.stream("POST", url, headers=headers, json=payload) as response:
                         if response.status_code == 200:

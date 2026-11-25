@@ -913,15 +913,32 @@ def get_agentic_rag_pipeline() -> Any:
 
 def get_active_pipeline(mode: Optional[str] = None) -> Any:
     """
-    Lấy pipeline theo cấu hình config.yaml, biến môi trường RAG_MODE hoặc tham số mode ('agentic' hoặc 'modular').
-    Mặc định: 'agentic'.
+    Lấy pipeline theo tham số mode, biến môi trường RAG_MODE hoặc config.yaml ('modular' hoặc 'agentic').
+    Mặc định: 'modular' (Hybrid RAG); chỉ bật Agentic khi có cờ --agentic hoặc cấu hình rõ.
     """
     env_mode = os.environ.get("RAG_MODE")
     cfg = load_yaml_config()
-    chosen_mode = mode or env_mode or cfg.get("agent", {}).get("mode", "agentic")
-    if chosen_mode == "modular":
-        return get_rag_pipeline()
-    return get_agentic_rag_pipeline()
+    chosen_mode = (mode or env_mode or cfg.get("agent", {}).get("mode") or "modular").strip().lower()
+    if chosen_mode == "agentic":
+        return get_agentic_rag_pipeline()
+    return get_rag_pipeline()
+
+
+def describe_pipeline_mode(pipeline: Any) -> str:
+    """Trả về nhãn chế độ đang chạy: Hybrid / Graph + Hybrid / Agentic + Hybrid / Graph + Hybrid + Agentic."""
+    is_agentic = hasattr(pipeline, "agent_graph")
+    retriever = getattr(pipeline, "retriever", None)
+    enable_graph = bool(getattr(retriever, "enable_graph", False))
+    graph_loaded = getattr(retriever, "graph_index", None) is not None and (
+        getattr(retriever.graph_index, "count", lambda: 0)() > 0
+    )
+    parts: List[str] = []
+    if enable_graph:
+        parts.append("Graph" if graph_loaded else "Graph (chưa có graph_index.pkl)")
+    parts.append("Hybrid")
+    if is_agentic:
+        parts.append("Agentic")
+    return " + ".join(parts)
 
 
 def get_ingestion_pipeline() -> UETIngestionPipeline:

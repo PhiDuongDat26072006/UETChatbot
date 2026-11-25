@@ -34,56 +34,72 @@ def print_banner():
 def main():
     parser = argparse.ArgumentParser(description="UET Chatbot RAG System")
 
-    # Nhóm tham số Khởi chạy Chatbot & Trải nghiệm
-    parser.add_argument("--run", action="store_true", help="Kích hoạt khởi chạy giao diện Chatbot")
-    parser.add_argument("--cli", action="store_true", help="Giao diện Chatbot dòng lệnh trên Terminal")
-    parser.add_argument("--web", action="store_true", help="Giao diện Chatbot Web trên trình duyệt local")
-    parser.add_argument("--agentic", action="store_true", help="Kích hoạt chế độ Agentic RAG (LangGraph State Machine)")
-    parser.add_argument("--modular", action="store_true", help="Kích hoạt chế độ Modular RAG truyền thống")
-    parser.add_argument("--host", default="127.0.0.1", help="Địa chỉ host cho Web UI")
-    parser.add_argument("--port", type=int, default=8000, help="Cổng port cho Web UI")
+    # 1. Nhóm Khởi chạy Chatbot (mặc định Hybrid; bật tùy chọn --graph / --agentic)
+    run_group = parser.add_argument_group("1. Chạy Chatbot (--run)")
+    run_group.add_argument("--run", action="store_true", help="Kích hoạt khởi chạy giao diện Chatbot")
+    run_group.add_argument("--cli", action="store_true", help="Giao diện Chatbot dòng lệnh trên Terminal")
+    run_group.add_argument("--web", action="store_true", help="Giao diện Chatbot Web trên trình duyệt local")
+    run_group.add_argument("--graph", action="store_true", help="Bật nhánh GraphRAG kết hợp với Hybrid Search (mặc định: tắt)")
+    run_group.add_argument("--agentic", action="store_true", help="Bật chế độ Agentic RAG LangGraph + JEV (mặc định: tắt, chạy Hybrid)")
+    run_group.add_argument(
+        "--llm",
+        type=str,
+        choices=["openrouter", "custom_api", "groq", "sambanova", "gemini"],
+        default=None,
+        help="Chọn nhanh LLM provider không cần sửa config.yaml (vd: --llm openrouter hoặc --llm custom_api)",
+    )
+    run_group.add_argument("--host", default="127.0.0.1", help="Địa chỉ host cho Web UI")
+    run_group.add_argument("--port", type=int, default=8000, help="Cổng port cho Web UI")
 
-    # Nhóm tham số Đánh giá chất lượng (Evaluation) - Rút gọn theo chuẩn
-    parser.add_argument("--eval", "--evaluate", action="store_true", dest="eval", help="Kích hoạt quy trình đánh giá chất lượng hệ thống")
-    parser.add_argument("--all", action="store_true", help="Chạy đánh giá toàn diện cả Retrieval và End-to-End trên tập benchmark")
-    parser.add_argument("--e2e", action="store_true", help="Đánh giá toàn trình End-to-End RAG")
-    parser.add_argument("--retrieval", action="store_true", help="Đánh giá hiệu quả phân hệ Retrieval (Precision, Recall, MRR, NDCG)")
-    parser.add_argument("--level", type=str, choices=["doc", "chunk", "both"], default="both", help="Cấp độ đánh giá retrieval: doc, chunk, hoặc both (mặc định: both)")
-    parser.add_argument("--mode", type=str, choices=["live", "mock"], default="live", help="Chế độ đánh giá retrieval: 'live' (chạy retriever thật) hoặc 'mock' (kiểm thử nhanh với ground-truth)")
-    parser.add_argument("--domain", type=str, default=None, help="Chỉ định khoa/lĩnh vực đánh giá: fit, fet, fema, sae, handbook, tuyensinh, overview, all")
-    parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA (mặc định: data/eval_data/e2e_eval_100_annotated.json)")
-    parser.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu câu hỏi muốn kiểm thử (mặc định: toàn bộ)")
-    parser.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas thay vì bộ đánh giá mặc định")
-    parser.add_argument("--use-judge", action="store_true", help="Bật UETLLMJudgeEvaluator (1-call Structured JSON tiếng Việt)")
-    parser.add_argument("--judge-provider", type=str, default=None, help="Provider cho LLM Judge (groq, openrouter, sambanova, gemini)")
-    parser.add_argument("--judge-model", type=str, default=None, help="Model cho LLM Judge")
-    parser.add_argument("--generate-only", action="store_true", help="Chỉ chạy Pha 1 sinh snapshot predictions.json")
-    parser.add_argument("--score-from", type=str, default=None, help="Chạy Pha 2 chấm điểm từ snapshot predictions.json có sẵn")
-    parser.add_argument("--save-predictions", type=str, default=None, help="Đường dẫn lưu snapshot predictions.json")
-    parser.add_argument("--no-semantic", action="store_true", help="Tắt semantic cosine (bge-m3) khi chấm E2E offline")
-    parser.add_argument("--no-resume", action="store_true", help="Không tái sử dụng snapshot cũ khi chạy Pha 1")
-    parser.add_argument("--use-cache", action="store_true", help="Bật cache retrieval theo hash cấu hình (mặc định: tắt)")
-    parser.add_argument("--no-cache", action="store_true", help="Tắt cache retrieval (mặc định)")
-    parser.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
-    parser.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
+    # 2. Nhóm Đánh giá cơ bản
+    eval_group = parser.add_argument_group("2. Đánh giá cơ bản (--eval)")
+    eval_group.add_argument("--eval", "--evaluate", action="store_true", dest="eval", help="Kích hoạt quy trình đánh giá chất lượng hệ thống")
+    eval_group.add_argument("--e2e", action="store_true", help="Đánh giá toàn trình End-to-End RAG (hỗ trợ --graph / --agentic)")
+    eval_group.add_argument("--retrieval", action="store_true", help="Đánh giá phân hệ Retrieval (Precision, Recall, MRR, NDCG)")
+    eval_group.add_argument("--all", action="store_true", help="Chạy đánh giá toàn diện cả Retrieval và End-to-End")
+    eval_group.add_argument("--use-judge", action="store_true", help="Bật LLM Judge (Structured JSON tiếng Việt)")
+    eval_group.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu kiểm thử (mặc định: toàn bộ)")
+    eval_group.add_argument("--domain", type=str, default=None, help="Lọc theo khoa/lĩnh vực: fit, fet, fema, sae, handbook, tuyensinh, overview, all")
+    eval_group.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
+    eval_group.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
 
-    # Nhóm tham số điều phối nạp dữ liệu đa chặng (Multi-Stage Ingestion)
-    parser.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
-    parser.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
-    parser.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
-    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
-    parser.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa toàn bộ dữ liệu cũ ở chặng đích (chunked_data, vectordb, BM25 index, manifest) trước khi nạp lại từ đầu")
+    # 3. Nhóm Đánh giá nâng cao (Benchmark 2 pha & tùy chọn chuyên sâu)
+    eval_adv_group = parser.add_argument_group("3. Đánh giá nâng cao (Benchmark 2 pha & tùy chọn chuyên sâu)")
+    eval_adv_group.add_argument("--level", type=str, choices=["doc", "chunk", "both"], default="both", help="Cấp độ đánh giá retrieval: doc, chunk, hoặc both")
+    eval_adv_group.add_argument("--mode", type=str, choices=["live", "mock"], default="live", help="Chế độ đánh giá retrieval: 'live' hoặc 'mock'")
+    eval_adv_group.add_argument("--dataset", type=str, default=None, help="Đường dẫn tới file dataset QA tùy chỉnh")
+    eval_adv_group.add_argument("--generate-only", action="store_true", help="Chỉ chạy Pha 1 sinh snapshot predictions.json")
+    eval_adv_group.add_argument("--score-from", type=str, default=None, help="Chạy Pha 2 chấm điểm từ snapshot predictions.json có sẵn")
+    eval_adv_group.add_argument("--save-predictions", type=str, default=None, help="Đường dẫn lưu snapshot predictions.json")
+    eval_adv_group.add_argument("--judge-provider", type=str, default=None, help="Ghi đè provider cho LLM Judge (groq, openrouter, sambanova, gemini)")
+    eval_adv_group.add_argument("--judge-model", type=str, default=None, help="Ghi đè model cho LLM Judge")
+    eval_adv_group.add_argument("--no-semantic", action="store_true", help="Tắt semantic cosine (bge-m3) khi chấm E2E offline")
+    eval_adv_group.add_argument("--no-resume", action="store_true", help="Không tái sử dụng snapshot cũ khi chạy Pha 1")
+    eval_adv_group.add_argument("--use-cache", action="store_true", help="Bật cache retrieval theo hash cấu hình (mặc định: tắt)")
+    eval_adv_group.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas thay vì bộ đánh giá mặc định")
+
+    # 4. Nhóm Nạp & lập chỉ mục dữ liệu đa chặng
+    ingest_group = parser.add_argument_group("4. Nạp & lập chỉ mục dữ liệu (--ingest)")
+    ingest_group.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
+    ingest_group.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
+    ingest_group.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
+    ingest_group.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    ingest_group.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa dữ liệu cũ ở chặng đích trước khi nạp lại")
 
     args = parser.parse_args()
     print_banner()
 
     import os
-    if args.modular:
-        os.environ["RAG_MODE"] = "modular"
-    elif args.agentic:
-        os.environ["RAG_MODE"] = "agentic"
+
+    def _apply_mode_flags() -> None:
+        """Mặc định luôn chạy Hybrid (modular, tắt Graph); chỉ bật Agentic / Graph khi có cờ --agentic / --graph."""
+        os.environ["RAG_MODE"] = "agentic" if args.agentic else "modular"
+        os.environ["ENABLE_GRAPH"] = "1" if args.graph else "0"
+        if args.llm:
+            os.environ["LLM_PROVIDER"] = args.llm
 
     if args.run:
+        _apply_mode_flags()
         if args.web:
             from src.interfaces.routes import run_web
             run_web(host=args.host, port=args.port, open_browser=True)
@@ -92,8 +108,8 @@ def main():
             run_cli()
         else:
             print("⚠️  Vui lòng chỉ định một trong hai hình thức trải nghiệm:")
-            print("  1. Khởi chạy Giao diện WEB:      python main.py --run --web")
-            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli\n")
+            print("  1. Khởi chạy Giao diện WEB:      python main.py --run --web [--graph] [--agentic]")
+            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli [--graph] [--agentic]\n")
 
     elif args.eval:
         from src.utils.helpers import load_yaml_config
@@ -102,7 +118,7 @@ def main():
         eval_top_k = args.top_k if args.top_k is not None else configured_k
         out_p = Path(args.output) if args.output else None
         eval_dataset_target = args.dataset or cfg.get("paths", {}).get("eval_dataset_file")
-        retrieval_use_cache = bool(args.use_cache and not args.no_cache)
+        retrieval_use_cache = bool(args.use_cache)
 
         if getattr(args, "all", False):
             print("\n" + "=" * 75)
@@ -126,6 +142,7 @@ def main():
             )
 
             print("\n[CHẶNG 2/2] ĐÁNH GIÁ PHÂN HỆ END-TO-END GENERATION")
+            _apply_mode_flags()
             run_eval_e2e_cli(
                 dataset_path=eval_dataset_target,
                 domain=args.domain,
@@ -147,6 +164,7 @@ def main():
             print("=" * 75 + "\n")
 
         elif args.e2e or args.score_from or args.generate_only or args.use_judge or args.use_ragas:
+            _apply_mode_flags()
             from src.evaluation.evaluator import run_eval_e2e_cli
             run_eval_e2e_cli(
                 dataset_path=eval_dataset_target,
@@ -165,7 +183,7 @@ def main():
                 resume=not args.no_resume,
             )
         else:
-            # Mặc định khi chạy python main.py --eval hoặc --eval --retrieval: Đánh giá phân hệ truy xuất với K từ config.yaml
+            # Mặc định khi chạy python main.py --eval hoặc --eval --retrieval: Giữ nguyên hành vi đọc config.yaml
             from src.evaluation.evaluate_retrieval import run_eval_retrieval_cli
             run_eval_retrieval_cli(
                 eval_dir=eval_dataset_target,
@@ -194,12 +212,20 @@ def main():
 
     else:
         print("📌 CÁC LỆNH CHÍNH ĐỂ SỬ DỤNG HỆ THỐNG:")
-        print("  1. Khởi chạy Giao diện WEB:          python main.py --run --web")
-        print("  2. Khởi chạy Chatbot trên CLI:       python main.py --run --cli")
-        print("  3. Đánh giá toàn diện cả 2 chặng:    python main.py --eval --all")
+        print("  1. Khởi chạy Giao diện WEB (mặc định Hybrid): python main.py --run --web [--graph] [--agentic]")
+        print("  2. Khởi chạy Chatbot CLI (mặc định Hybrid):")
+        print("     • Hybrid thuần (BM25 + Vector):   python main.py --run --cli")
+        print("     • Graph + Hybrid:                 python main.py --run --cli --graph")
+        print("     • Agentic + Hybrid:               python main.py --run --cli --agentic")
+        print("     • Graph + Hybrid + Agentic:       python main.py --run --cli --graph --agentic")
+        print("  3. Đánh giá toàn diện cả 2 chặng:    python main.py --eval --all [--graph] [--agentic]")
         print("     • Đánh giá toàn diện mock nhanh:  python main.py --eval --all --mode mock")
         print("     • Đánh giá toàn diện theo domain: python main.py --eval --all --domain FET")
-        print("  4. Đánh giá toàn trình RAG (E2E):    python main.py --eval --e2e")
+        print("  4. Đánh giá toàn trình RAG (E2E - mặc định Hybrid):")
+        print("     • Hybrid thuần:                   python main.py --eval --e2e")
+        print("     • Graph + Hybrid:                 python main.py --eval --e2e --graph")
+        print("     • Agentic + Hybrid:               python main.py --eval --e2e --agentic")
+        print("     • Graph + Hybrid + Agentic:       python main.py --eval --e2e --graph --agentic")
         print("     • Đánh giá theo domain/khoa:      python main.py --eval --e2e --domain FET")
         print("     • Thử nghiệm với số mẫu nhỏ:      python main.py --eval --e2e --samples 5")
         print("     • Đánh giá với top_k tùy ý:       python main.py --eval --e2e --top_k 10")

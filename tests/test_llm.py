@@ -321,6 +321,90 @@ class TestUETLLMClient(unittest.TestCase):
         self.assertEqual(used_m, "tencent/hy4-flash")
         self.assertEqual(captured_post["payload"]["reasoning"], {"enabled": False})
 
+    def test_openrouter_provider_routing_payload(self):
+        """Kiểm tra OpenRouter gửi đúng payload model deepseek/deepseek-v4.1-flash-1017 và provider routing wafer/us."""
+        client = UETLLMClient(enable_cache=False)
+        self.assertEqual(client.provider, "openrouter")
+        self.assertEqual(client.model_name, "deepseek/deepseek-v4.1-flash-1017")
+        self.assertEqual(client.openrouter_model, "deepseek/deepseek-v4.1-flash-1017")
+        self.assertEqual(
+            client.openrouter_provider_routing,
+            {"order": ["wafer/us"], "allow_fallbacks": False},
+        )
+        client.openrouter_keys = ["sk-or-mock"]
+
+        captured_post = {}
+
+        class _FakePostResp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": "OK wafer"}}], "usage": {}}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured_post["payload"] = json
+            return _FakePostResp()
+
+        with patch("httpx.post", side_effect=fake_post):
+            ans, used_m, _meta = client._call_openrouter("Hỏi test")
+        self.assertEqual(ans, "OK wafer")
+        self.assertEqual(used_m, "deepseek/deepseek-v4.1-flash-1017")
+        self.assertEqual(
+            captured_post["payload"]["provider"],
+            {"order": ["wafer/us"], "allow_fallbacks": False},
+        )
+
+        captured_stream = {}
+
+        class _FakeStreamResp:
+            status_code = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def iter_lines(self):
+                yield 'data: {"choices":[{"delta":{"content":"OK stream"}}]}'
+                yield "data: [DONE]"
+
+        class _FakeHTTPClient:
+            def __init__(self, timeout=None):
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def stream(self, method, url, headers=None, json=None):
+                captured_stream["payload"] = json
+                return _FakeStreamResp()
+
+        with patch("httpx.Client", _FakeHTTPClient):
+            chunks = list(client.generate_stream(self.prompt))
+        self.assertEqual("".join(chunks), "OK stream")
+        self.assertEqual(
+            captured_stream["payload"]["provider"],
+            {"order": ["wafer/us"], "allow_fallbacks": False},
+        )
+
+    def test_easy_switch_between_openrouter_and_custom_api(self):
+        """Chỉ cần đổi provider hoặc biến môi trường LLM_PROVIDER là tự khớp đúng model tương ứng."""
+        with patch.dict(os.environ, {"LLM_PROVIDER": "custom_api"}, clear=False):
+            c_custom = UETLLMClient(enable_cache=False)
+            self.assertEqual(c_custom.provider, "custom_api")
+            self.assertEqual(c_custom.model_name, "gemma-4")
+
+        with patch.dict(os.environ, {"LLM_PROVIDER": "openrouter"}, clear=False):
+            c_or = UETLLMClient(enable_cache=False)
+            self.assertEqual(c_or.provider, "openrouter")
+            self.assertEqual(c_or.model_name, "deepseek/deepseek-v4.1-flash-1017")
+            self.assertEqual(c_or.openrouter_model, "deepseek/deepseek-v4.1-flash-1017")
+
     def test_custom_api_provider_payload_and_persistent_session(self):
         """Kiểm tra provider custom_api gửi đúng payload (stream=True + UTF-8 SSE decode) và tái sử dụng requests.Session theo session_id."""
         client = UETLLMClient(

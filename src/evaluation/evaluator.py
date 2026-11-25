@@ -466,7 +466,8 @@ def generate_predictions(
     active_dataset = dataset[:num_samples] if (num_samples and num_samples > 0) else dataset
     total = len(active_dataset)
     has_granular_parts = (
-        hasattr(pipeline, "retriever")
+        not hasattr(pipeline, "agent_graph")
+        and hasattr(pipeline, "retriever")
         and hasattr(pipeline, "prompt_augmenter")
         and hasattr(pipeline, "llm")
         and getattr(pipeline, "retriever", None) is not None
@@ -1294,9 +1295,10 @@ def run_eval_e2e_cli(
             print(f"   Domain hỗ trợ: {', '.join(DOMAIN_FILE_MAP.keys())}, all")
         return None
 
-    from src.pipeline import get_rag_pipeline
+    from src.pipeline import get_active_pipeline, describe_pipeline_mode
 
-    rag_pipeline = get_rag_pipeline()
+    rag_pipeline = get_active_pipeline()
+    active_mode_label = describe_pipeline_mode(rag_pipeline)
     actual_samples = num_samples if (num_samples and num_samples > 0) else len(dataset)
 
     if generate_only:
@@ -1307,6 +1309,7 @@ def run_eval_e2e_cli(
         )
         print("\n" + "=" * 70)
         print("📸 [PHA 1] CHẠY PIPELINE & LƯU SNAPSHOT PREDICTIONS")
+        print(f"• Chế độ RAG  : {active_mode_label}")
         print(f"• Tập dữ liệu : {target_name} ({actual_samples}/{len(dataset)} câu)")
         print(f"• Top-K       : {top_k}")
         print(f"• Snapshot    : {pred_out}")
@@ -1358,6 +1361,7 @@ def run_eval_e2e_cli(
 
     print("\n" + "=" * 70)
     print("📊 ĐANG CHẠY ĐÁNH GIÁ TOÀN TRÌNH E2E RAG (OFFLINE + DIAGNOSTICS)")
+    print(f"• Chế độ RAG  : {active_mode_label}")
     print(f"• Tập dữ liệu : {target_name} ({actual_samples}/{len(dataset)} câu)")
     print(f"• Top-K       : {top_k}")
     print(f"• LLM Judge   : {'BẬT (UETLLMJudgeEvaluator)' if use_judge else 'TẮT'}")
@@ -1391,6 +1395,8 @@ def run_eval_e2e_cli(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="UET Chatbot RAG Evaluation Runner")
+    parser.add_argument("--graph", action="store_true", help="Bật nhánh GraphRAG kết hợp với Hybrid Search")
+    parser.add_argument("--agentic", action="store_true", help="Bật chế độ Agentic RAG (LangGraph + JEV)")
     parser.add_argument("--use-ragas", action="store_true", help="Sử dụng thư viện Ragas")
     parser.add_argument("--use-judge", action="store_true", help="Sử dụng UETLLMJudgeEvaluator (1-call Structured JSON)")
     parser.add_argument("--judge-provider", type=str, default=None, help="Provider cho LLM Judge (groq, openrouter, sambanova, gemini)")
@@ -1409,6 +1415,8 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default=None, help="Đường dẫn file dataset QA kiểm thử")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn lưu kết quả JSON")
     args = parser.parse_args()
+    os.environ["RAG_MODE"] = "agentic" if args.agentic else "modular"
+    os.environ["ENABLE_GRAPH"] = "1" if args.graph else "0"
 
     run_eval_e2e_cli(
         dataset_path=args.dataset,

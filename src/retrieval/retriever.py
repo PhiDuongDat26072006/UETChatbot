@@ -11,6 +11,7 @@ Quy trình chuẩn hóa từ câu hỏi đến K chunks:
 """
 
 from __future__ import annotations
+import os
 import pickle
 import re
 import sys
@@ -88,8 +89,12 @@ class UETRetriever:
         self.rrf_blend_weight: float = float(retrieval_cfg.get("rrf_blend_weight", round(1.0 - self.rerank_weight, 4)))
         self.default_score_threshold: Optional[float] = retrieval_cfg.get("score_threshold", None)
 
-        # Cấu hình GraphRAG Vector Index
-        self.enable_graph: bool = bool(retrieval_cfg.get("enable_graph", True))
+        # Cấu hình GraphRAG Vector Index (hỗ trợ ghi đè qua biến môi trường ENABLE_GRAPH từ cờ --graph)
+        env_enable_graph = os.environ.get("ENABLE_GRAPH") if config is None else None
+        if env_enable_graph is not None:
+            self.enable_graph: bool = env_enable_graph.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            self.enable_graph = bool(retrieval_cfg.get("enable_graph", True))
         self.graph_top_k: int = int(retrieval_cfg.get("graph_top_k", 50))
         self.graph_weight: float = float(retrieval_cfg.get("graph_weight", 0.30))
         self.graph_max_hops: int = int(retrieval_cfg.get("graph_max_hops", 2))

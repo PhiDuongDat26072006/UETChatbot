@@ -86,7 +86,7 @@ retrieval:
 
 # Cấu hình JEV Decision Model (Hỗ trợ Custom Model/Tunnel như tests/test_tunnel.py hoặc OpenRouter)
 jev:
-  endpoint:  "https://spine-filter-sims-conditional.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
+  endpoint:  "https://tales-rolls-prizes-paintball.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
   model: "strands-decider-12B-gemma4-v1-2610"
   connect_timeout_s: 5
   read_timeout_s: 30
@@ -123,13 +123,12 @@ graph:
   seed_top_m: 10
 
 llm:
-  provider: "custom_api"             # Nhà cung cấp mặc định ("custom_api", "openrouter", "groq", "sambanova", "gemini")
-  model_name: "gemma-4"              # nếu là openrouter thì là "tencent/hy4-flash", groq thì là "qwen/qwen3.8-27b"
+  provider: "openrouter"             # Nhà cung cấp mặc định ("openrouter", "custom_api", "groq", "sambanova", "gemini")
+  model_name: "deepseek/deepseek-v4.1-flash-1017"
   candidate_models:
-    - "gemma-4"
+    - "deepseek/deepseek-v4.1-flash-1017"
     - "tencent/hy4-flash"
-    - "baidu/ernie-5.5-flash-preview:free"
-    - "meta-llama/llama-3.3-70b-instruct:free"
+    - "gemma-4"
   temperature: 0.2
   json_temperature: 0
   reasoning_effort: "none"           # Tắt reasoning tokens thừa trên OpenRouter hy4-flash để phản hồi nhanh (~4-7s)
@@ -139,7 +138,7 @@ llm:
 
   # Tùy chọn gọi LLM qua Custom OpenAI-compatible API / Cloudflare Tunnel (giống tests/test_gemma_host.py)
   custom_api:
-    base_url: "https://recall-plan-andrew-pairs.trycloudflare.com"
+    base_url: "https://referrals-journalism-horn-currently.trycloudflare.com"
     model: "gemma-4"
     api_key: ""                      # Để trống nếu server tự host không yêu cầu Bearer token
     max_tokens: 2048
@@ -155,8 +154,11 @@ llm:
       model: "gemma-4"
       delay_seconds: 0.5
     openrouter:
-      model: "tencent/hy4-flash"
-      delay_seconds: 1.5       # OpenRouter (Tencent Hy4-flash)
+      model: "deepseek/deepseek-v4.1-flash-1017"
+      delay_seconds: 1.5       # OpenRouter (DeepSeek V4.1 Flash)
+      provider_routing:
+        order: ["wafer/us"]
+        allow_fallbacks: false
     groq:
       model: "qwen/qwen3.8-27b"
       delay_seconds: 2.0       # 30 câu/phút
