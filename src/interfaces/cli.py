@@ -6,6 +6,7 @@ Sử dụng thư viện Rich để mang lại trải nghiệm chat terminal tr�
 from __future__ import annotations
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Cấu hình UTF-8 cho console Windows
 if sys.platform.startswith("win"):
@@ -23,7 +24,7 @@ from src.base import UserQuery
 from src.pipeline import get_rag_pipeline
 
 
-def run_cli():
+def run_cli(engine: Optional[str] = None):
     """Khởi chạy giao diện Chatbot trực tiếp trên Terminal với giao diện Rich."""
     try:
         from rich.console import Console
@@ -97,7 +98,7 @@ def run_cli():
             # Thực hiện truy vấn RAG
             with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
                 query = UserQuery(query_text=user_input)
-                response = rag_pipeline.query(query)
+                response = rag_pipeline.query(query, engine=engine)
 
             console.print()
             console.print(

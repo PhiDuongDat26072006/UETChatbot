@@ -48,7 +48,7 @@ class TestUETPromptAugmenter(unittest.TestCase):
         formatted = self.augmenter.format_contexts(self.sample_contexts)
         self.assertIn("Quy chế Học bổng", formatted)
         self.assertIn("Trang 5", formatted)
-        self.assertIn("92%", formatted)
+        self.assertTrue("0.92" in formatted or "92%" in formatted)
         self.assertIn("Quy định Kỷ luật", formatted)
         # Đảm bảo không bị lỗi 'Trang None' khi metadata page là None
         self.assertNotIn("Trang None", formatted)

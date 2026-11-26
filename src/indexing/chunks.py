@@ -2,12 +2,12 @@
 import json
 import unicodedata
 from pathlib import Path
-from typing import List
+from typing import Iterable, List
 
 from src.base import DataChunk
 
 
-def normalize_chunks(chunks: List[DataChunk]) -> List[DataChunk]:
+def normalize_chunks(chunks: Iterable[DataChunk]) -> List[DataChunk]:
     """Normalize NFC/outer whitespace; last duplicate wins, empty text is omitted."""
     unique = {}
     for chunk in chunks:

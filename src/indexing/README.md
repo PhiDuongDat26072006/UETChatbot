@@ -1,55 +1,43 @@
-# Indexing
+# Module Indexing (Sparse Lexical & Chunk Validation)
 
-Module indexing xây dựng **BM25Plus và inverted index** từ dữ liệu trong `data/chunked_data/*.jsonl`.
+Module `src/indexing` chịu trách nhiệm nạp, kiểm tra tính toàn vẹn `DataChunk` và xây dựng **Sparse Lexical Index (BM25Plus + Inverted Index)** từ `data/chunked_data/*.jsonl`, lưu tại `database/bm25_index.pkl`.
 
-Trước khi build, `UETIndexer` đối chiếu toàn bộ `chunk_id` và `text` của chunks với dữ liệu trong `UETVectorStore`. Thứ tự chunks không ảnh hưởng kết quả.
+> **Lưu ý kiến trúc:** Toàn bộ logic **Knowledge Graph / LightRAG** (trích xuất đồ thị 2-Pass, từ điển học vụ `AcademicThesaurus`, cầu nối `LightRAGChunkBridge` / `graph_index.pkl`) đã được tách sang phân hệ chuyên biệt [`src/graph/`](../graph/doc.md).
 
-- **Khớp:** build BM25, kiểm tra lại với dense rồi lưu vào `database/bm25_index.pkl`.
-- **Không khớp:** báo lỗi, giữ nguyên artifact BM25 cũ.
-- Không tạo embedding hoặc thay đổi dữ liệu trong VectorStore.
+---
 
-## Trình tự thực hiện
+## 1. Cấu Trúc Thư Mục
 
-```mermaid
-sequenceDiagram
-    participant P as Pipeline
-    participant I as UETIndexer
-    participant V as UETVectorStore
-    participant B as BM25Index
-
-    P->>P: Load chunks từ JSONL
-    P->>I: index_chunks(chunks)
-    I->>V: get_chunks()
-    V-->>I: Chunks đã lưu trong dense
-    I->>I: So sánh chunk_id và text
-
-    alt Dữ liệu không khớp
-        I-->>P: Báo lỗi, dừng xử lý
-    else Dữ liệu khớp
-        I->>B: BM25Index(chunks)
-        B->>B: Tokenize tiếng Việt
-        B->>B: Build BM25Plus và inverted index
-        I->>V: Đọc lại và đối chiếu corpus
-        Note over I,V: Nếu lệch, dừng trước khi lưu
-        I->>B: save(bm25_index.pkl)
-        I-->>P: Trả kết quả
-        P->>P: Cập nhật manifest
-    end
+```text
+src/indexing/
+├── __init__.py     # Lazy exports: UETIndexer, load_chunks_from_dir, BM25Index
+├── __main__.py     # Entry point chạy trực tiếp: python -m src.indexing [args]
+├── chunks.py       # Trình nạp, chuẩn hóa và kiểm tra tính toàn vẹn DataChunk từ JSONL
+├── sparse.py       # Lớp BM25Index (BM25Plus, Inverted Index, Tokenizer tiếng Việt)
+├── indexer.py      # Điều phối viên UETIndexer đối chiếu ChromaDB và dựng BM25Index
+└── README.md       # Tài liệu kỹ thuật này
 ```
 
-## Sử dụng
+---
 
-Chạy dense trước, sau đó chạy sparse trên cùng bộ chunks:
+## 2. Chỉ Mục Từ Khóa BM25 (`sparse.py` & `indexer.py`)
+
+Trước khi build BM25, `UETIndexer` đối chiếu toàn bộ `chunk_id` và nội dung `text` (sau chuẩn hóa Unicode NFC) của đầu vào với kho vector hiện có trong `UETVectorStore` (`database/vector_db/`). Thứ tự chunks không ảnh hưởng kết quả.
+
+- **Khớp 100%:** Xây dựng `BM25Index` (BM25Plus kết hợp tách từ tiếng Việt và giữ nguyên mã học phần / số hiệu văn bản), kiểm tra lại với dense rồi ghi nguyên tử (atomic replacement) ra `database/bm25_index.pkl`.
+- **Không khớp:** Báo lỗi (`ValueError`) và giữ nguyên artifact `bm25_index.pkl` cũ để bảo toàn tính nhất quán giữa Sparse Index và Dense Vector DB.
+
+---
+
+## 3. Lệnh Vận Hành
 
 ```bash
-python main.py --ingest --from chunked --to vectordb
+# Xây dựng / tái tạo BM25 Index từ data/chunked_data:
 python main.py --ingest --from chunked --to indexed_data
+
+# Làm mới sạch và đồng bộ lại BM25 Index:
+python main.py --ingest --from chunked --to indexed_data --clear
+
+# Kiểm tra trạng thái đồng bộ giữa Vector DB và BM25 Index qua module CLI:
+python -m src.indexing --status
 ```
-
-| File | Vai trò |
-|---|---|
-| `chunks.py` | Nạp và chuẩn hóa chunks từ JSONL |
-| `indexer.py` | Đối chiếu với dense, điều phối build và lưu BM25 |
-| `sparse.py` | Tokenization, BM25Plus, inverted index, lưu/load và tìm kiếm |
-
-Retrieval nạp artifact đã xây để tìm kiếm, không build lại index. Kiểm tra đồng bộ chỉ đối chiếu **ID và text**, không đánh giá chất lượng embedding.

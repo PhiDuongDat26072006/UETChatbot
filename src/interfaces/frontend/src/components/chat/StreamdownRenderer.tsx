@@ -86,6 +86,9 @@ const EMOJI_SPAN_RE =
 const NOTICE_LABEL_RE =
   /^([ \t]*(?:>+[ \t]*|[-*+][ \t]+|\d+\.[ \t]+)?)(?![*_`])((?:Lưu ý quan trọng|Thông tin quan trọng|Căn cứ quy chế|Quan trọng|Lưu ý|Chú ý)\s*:)(?![*_`])([ \t]*)/gim;
 
+const STANDALONE_NOTICE_BLOCKQUOTE_RE =
+  /^[ \t]*(?:\*\*|__)?(Lưu ý quan trọng|Thông tin quan trọng|Lưu ý|Chú ý)(?:[ \t]*:(?:\*\*|__)?|(?:\*\*|__)?[ \t]*:)[ \t]*(?=\S)/gim;
+
 const MATH_COMMAND_RE =
   /\\(?:frac|dfrac|tfrac|sum|prod|times|div|cdot|sqrt|left|right|text|leq|geq|neq|approx|le|ge|ne)\b/;
 
@@ -123,7 +126,15 @@ function cleanTableCellWhitespace(text: string): string {
 }
 
 function boldNoticeLabels(text: string): string {
-  return text.replace(
+  // 1. Tự động chuẩn hóa các đoạn lưu ý đứng riêng lẻ thành khối trích dẫn (> **Lưu ý quan trọng:** ...)
+  //    để hiển thị đồng nhất kể cả khi LLM quên dấu '>' ở đầu dòng.
+  let out = text.replace(
+    STANDALONE_NOTICE_BLOCKQUOTE_RE,
+    (_fullMatch, label: string) => `> **${label.trim()}:** `
+  );
+
+  // 2. In đậm nhãn lưu ý nếu chưa được bọc **...** (trong blockquote hoặc danh sách)
+  out = out.replace(
     NOTICE_LABEL_RE,
     (
       fullMatch,
@@ -141,6 +152,8 @@ function boldNoticeLabels(text: string): string {
       }`;
     }
   );
+
+  return out;
 }
 
 function isWrappedInOuterParens(str: string): boolean {
