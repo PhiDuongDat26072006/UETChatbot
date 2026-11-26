@@ -28,6 +28,7 @@ database/*
 
 # 5. Backup Code & Logs
 backup_code/
+scratch/
 logs/*
 !logs/doc.md
 *.log

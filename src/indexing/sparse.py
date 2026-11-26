@@ -9,7 +9,7 @@ import time
 import unicodedata
 from pathlib import Path
 from collections import defaultdict
-from typing import Optional
+from typing import Iterable, Optional
 from src.utils.helpers import get_logger
 
 # Giới hạn thread của BLAS/OMP trước khi nạp numpy/scipy/underthesea
@@ -20,24 +20,23 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 logger = get_logger("indexing.sparse")
 
-from src.base import RetrievedContext
+from src.base import DataChunk, RetrievedContext
 from src.indexing.chunks import normalize_chunks
 
 from concurrent.futures import ProcessPoolExecutor
-from rank_bm25 import BM25Plus
+from rank_bm25 import BM25Plus  # type: ignore[import-untyped]
 
 # Chống lỗi Windows Smart App Control / Defender chặn file DLL torch_python.dll khi underthesea nạp optional modules
-import sys
 if "underthesea.pipeline.translate" not in sys.modules:
     try:
-        import torch  # noqa
+        import torch  # noqa: F401
     except (OSError, Exception):
-        sys.modules["underthesea.pipeline.translate"] = None
+        sys.modules["underthesea.pipeline.translate"] = None  # type: ignore[assignment]
 
 # Patch underthesea CRF model loader on Windows when path contains non-ASCII characters
 try:
-    import tempfile, shutil
-    import underthesea.models.fast_crf_sequence_tagger as tagger_mod
+    import shutil
+    import underthesea.models.fast_crf_sequence_tagger as tagger_mod  # type: ignore[import-untyped]
     _orig_crf_load = tagger_mod.FastCRFSequenceTagger.load
     def _safe_crf_load(self, base_path):
         try:
@@ -51,11 +50,11 @@ try:
                 if os.path.exists(src_f) and (not os.path.exists(dst_f) or os.path.getsize(dst_f) != os.path.getsize(src_f)):
                     shutil.copyfile(src_f, dst_f)
             return _orig_crf_load(self, tmp_base)
-    tagger_mod.FastCRFSequenceTagger.load = _safe_crf_load
+    tagger_mod.FastCRFSequenceTagger.load = _safe_crf_load  # type: ignore[method-assign]
 except Exception:
     pass
 
-from underthesea import word_tokenize
+from underthesea import word_tokenize  # type: ignore[import-untyped]
 
 # Mixed ASCII letters/digits are identifiers, never Vietnamese word segments.
 IDENTIFIER = re.compile(r"\b(?=[A-Za-z0-9_]*[A-Za-z])(?=[A-Za-z0-9_]*\d)[A-Za-z0-9_]+\b")
@@ -107,7 +106,7 @@ def _resolve_workers(workers: Optional[int], num_docs: int) -> int:
 class BM25Index:
     """Keep chunk order aligned with BM25 statistics and persist without re-tokenizing."""
 
-    def __init__(self, chunks=(), workers: Optional[int] = None):
+    def __init__(self, chunks: Iterable[DataChunk] = (), workers: Optional[int] = None):
         self.chunks = normalize_chunks(chunks)
 
         # Retriever may need an empty index before a persisted artifact exists.

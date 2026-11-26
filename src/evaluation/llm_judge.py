@@ -115,10 +115,14 @@ def _strip_reasoning_and_extract_json(raw_text: str) -> Dict[str, Any]:
     raise ValueError(f"Không trích xuất được JSON hợp lệ từ phản hồi: {text[:180]}")
 
 
+DEFAULT_MAX_CHARS_PER_CONTEXT = 4000
+DEFAULT_MAX_TOTAL_CHARS = 24000
+
+
 def _truncate_contexts(
     contexts: List[str],
-    max_chars_per_context: int = 1500,
-    max_total_chars: int = 10000,
+    max_chars_per_context: int = DEFAULT_MAX_CHARS_PER_CONTEXT,
+    max_total_chars: int = DEFAULT_MAX_TOTAL_CHARS,
 ) -> str:
     """Định dạng các ngữ cảnh truy xuất theo ngưỡng độ dài an toàn."""
     if not contexts:
@@ -350,6 +354,8 @@ class UETLLMJudgeEvaluator(BaseEvaluator):
             "contexts": contexts,
             "answer": answer,
             "ground_truth": ground_truth or "",
+            "max_chars_per_context": DEFAULT_MAX_CHARS_PER_CONTEXT,
+            "max_total_chars": DEFAULT_MAX_TOTAL_CHARS,
         }
         canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

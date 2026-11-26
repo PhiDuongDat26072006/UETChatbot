@@ -2,6 +2,8 @@
 
 Dense ChromaDB and persistent Vietnamese BM25 indexing: see
 [indexing usage and lifecycle](src/indexing/README.md).
+Knowledge Graph & LightRAG subsystem: see
+[graph & LightRAG documentation](src/graph/doc.md).
 
 > **UET Chatbot** là trợ lý ảo AI thông minh ứng dụng công nghệ **RAG (Retrieval-Augmented Generation)** nhằm giải đáp tự động các thắc mắc về học vụ, quy chế đào tạo, điều kiện xét tốt nghiệp, thang điểm rèn luyện và học bổng cho sinh viên **Trường Đại học Công nghệ – ĐHQGHN**.
 
@@ -36,15 +38,18 @@ Hệ thống RAG của chúng ta gồm 2 cỗ máy hoạt động độc lập n
 
 Để quản lý kho dữ liệu quy chế học vụ lớn mà không bị nghẽn hoặc xử lý lặp lại nhiều lần, hệ thống phân chia rõ rệt **4 giai đoạn (Stages)** và tích hợp **Sổ cái theo dõi chống trùng lặp (Data Manifest Tracker)**:
 
-### 4 Chặng Dữ Liệu:
+### 6 Chặng Dữ Liệu:
 1. **`raw`** (`data/raw_data/`): Dữ liệu thô ban đầu (PDF, Word, HTML, văn bản quy chế thu thập được từ cổng thông tin UET).
 2. **`processed`** (`data/processed_data/`): Dữ liệu sau khi làm sạch qua [`CleanTextTransformation`](src/ingestion/cleaner.py) (loại bỏ thẻ HTML, ký tự dị biệt, chuẩn hóa khoảng trắng và định dạng UTF-8).
-3. **`chunked`** (`data/chunked_data/`): Dữ liệu sau khi được phân tách thành từng đoạn ngắn bởi [`DocumentChunker`](src/chunking/chunker.py) (mỗi đoạn 500-600 ký tự, overlap 100 ký tự để bảo toàn ngữ cảnh).
-4. **`vectordb`** (`database/vector_db/`): Dữ liệu đã được vector hóa qua [`SentenceTransformerEmbedder`](src/embeddings/embedder.py) và lưu trữ bền vững vào ChromaDB với cơ chế nạp theo đợt an toàn (`batch_size = 500`).
+3. **`chunked`** (`data/chunked_data/`): Dữ liệu sau khi được phân đoạn thông minh bởi [`UETChunker`](src/chunking/chunker.py) (kèm đường dẫn phân cấp Breadcrumbs và tuyến tính hóa bảng biểu).
+4. **`vectordb`** (`database/vector_db/`): Dữ liệu đã được vector hóa qua `BAAI/bge-m3` ONNX và lưu trữ vào ChromaDB.
+5. **`indexed_data`** (`database/bm25_index.pkl`): Chỉ mục từ khóa BM25Plus phục vụ truy vết chính xác mã môn và số quyết định.
+6. **`graph_data` / `lightrag`** (`database/graph_index.pkl` & `database/lightrag_db/`): Đồ thị tri thức hợp nhất (Unified GraphRAG) kết hợp thực thể, quan hệ pháp lý và vector đồ thị trong RAM.
 
-### Cơ Chế Chống Trùng Lặp (Deduplication Manifest Tracker):
+### Cơ Chế Chống Trùng Lặp & Cập Nhật Gia Tăng (Deduplication & Incremental Updates):
 - Được quản lý bởi lớp [`DataManifestTracker`](src/ingestion/manifest.py) và tệp lưu trữ `data/.ingest_manifest.json`.
 - Sử dụng mã băm nội dung **SHA-256** (Content Hash): Khi dữ liệu của một tài liệu hoặc chunk chưa hề thay đổi, hệ thống sẽ **tự động bỏ qua ngay lập tức ($O(1)$)** ở các lần chạy sau, đảm bảo dữ liệu không bị xử lý lặp lại.
+- **LightRAG Checkpoint**: Tự động nhận diện tài liệu đã bóc tách đồ thị qua `semantic_units_cache.jsonl` và `graph.json`, bỏ qua tài liệu cũ và chỉ gọi LLM bóc tách cho các văn bản mới thêm vào.
 
 ---
 
@@ -115,8 +120,10 @@ UET_chatbot/
 ├── .gitignore                # 🛡️ Danh sách file bỏ qua trên Git
 │
 ├── database/                 # 🗄️ Thư mục cơ sở dữ liệu cục bộ
-│   ├── vector_db/            # Kho lưu trữ ChromaDB (Chứa 62,703 vectors UET)
-│   └── bm25_index.pkl        # File chỉ mục từ khóa BM25 Index
+│   ├── vector_db/            # Kho lưu trữ ChromaDB (Dense Vector BGE-M3)
+│   ├── bm25_index.pkl        # File chỉ mục từ khóa BM25 Index
+│   ├── graph_index.pkl       # Cầu nối LightRAGChunkBridge & Regex Supplement
+│   └── lightrag_db/          # Đồ thị tri thức LightRAG (graph.json & entity_chroma/)
 │
 ├── src/                      # 💻 MÃ NGUỒN CÁC MODULE CHÍNH
 │   ├── pipeline.py           # ⚙️ Trái tim điều phối Ingestion đa chặng & RAG Serving
@@ -124,18 +131,20 @@ UET_chatbot/
 │   │   ├── loader.py         # Đọc tệp thô (PDF, Word, TXT, HTML)
 │   │   ├── cleaner.py        # Làm sạch và chuẩn hóa văn bản
 │   │   └── manifest.py       # Sổ cái chống xử lý trùng lặp bằng SHA-256
-│   ├── chunking/             # Module 2: Cắt nhỏ văn bản (500-600 ký tự)
-│   ├── embeddings/           # Module 3: Vector hóa văn bản (Sentence-Transformers)
+│   ├── chunking/             # Module 2: Cắt nhỏ văn bản & tuyến tính hóa bảng biểu
+│   ├── embeddings/           # Module 3: Vector hóa văn bản (BGE-M3 ONNX)
 │   ├── vectordb/             # Module 4: Quản lý ChromaDB & batch upsert
-│   ├── retrieval/            # Module 5: Hybrid Retrieval (BM25 + Dense + Reranker)
-│   ├── prompts/              # Module 6: Quản lý mẫu Prompt chuyên gia UET
-│   ├── llm/                  # Module 7: Tích hợp Google Gemini SDK
-│   ├── evaluation/           # Module 8: Đánh giá chất lượng RAG Triad & HitRate/MRR
-│   ├── interfaces/           # Module 9: Tầng giao diện người dùng
+│   ├── indexing/             # Module 5a: Lập chỉ mục BM25Plus & kiểm tra toàn vẹn chunks
+│   ├── graph/                # Module 5b: Phân hệ Knowledge Graph & LightRAG (xem src/graph/doc.md)
+│   ├── retrieval/            # Module 6: Điều phối 3-Way Retrieval (Router + RRF + Reranker)
+│   ├── prompts/              # Module 7: Quản lý mẫu Prompt chuyên gia UET
+│   ├── llm/                  # Module 8: Tích hợp đa nhà cung cấp LLM (OpenRouter/Groq/Gemini)
+│   ├── evaluation/           # Module 9: Đánh giá chất lượng Retrieval & E2E (Offline + LLM Judge)
+│   ├── interfaces/           # Module 10: Tầng giao diện người dùng
 │   │   ├── routes.py         # REST API endpoints (/api/chat, /api/health)
 │   │   ├── cli.py            # Giao diện dòng lệnh Terminal tương tác trực tiếp
 │   │   └── static/           # Giao diện Web HTML/CSS/JS hiện đại
-│   └── utils/                # Module 10: Tiện ích logger, đo thời gian, đọc config
+│   └── utils/                # Module 11: Tiện ích logger, đo thời gian, đọc config
 │
 ├── data/                     # 📂 Dữ liệu học vụ UET qua các giai đoạn
 │   ├── .ingest_manifest.json # Sổ cái cache chống xử lý lặp lại
@@ -199,6 +208,12 @@ Khi có dữ liệu mới và cần làm mới lại từ đầu cả Dense Vect
   * **Cờ `--clear`**: Tự động xóa file `database/bm25_index.pkl` cũ và xóa manifest tracking chặng `indexed_data`.
   * **Thực thi**: Đọc các chunk vừa tạo từ Bước 1, kiểm tra khớp 100% với ChromaDB và dựng chỉ mục BM25 mới.
 
+- **Bước 3: Xây dựng chỉ mục đồ thị tri thức hợp nhất (Unified GraphRAG Index)**:
+  ```bash
+  python main.py --ingest --from chunked --to graph_data --clear
+  ```
+  * **Thực thi (0-LLM, ~1 phút)**: Nạp toàn bộ chunks trong RAM, hợp nhất tri thức từ LightRAG (nút, cạnh, tóm tắt), vector hóa cạnh quan hệ và lưu ra `database/graph_index.pkl`.
+
 ---
 
 #### 📌 Các lệnh nạp theo từng chặng lẻ khác
@@ -212,7 +227,13 @@ Khi có dữ liệu mới và cần làm mới lại từ đầu cả Dense Vect
   python main.py --ingest --from raw --to chunked
   ```
 
-- **Tái tạo nhanh file BM25 từ chunk có sẵn (không dùng cờ clear)**:
+- **Trích xuất đồ thị tri thức LightRAG cho tài liệu mới (không dùng cờ `--clear`)**:
+  ```bash
+  python main.py --ingest --from processed --to lightrag
+  ```
+  *(Tự động bỏ qua các tài liệu đã có trong đồ thị, chỉ gọi LLM trích xuất cho các tài liệu mới thêm).*
+
+- **Tái tạo nhanh file BM25 từ chunk có sẵn**:
   ```bash
   python main.py --ingest --from chunked --to indexed_data
   ```

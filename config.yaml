@@ -69,24 +69,31 @@ retrieval:
   final_top_k: 10                       # Số đoạn cuối cùng trả về cho LLM
   score_threshold: null                 # Ngưỡng điểm tối thiểu (tùy chọn)
 
+  # Cấu hình phân bổ slot trong chế độ Hybrid (LightRAG + Vector)
+  hybrid_graph_ratio: 0.2               # Tỷ lệ slot tối đa dành cho ngữ cảnh đồ thị LightRAG (20%)
+  hybrid_max_graph_k: 2                 # Trần số lượng ngữ cảnh LightRAG tối đa để không lấn át Vector chunks
+
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
   adjacent_expansion_top_k: 3           # Chỉ mở rộng ngữ cảnh cho Top K chunk điểm cao nhất (Top 3)
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
   merge_contiguous_chunks: true         # Tự động gộp các chunk nối tiếp trong cùng văn bản thành 1 khối
 
-  # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
+  # Cấu hình Nhánh Đồ thị Chính (LightRAG-First + Cầu nối ChunkBridge/Regex phụ trợ)
   enable_graph: true
   graph_top_k: 60
   graph_weight: 0.30
+  lightrag_hybrid_weight: 0.40          # Tăng trọng số nhánh LightRAG trong 3-Way RRF khi câu hỏi mang tính quan hệ/đa thực thể
   graph_max_hops: 2
   graph_seed_top_m: 10
 
 graph:
-  enable_llm_extraction: true           # Bật gọi OpenRouter Hy4-flash bóc tách sâu bổ sung ngoài tầng Regex
+  merge_lightrag_kg: true               # Hợp nhất tri thức 2-Pass từ LightRAG (graph.json + entity_chroma) vào graph_index.pkl
+  auto_sync_on_reindex: true            # Tự động đồng bộ lại graph_index.pkl (0 LLM) mỗi khi cập nhật indexed_data
+  enable_llm_extraction: false          # Tắt gọi LLM lẻ theo chunk vì đã có sẵn 14.037 nodes / 28.089 cạnh tinh luyện từ LightRAG
   llm_provider: "openrouter"
   llm_model: "tencent/hy4-flash"
-  max_llm_chunks: 5                     # Giới hạn cứng số chunk gọi LLM mỗi lần chạy để test an toàn, tránh đốt quota
+  max_llm_chunks: 5                     # Giới hạn cứng số chunk gọi LLM nếu bật thử nghiệm bổ sung
   max_chunks: null                      # Tùy chọn giới hạn tổng số chunk nạp vào graph (null = toàn bộ hoặc theo --samples)
   llm_domains:                          # Ưu tiên gọi LLM trên các tập dữ liệu quy chế/học vụ cốt lõi (~1.155 chunks)
     - "handbook"
@@ -131,6 +138,50 @@ llm:
     openrouter:
       model: "tencent/hy4-flash"
       delay_seconds: 1.5       # OpenRouter (Tencent Hy4-flash)
+
+lightrag:
+  # =========================================================================
+  # CẤU HÌNH LIGHTRAG KNOWLEDGE GRAPH
+  # =========================================================================
+  enabled: true                         # Bật/tắt truy xuất qua LightRAG (đặt true khi kích hoạt Knowledge Graph)
+
+  # Đường dẫn lưu trữ
+  graph_path: "database/lightrag_db/graph.json"
+  entity_vector_dir: "database/lightrag_db/entity_chroma"
+  thesaurus_file: "src/graph/academic_thesaurus.json"
+  semantic_units_cache: "database/lightrag_db/semantic_units_cache.jsonl"
+
+  # Cấu hình Adaptive Extractor
+  extractor:
+    max_unit_chars: 3000                # Giới hạn ký tự mỗi Semantic Unit (~1.200 tokens)
+    min_unit_chars: 50                  # Bỏ qua unit quá ngắn
+
+  # Cấu hình Indexer (Offline KG Extraction)
+  indexer:
+    llm_provider: "openrouter"          # Provider dùng cho trích xuất thực thể: "openrouter", "groq", "gemini"
+    max_workers: 5                      # Số luồng gọi LLM song song (khuyến nghị 4-6 cho VPN + OpenRouter)
+    delay_between_calls: 0.5            # Giây nghỉ giữa 2 lượt gọi LLM trên mỗi luồng (key trả phí OpenRouter: 0.5s)
+    max_pass2_retries: 2                # Số lần retry khi LLM trả về lỗi
+    checkpoint_every: 10                # Lưu checkpoint sau mỗi N tài liệu
+    header_max_chars: 2000              # Số ký tự đầu tài liệu dùng cho Chặng 1
+
+  # Cấu hình Retrieval, Dual-Output & Cầu nối bổ khuyết (feat/graph helper)
+  retrieval_mode: "hybrid"              # "low_level", "high_level", "hybrid"
+  max_entities_per_query: 15            # Số thực thể tối đa nhận diện từ query
+  subgraph_depth: 2                     # Bán kính lan truyền đồ thị (k-hop neighbors)
+  supplement_weight: 0.65               # Trọng số phụ (0.65x) của tầng Regex/Vector supplement so với LightRAG Primary (1.0x)
+  enable_synthesis_overview: true       # Đính kèm Bản đồ Liên kết Quy chế 2 tầng lên đầu Prompt LLM cho câu hỏi quan hệ
+  synthesis_max_chars: 900              # Giới hạn ký tự khối tổng hợp 2 tầng (~180-220 từ)
+  use_llm_query_extraction: true        # Bật/tắt dùng LLM bóc tách thực thể câu hỏi ở nhánh LightRAG (PA1)
+  llm_extraction_timeout: 3.5           # Timeout tối đa (giây) cho lời gọi LLM bóc thực thể (quá hạn tự fallback PA2)
+  entity_similarity_threshold: 0.72     # Ngưỡng Cosine Similarity tối thiểu khi khớp thực thể qua entity_chroma
+  entity_vector_top_k: 3                # Số node ứng viên lấy từ entity_chroma cho mỗi thực thể truy vấn
+
+  # Cấu hình Query Router & Smart PA1 Trigger (Lựa chọn 1)
+  router:
+    mode: "auto"                        # "auto", "always_hybrid", "always_lightrag", "always_vector"
+    llm_extraction_mode: "auto"         # "auto" (chỉ bật PA1 LLM cho câu quan hệ/khẩu ngữ), "always", "off"
+    confidence_threshold: 0.65
 
 api:
   host: "127.0.0.1"

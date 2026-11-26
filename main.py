@@ -24,7 +24,7 @@ if str(BASE_DIR) not in sys.path:
 def print_banner():
     banner = """
 ========================================================================
-     🎓 UET CHATBOT - HỆ THỐNG TRA CỨU QUY CHẾ ĐÀO TẠO UET (VNU)      
+     🎓 UET CHATBOT - HỆ THỐNG TRA CỨU QUY CHẾ ĐÀO TẠO UET (VNU)
                  Kiến trúc RAG Modular cho Nhóm Phát Triển
 ========================================================================
     """
@@ -63,13 +63,14 @@ def main():
     parser.add_argument("--use-cache", action="store_true", help="Bật cache retrieval theo hash cấu hình (mặc định: tắt)")
     parser.add_argument("--no-cache", action="store_true", help="Tắt cache retrieval (mặc định)")
     parser.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
+    parser.add_argument("--engine", type=str, choices=["vector", "lightrag", "hybrid", "auto"], default=None, help="Động cơ truy xuất: vector, lightrag, hybrid, auto (mặc định: lấy từ config.yaml)")
     parser.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
 
     # Nhóm tham số điều phối nạp dữ liệu đa chặng (Multi-Stage Ingestion)
     parser.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
     parser.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
     parser.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
-    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    parser.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data", "lightrag"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
     parser.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa toàn bộ dữ liệu cũ ở chặng đích (chunked_data, vectordb, BM25 index, manifest) trước khi nạp lại từ đầu")
 
     args = parser.parse_args()
@@ -81,11 +82,11 @@ def main():
             run_web(host=args.host, port=args.port, open_browser=True)
         elif args.cli:
             from src.interfaces.cli import run_cli
-            run_cli()
+            run_cli(engine=args.engine)
         else:
             print("⚠️  Vui lòng chỉ định một trong hai hình thức trải nghiệm:")
             print("  1. Khởi chạy Giao diện WEB:      python main.py --run --web")
-            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli\n")
+            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli [--engine hybrid|lightrag|vector|auto]\n")
 
     elif args.eval:
         from src.utils.helpers import load_yaml_config
@@ -205,15 +206,23 @@ def main():
         print("     • Lưu kết quả retrieval:          python main.py --eval --retrieval --output eval_retrieval.json")
         print("  6. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
         print("  7. Nạp dữ liệu đa chặng (Ingest):    python main.py --ingest --from <stage> --to <stage>")
-        print("\n💡 Quy trình nạp mới dữ liệu toàn diện (2 bước tuần tự):")
+        print("\n💡 Quy trình nạp mới dữ liệu toàn diện (4 bước tuần tự):")
         print("  • Bước 1 (Chunking & ChromaDB):      python main.py --ingest --from processed --to vectordb --clear")
         print("  • Bước 2 (BM25 Sparse Index):        python main.py --ingest --from chunked --to indexed_data --clear")
+        print("  • Bước 3 (LightRAG Knowledge Graph): python main.py --ingest --from processed --to lightrag")
+        print("  • Bước 4 (Unified ChunkBridge):      python main.py --ingest --from chunked --to graph_data --clear")
         print("\n📌 Các thao tác đơn chặng:")
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
         print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data")
-        print("  • Xây dựng GraphRAG Vector Index:    python main.py --ingest --from chunked --to graph_data\n")
-        print(" 8. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
+        print("  • Đồng bộ cầu nối GraphIndex:        python main.py --ingest --from chunked --to graph_data")
+        print("  • Cập nhật đồ thị LightRAG (resume): python main.py --ingest --from processed --to lightrag\n")
+        print("  9. Chatbot dòng lệnh với các động cơ (Engines):")
+        print("     • Tự động chọn (mặc định):        python main.py --run --cli --engine auto")
+        print("     • Động cơ lai (Graph + Vector):   python main.py --run --cli --engine hybrid")
+        print("     • Động cơ đồ thị LightRAG:        python main.py --run --cli --engine lightrag")
+        print("     • Động cơ Vector truyền thống:    python main.py --run --cli --engine vector\n")
+        print(" 10. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
 
 if __name__ == "__main__":
     main()

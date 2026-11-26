@@ -126,6 +126,41 @@ class HybridSearcher:
 
         sorted_candidates = sorted(candidates.values(), key=lambda x: x["rrf_score"], reverse=True)
         top_candidates = sorted_candidates[:top_n]
+
+        # Bảo vệ sàn hồi tưởng (Per-Branch Recall Floor) cho mọi nhánh đang hoạt động (BM25 / Vector / Graph):
+        # Tránh trường hợp một nhánh có trọng số thấp hơn (ví dụ vector_weight=0.20 so với bm25_weight=0.60, rrf_k=30)
+        # khiến ứng viên Top-1..Top-K thuần của nhánh đó có RRF score nhỏ hơn cả hạng #60 của nhánh lớn hơn và bị loại
+        # trước khi tới Reranker.
+        if len(sorted_candidates) > top_n and top_n >= 6:
+            min_branch_keep = min(10, max(4, top_n // 6)) if top_n >= 12 else min(3, max(1, top_n // len(non_empty)))
+            selected_ids = {c["chunk_id"] for c in top_candidates}
+            protected_ids: set[str] = set()
+            promoted: List[Dict[str, Any]] = []
+
+            for _b_name, items, weight in non_empty:
+                if weight <= 0:
+                    continue
+                for item in items[:min_branch_keep]:
+                    cid = item.chunk_id
+                    protected_ids.add(cid)
+                    if cid not in selected_ids and cid in candidates:
+                        promoted.append(candidates[cid])
+                        selected_ids.add(cid)
+
+            if promoted:
+                # Chỉ giữ chỗ tối đa không vượt quá 1/3 pool để không làm loãng kết quả đồng thuận RRF
+                max_promote = max(1, top_n // 3)
+                promoted = promoted[:max_promote]
+                trimmed: List[Dict[str, Any]] = []
+                drop_needed = len(promoted)
+                for cand in reversed(top_candidates):
+                    if drop_needed > 0 and cand["chunk_id"] not in protected_ids:
+                        drop_needed -= 1
+                        continue
+                    trimmed.append(cand)
+                trimmed.reverse()
+                top_candidates = (trimmed + promoted)[:top_n]
+
         max_rrf = top_candidates[0]["rrf_score"] if top_candidates and top_candidates[0]["rrf_score"] > 0 else 1.0
 
         hybrid_results: List[RetrievedContext] = []

@@ -100,12 +100,15 @@ chunker = UETChunker(
 
 Tài liệu học vụ chứa nhiều bảng biểu (khung chương trình, điều kiện tiên quyết, điểm chuẩn, biểu phí):
 1. **Phát hiện bảng:** Tự động nhận diện cấu trúc bảng Markdown (`| Cột 1 | Cột 2 |`), hỗ trợ cả các bảng có ô tiêu đề trống (tự điền `Cột {i}`).
-2. **Trích xuất ngữ cảnh bảng:** Tự động dò ngược tiêu đề gần nhất trước bảng để làm nhãn `[META: Tiêu đề bảng]`.
-3. **Tuyến tính hóa từng hàng (Row-level Serialization):** Chuyển đổi mỗi dòng bảng thành dạng cặp thuộc tính rõ ràng:
+2. **Trích xuất ngữ cảnh bảng & Chống lặp tiêu đề:** Tự động dò ngược tiêu đề gần nhất trước bảng để làm nhãn `[META: Tiêu đề bảng]`. Nếu tiêu đề bảng trùng khớp hoàn toàn với tiêu đề tài liệu (`doc.title`), hệ thống sẽ **bỏ qua không tiêm dòng [META: ...] lặp lại**, tiết kiệm token context và tránh làm loãng điểm Reranker.
+3. **Làm sạch nhiễu định dạng trong ô bảng (`_clean_table_cell_text`):**
+   - Loại bỏ các ký hiệu thừa thường phát sinh khi cào HTML sang Markdown: tiêu đề `####`, in đậm `**`, gạch dưới `__`.
+   - Chuẩn hóa dấu chấm phẩy ` ; ` (sinh từ thẻ `<br>` ngắt dòng trong HTML) thành khoảng trắng tự nhiên.
+4. **Tuyến tính hóa từng hàng (Row-level Serialization):** Chuyển đổi mỗi dòng bảng thành dạng cặp thuộc tính rõ ràng:
    ```text
-   - Mã ngành: CN1 | Tên ngành: Công nghệ thông tin | Điểm chuẩn: 27.85
+   - Mã ngành: CN1 | Tên ngành: Công nghệ thông tin | Điểm chuẩn: 28.19
    ```
-4. **Cửa sổ trượt hàng:** Gom các hàng theo ngân sách `chunk_size`, duy trì gối đầu lặp lại một số hàng giữa các chunk bảng liền kề. Chunk bảng được gán `metadata["data_type"] = "tabular"`.
+5. **Cửa sổ trượt hàng:** Gom các hàng theo ngân sách `chunk_size`, duy trì gối đầu lặp lại một số hàng giữa các chunk bảng liền kề. Chunk bảng được gán `metadata["data_type"] = "tabular"`.
 
 ---
 

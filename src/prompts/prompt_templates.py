@@ -89,15 +89,35 @@ class UETPromptAugmenter(BasePromptAugmenter):
             cfg_prompt = config.get("prompt", {}).get("system_prompt")
             self.system_prompt = (cfg_prompt or DEFAULT_UET_SYSTEM_PROMPT).strip()
 
-    def format_contexts(self, contexts: List[RetrievedContext]) -> str:
+    def format_contexts(
+        self,
+        contexts: List[RetrievedContext],
+        lightrag_overview: Optional[str] = None,
+    ) -> str:
         """
         Định dạng danh sách các đoạn trích dẫn văn bản thành khối ngữ cảnh có cấu trúc.
-        Bao gồm tên tài liệu, số hiệu/trang và điểm tương đồng (nếu có).
+        Nếu có Bản đồ Liên kết Quy chế 2 tầng từ LightRAGRetriever (lightrag_overview),
+        chèn khối bản đồ này lên đầu trước các DataChunk nguyên văn đã qua Reranker.
         """
+        resolved_overview = (lightrag_overview or "").strip()
+        if not resolved_overview:
+            for ctx in (contexts or []):
+                ov = (ctx.metadata or {}).get("lightrag_overview")
+                if isinstance(ov, str) and ov.strip():
+                    resolved_overview = ov.strip()
+                    break
+
         if not contexts:
+            if resolved_overview:
+                return f"[BẢN ĐỒ LIÊN KẾT QUY CHẾ (LIGHTRAG 2-TẦNG)]\n{resolved_overview}"
             return "*(Không tìm thấy tài liệu quy chế nào liên quan trực tiếp từ cơ sở dữ liệu)*"
 
         formatted_parts: List[str] = []
+        if resolved_overview:
+            formatted_parts.append(
+                f"[BẢN ĐỒ LIÊN KẾT QUY CHẾ (LIGHTRAG 2-TẦNG)]\n{resolved_overview}"
+            )
+
         for i, ctx in enumerate(contexts, 1):
             meta = ctx.metadata or {}
             title = meta.get("title") or meta.get("source") or f"Tài liệu căn cứ {i}"
@@ -132,28 +152,18 @@ class UETPromptAugmenter(BasePromptAugmenter):
         self,
         query: UserQuery,
         contexts: List[RetrievedContext],
+        lightrag_overview: Optional[str] = None,
     ) -> AugmentedPrompt:
         """
         Ghép câu hỏi và danh sách ngữ cảnh vào mẫu prompt hoàn chỉnh cho LLM.
         :param query: Đối tượng câu hỏi của sinh viên
-        :param contexts: Danh sách các đoạn văn bản trích xuất từ Vector DB
+        :param contexts: Danh sách các đoạn văn bản trích xuất sau Reranker
+        :param lightrag_overview: Tùy chọn khối tóm tắt liên kết 2 tầng của LightRAGRetriever
         :return: Đối tượng AugmentedPrompt
         """
         logger.info(f"Đang ghép prompt với {len(contexts)} đoạn ngữ cảnh cho query_id: {query.query_id}")
 
-        # =========================================================================
-        # TODO: THÀNH VIÊN PHỤ TRÁCH TỰ CÀI ĐẶT PHẦN NÀY:
-        # Gợi ý:
-        # 1. Định dạng các đoạn trích từ contexts:
-        #    `context_str = "\n\n".join([f"[Nguồn: {c.metadata.get('title', 'Tài liệu')}] {c.text}" for c in contexts])`
-        # 2. Xây dựng formatted_prompt kết hợp:
-        #    - System instruction
-        #    - Ngữ cảnh trích xuất
-        #    - Câu hỏi của người dùng
-        # 3. Trả về đối tượng `AugmentedPrompt(...)` theo định nghĩa trong base.py
-        # =========================================================================
-
-        context_block = self.format_contexts(contexts)
+        context_block = self.format_contexts(contexts, lightrag_overview=lightrag_overview)
         few_shot_section = f"{FEW_SHOT_EXAMPLES}\n\n" if self.include_few_shot else ""
 
         formatted_prompt = (

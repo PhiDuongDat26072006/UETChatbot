@@ -122,6 +122,15 @@ class UETChunker(BaseChunker):
                 return candidate
         return document_title or "Bảng dữ liệu"
 
+    @staticmethod
+    def _clean_table_cell_text(value: str) -> str:
+        """Làm sạch ký hiệu Markdown (####, **, __) và dấu ' ; ' sinh từ thẻ <br> trong ô bảng."""
+        cleaned = re.sub(r"#{1,6}\s*", "", value or "")
+        cleaned = cleaned.replace("**", "").replace("__", "")
+        cleaned = re.sub(r"\s+;\s+", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned
+
     def _chunk_markdown_table(
         self,
         doc: ProcessedData,
@@ -130,19 +139,31 @@ class UETChunker(BaseChunker):
         rows: List[str],
     ) -> List[DataChunk]:
         """Làm giàu từng hàng bằng tiêu đề bảng/cột rồi chia theo cửa sổ trượt."""
-        prefix = f"[{doc.title}]\n" if doc.title else ""
-        injected_title = f"[META: {table_title}]\n"
+        clean_doc_title = (doc.title or "").strip()
+        clean_table_title = self._clean_table_cell_text(table_title) or clean_doc_title or "Bảng dữ liệu"
+        prefix = f"[{clean_doc_title}]\n" if clean_doc_title else ""
+        # Không tiêm lặp dòng [META: ...] nếu tiêu đề bảng trùng khớp hoàn toàn với tiêu đề văn bản
+        injected_title = (
+            f"[META: {clean_table_title}]\n"
+            if clean_table_title.lower() != clean_doc_title.lower()
+            else ""
+        )
         chunk_prefix = prefix + injected_title
         budget = max(1, self.chunk_size - len(chunk_prefix))
+        clean_headers = [
+            self._clean_table_cell_text(col) or f"Cột {idx + 1}"
+            for idx, col in enumerate(headers)
+        ]
         enriched_rows = []
         for row in rows:
             values = self._table_cells(row)
-            if len(values) < len(headers):
-                values = values + [""] * (len(headers) - len(values))
+            if len(values) < len(clean_headers):
+                values = values + [""] * (len(clean_headers) - len(values))
             pairs = []
-            for index, (column, value) in enumerate(zip(headers, values)):
+            for index, (column, value) in enumerate(zip(clean_headers, values)):
                 label = column or f"Cột {index + 1}"
-                pairs.append(f"{label}: {value}")
+                clean_val = self._clean_table_cell_text(value)
+                pairs.append(f"{label}: {clean_val}")
             enriched_rows.append("- " + " | ".join(pairs))
 
         groups: List[str] = []
