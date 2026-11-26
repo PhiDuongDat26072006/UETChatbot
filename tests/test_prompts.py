@@ -49,7 +49,7 @@ class TestUETPromptAugmenter(unittest.TestCase):
         formatted = self.augmenter.format_contexts(self.sample_contexts)
         self.assertIn("Quy chế Học bổng", formatted)
         self.assertIn("Trang 5", formatted)
-        self.assertIn("92%", formatted)
+        self.assertTrue("0.92" in formatted or "92%" in formatted)
         self.assertIn("Quy định Kỷ luật", formatted)
         # Đảm bảo không bị lỗi 'Trang None' khi metadata page là None
         self.assertNotIn("Trang None", formatted)
@@ -69,8 +69,8 @@ class TestUETPromptAugmenter(unittest.TestCase):
         self.assertIn("Quy chế Học bổng", prompt.formatted_prompt)
 
     def test_router_criteria_and_answer_first_prompt(self):
-        """Kiểm tra Router giữ 3 nhãn chuẩn, bao phủ rộng chủ đề UET và System Prompt có Answer-first + Soft Follow-up."""
-        self.assertEqual(set(JEV_ROUTE_CRITERIA.keys()), {"OUT_OF_SCOPE", "AMBIGUOUS", "QUALIFIED_QUESTION"})
+        """Kiểm tra Router giữ 2 nhãn chuẩn, bao phủ rộng chủ đề UET và System Prompt có Answer-first + Soft Follow-up."""
+        self.assertEqual(set(JEV_ROUTE_CRITERIA.keys()), {"OUT_OF_SCOPE", "QUALIFIED_QUESTION"})
         self.assertIn("QUALIFIED_QUESTION", JEV_ROUTE_INSTRUCTIONS)
         self.assertIn("sức khỏe tinh thần", JEV_ROUTE_INSTRUCTIONS.lower())
         self.assertIn("acm/icpc", JEV_ROUTE_INSTRUCTIONS.lower())

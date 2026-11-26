@@ -24,8 +24,7 @@ class AgentState(TypedDict, total=False):
     extra_format_rules: Optional[str]
     voice_mode: bool
 
-    # 2. Định tuyến (JEV Router 3 nhãn: OUT_OF_SCOPE | AMBIGUOUS | QUALIFIED_QUESTION)
-    # Cả AMBIGUOUS và QUALIFIED_QUESTION đều đi thẳng vào retrieval_node; AMBIGUOUS tự động gắn gợi ý cuối phản hồi.
+    # 2. Định tuyến (JEV Router 2 nhãn: OUT_OF_SCOPE | QUALIFIED_QUESTION)
     route: Optional[Route]
 
     # 3. Truy vấn bổ sung & Lịch sử truy vấn

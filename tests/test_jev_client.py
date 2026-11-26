@@ -19,9 +19,8 @@ from src.decision.jev_client import (
 class TestJevEnumsAndModelsV3(unittest.TestCase):
     def test_enums_values(self):
         self.assertEqual(Route.OUT_OF_SCOPE.value, "OUT_OF_SCOPE")
-        self.assertEqual(Route.AMBIGUOUS.value, "AMBIGUOUS")
         self.assertEqual(Route.QUALIFIED_QUESTION.value, "QUALIFIED_QUESTION")
-        self.assertEqual(len(list(Route)), 3)
+        self.assertEqual(len(list(Route)), 2)
 
         self.assertEqual(Verdict.SUFFICIENT.value, "SUFFICIENT")
         self.assertEqual(Verdict.INSUFFICIENT.value, "INSUFFICIENT")
@@ -56,12 +55,12 @@ class TestFakeDecisionClientV3(unittest.TestCase):
 
     def test_fake_client_scripted_sequence(self):
         client = FakeDecisionClient(
-            routes=[Route.OUT_OF_SCOPE, Route.AMBIGUOUS],
+            routes=[Route.OUT_OF_SCOPE, Route.QUALIFIED_QUESTION],
             evaluate_answers=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
         )
 
         self.assertEqual(client.route("q1"), Route.OUT_OF_SCOPE)
-        self.assertEqual(client.route("q2"), Route.AMBIGUOUS)
+        self.assertEqual(client.route("q2"), Route.QUALIFIED_QUESTION)
         self.assertEqual(client.route("q3"), Route.QUALIFIED_QUESTION)
 
         self.assertEqual(client.evaluate_answer("q", "a1"), Verdict.INSUFFICIENT)
@@ -84,13 +83,13 @@ class TestJevDecisionClientMockHTTP(unittest.TestCase):
         mock_resp.json.return_value = payload_dict
         return mock_resp
 
-    def test_route_3_labels_and_legacy_mapping(self):
+    def test_route_2_labels_and_legacy_mapping(self):
         client = self._make_client()
 
         for raw_label, expected in [
             ("OUT_OF_SCOPE", Route.OUT_OF_SCOPE),
-            ("AMBIGUOUS", Route.AMBIGUOUS),
             ("QUALIFIED_QUESTION", Route.QUALIFIED_QUESTION),
+            ("AMBIGUOUS", Route.QUALIFIED_QUESTION),
             ("SINGLE_HOP", Route.QUALIFIED_QUESTION),
             ("MULTI_HOP", Route.QUALIFIED_QUESTION),
         ]:
@@ -104,7 +103,7 @@ class TestJevDecisionClientMockHTTP(unittest.TestCase):
                 sent_json = mock_post.call_args.kwargs["json"]
                 self.assertEqual(sent_json["state"], {"query": "Điểm chuẩn ngành CNTT và AI?"})
                 criteria_keys = set(sent_json["questions"]["route"]["criteria"].keys())
-                self.assertEqual(criteria_keys, {"OUT_OF_SCOPE", "AMBIGUOUS", "QUALIFIED_QUESTION"})
+                self.assertEqual(criteria_keys, {"OUT_OF_SCOPE", "QUALIFIED_QUESTION"})
 
     def test_evaluate_answer_only_sends_query_and_answer(self):
         client = self._make_client(answer_threshold=0.5)

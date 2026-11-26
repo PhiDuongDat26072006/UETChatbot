@@ -16,6 +16,80 @@ from src.utils.helpers import get_logger, load_yaml_config
 
 logger = get_logger("reranker")
 
+_INLINE_HEADING_RE = re.compile(r"(?:^|(?<=\s)|(?<=\|))#{1,6}\s+", re.MULTILINE)
+_HTML_BR_SEMICOLON_RE = re.compile(r"\s+;\s+")
+_MULTI_SPACE_RE = re.compile(r"[ \t]{2,}")
+
+
+def _clean_text_for_reranker(text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Làm sạch nhiễu định dạng Markdown/HTML trước khi đưa vào Tokenizer của Cross-Encoder (Jina / XLM-RoBERTa):
+      1. Khử dòng [META: ...] bị lặp nguyên văn tiêu đề tài liệu [Title] ngay phía trên.
+      2. Xóa dấu '**' và '__' bọc sát chữ cái đầu từ để ngăn lỗi vỡ vụn subword (Token Shattering)
+         trong SentencePiece (ví dụ '**Công' -> ['▁**', 'C', 'ông'], '**Điểm' -> ['▁**', 'Đ', 'i', 'ể', 'm']).
+      3. Xóa tiền tố heading '#### ' nhúng trong từng ô bảng và dấu ' ; ' sinh ra từ thẻ <br> HTML.
+      4. Đính kèm tối đa 2 cạnh liên kết đồ thị ngắn (graph_triples) cho chunk quy chế phi bảng biểu để
+         bảo vệ các chunk bắc cầu đa bước khi câu hỏi sinh viên dùng khẩu ngữ/tiếng lóng.
+    Chỉ áp dụng trên bản sao chấm điểm của Reranker; văn bản gốc trả về cho LLM/UI giữ nguyên 100%.
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    if len(lines) >= 2 and lines[0].startswith("[") and lines[0].endswith("]"):
+        doc_header = lines[0][1:-1].strip()
+        second_line = lines[1].strip()
+        if second_line.startswith("[META:") and second_line.endswith("]"):
+            meta_header = second_line[6:-1].strip()
+            if doc_header.lower() == meta_header.lower():
+                lines = [lines[0]] + lines[2:]
+
+    cleaned = "\n".join(lines)
+    cleaned = cleaned.replace("**", "").replace("__", "")
+    cleaned = _INLINE_HEADING_RE.sub("", cleaned)
+    cleaned = _HTML_BR_SEMICOLON_RE.sub(" ", cleaned)
+    cleaned = _MULTI_SPACE_RE.sub(" ", cleaned).strip()
+
+    if isinstance(metadata, dict) and metadata.get("data_type") != "tabular":
+        triples = metadata.get("graph_triples") or []
+        if triples:
+            short_triples = [
+                str(t).split(" (Căn cứ:")[0].strip()
+                for t in triples[:2]
+                if str(t).strip() and not str(t).startswith("Phạm vi văn bản:")
+            ]
+            if short_triples:
+                cleaned = f"[Liên kết học vụ: {'; '.join(short_triples)}]\n{cleaned}"
+
+    return cleaned
+
+
+def _blend_rerank_and_prior(
+    candidates: List[RetrievedContext],
+    rerank_probs: List[float],
+    rerank_weight: float = 0.75,
+) -> List[float]:
+    """
+    Kết hợp tuyến tính điểm xác suất của Cross-Encoder Reranker với điểm Hybrid RRF ban đầu:
+        final_score = w * rerank_prob + (1 - w) * normalized_prior
+    Giúp bảo vệ các ứng viên khớp từ khóa chính xác cao ở BM25/RRF không bị mất dấu hoàn toàn
+    trước thiên kiến cấu trúc văn xuôi vs. bảng biểu của mô hình Cross-Encoder.
+    """
+    w = max(0.0, min(1.0, float(rerank_weight)))
+    if w >= 1.0 or not candidates:
+        return [float(s) for s in rerank_probs]
+
+    priors = [max(0.0, float(c.similarity_score or 0.0)) for c in candidates]
+    max_prior = max(priors) if priors else 0.0
+    if max_prior <= 0.0:
+        return [float(s) for s in rerank_probs]
+
+    # Nếu prior vượt quá 1.0 (ví dụ truyền trực tiếp kết quả BM25 thô), chuẩn hóa về (0, 1]
+    if max_prior > 1.0:
+        priors = [p / max_prior for p in priors]
+
+    return [(w * float(r_prob)) + ((1.0 - w) * p_score) for r_prob, p_score in zip(rerank_probs, priors)]
+
 
 class BaseReranker(ABC):
     """Lớp cơ sở trừu tượng cho tất cả các mô hình Reranker."""
@@ -302,6 +376,7 @@ class JinaONNXReranker(BaseReranker):
         onnx_filename: str = "onnx/model.onnx",
         max_length: Optional[int] = None,
         batch_size: Optional[int] = None,
+        rerank_weight: float = 1.0,
         providers: Optional[List[str]] = None,
         use_gpu: Optional[bool] = None,
     ):
@@ -322,6 +397,7 @@ class JinaONNXReranker(BaseReranker):
         self.onnx_filename = onnx_filename
         self.max_length = int(max_length) if max_length is not None else int(cfg.get("max_length", 512))
         self.batch_size = max(1, int(batch_size) if batch_size is not None else int(cfg.get("batch_size", 8)))
+        self.rerank_weight = float(rerank_weight)
         cfg_use_gpu = ret_cfg.get("reranker_use_gpu", cfg.get("use_gpu"))
         self.use_gpu, req_provs = self.resolve_providers(
             use_gpu=use_gpu,
@@ -453,17 +529,20 @@ class JinaONNXReranker(BaseReranker):
             import numpy as np
 
             all_prob_scores: List[float] = [0.0] * len(candidates)
-            # Phase 3.1: Length bucketing - sắp xếp theo độ dài văn bản để giảm padding dư thừa
-            sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(candidates[idx].text or ""))
+            clean_query = _clean_text_for_reranker(query)
+            cleaned_texts = [_clean_text_for_reranker(c.text, c.metadata) for c in candidates]
+            # Sắp xếp theo độ dài văn bản trước khi chia micro-batch để giảm padding dư thừa
+            sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(cleaned_texts[idx]))
+            active_provs = getattr(self, "_active_providers", [])
             eff_batch_size = (
                 max(self.batch_size, 32)
-                if "CUDAExecutionProvider" in getattr(self, "_active_providers", [])
+                if ("CUDAExecutionProvider" in active_provs or "DmlExecutionProvider" in active_provs)
                 else self.batch_size
             )
 
             for i in range(0, len(sorted_indices), eff_batch_size):
                 batch_indices = sorted_indices[i : i + eff_batch_size]
-                sentence_pairs = [[query, candidates[idx].text] for idx in batch_indices]
+                sentence_pairs = [[clean_query, cleaned_texts[idx]] for idx in batch_indices]
                 inputs = self._tokenizer(
                     sentence_pairs,
                     padding=True,
@@ -485,21 +564,28 @@ class JinaONNXReranker(BaseReranker):
                 for idx, p_score in zip(batch_indices, prob_scores.tolist()):
                     all_prob_scores[idx] = float(p_score)
 
-            ranked = list(zip(candidates, all_prob_scores))
+            blended_scores = _blend_rerank_and_prior(
+                candidates=candidates,
+                rerank_probs=all_prob_scores,
+                rerank_weight=getattr(self, "rerank_weight", 1.0),
+            )
+
+            ranked = list(zip(candidates, blended_scores, all_prob_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
 
             results: List[RetrievedContext] = []
-            for rank, (cand, score) in enumerate(ranked[:top_n], 1):
+            for rank, (cand, final_score, raw_prob) in enumerate(ranked[:top_n], 1):
                 meta = dict(cand.metadata) if cand.metadata else {}
                 meta["reranker_name"] = f"jina_onnx_{self.model_name}"
-                meta["rerank_score"] = round(float(score), 4)
+                meta["raw_rerank_score"] = round(float(raw_prob), 4)
+                meta["rerank_score"] = round(float(final_score), 4)
                 meta["degraded"] = False
                 meta["rerank_backend"] = "jina_onnx"
                 results.append(
                     RetrievedContext(
                         chunk_id=cand.chunk_id,
                         text=cand.text,
-                        similarity_score=round(float(score), 4),
+                        similarity_score=round(float(final_score), 4),
                         rank=rank,
                         metadata=meta,
                     )
@@ -1032,6 +1118,8 @@ class RerankerFactory:
             jina_kwargs["use_gpu"] = bool(kwargs["use_gpu"])
         if kwargs.get("providers") is not None:
             jina_kwargs["providers"] = list(kwargs["providers"])
+        if kwargs.get("rerank_weight") is not None:
+            jina_kwargs["rerank_weight"] = float(kwargs["rerank_weight"])
 
         if rtype in ("onnx", "jina", "jina_onnx") or "jina" in model_str:
             return JinaONNXReranker(

@@ -7,6 +7,7 @@ from __future__ import annotations
 import sys
 import uuid
 from pathlib import Path
+from typing import Optional
 
 # Cấu hình UTF-8 cho console Windows
 if sys.platform.startswith("win"):
@@ -24,7 +25,7 @@ from src.base import UserQuery
 from src.pipeline import get_rag_pipeline, get_active_pipeline, describe_pipeline_mode
 
 
-def run_cli():
+def run_cli(engine: Optional[str] = None):
     """Khởi chạy giao diện Chatbot trực tiếp trên Terminal với giao diện Rich."""
     try:
         from rich.console import Console
@@ -137,7 +138,13 @@ def run_cli():
                     answer_text = "".join(token_parts)
             else:
                 with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
-                    response = rag_pipeline.query(query)
+                    if engine is not None:
+                        try:
+                            response = rag_pipeline.query(query, engine=engine)
+                        except TypeError:
+                            response = rag_pipeline.query(query)
+                    else:
+                        response = rag_pipeline.query(query)
                     answer_text = response.answer
                     response_sources = list(response.sources or [])
                     response_model = response.model_name or response_model

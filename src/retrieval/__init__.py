@@ -1,12 +1,12 @@
 """
-src/retrieval - Phân hệ Truy xuất Ngữ cảnh (Retrieval & Similarity Search).
+src/retrieval - Phân hệ Truy xuất & Điều phối Ngữ cảnh (Retrieval & Orchestration).
 """
 
 from src.retrieval.retriever import UETRetriever
 from src.indexing.sparse import BM25Index
-from src.indexing.graph import GraphIndex
 from src.retrieval.hybrid import HybridSearcher
 from src.retrieval.mmr import MaximalMarginalRelevance
+from src.retrieval.router import QueryRouter
 from src.retrieval.reranker import (
     BaseReranker,
     HeuristicReranker,
@@ -20,9 +20,9 @@ from src.retrieval.reranker import (
 __all__ = [
     "UETRetriever",
     "BM25Index",
-    "GraphIndex",
     "HybridSearcher",
     "MaximalMarginalRelevance",
+    "QueryRouter",
     "BaseReranker",
     "HeuristicReranker",
     "FlashRankReranker",

@@ -119,6 +119,7 @@ class UETAgenticRAGPipeline(BaseRAGPipeline):
                 "state": state_val,
                 "route": route_val,
                 "retry": final_state.get("retry", 0),
+                "fail_reason": final_state.get("fail_reason") or (agent_resp.fail_reason if agent_resp else None),
                 "missing_info": final_state.get("missing_info"),
                 "followup_queries": final_state.get("followup_queries", []),
                 "used_queries": final_state.get("used_queries", []),

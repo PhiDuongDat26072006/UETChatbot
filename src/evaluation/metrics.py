@@ -130,6 +130,71 @@ _REFUSAL_PHRASES = (
     "không thể trả lời",
 )
 
+_DEFAULT_AGENT_NOTE_TEMPLATES: Dict[str, str] = {
+    "answer_incomplete_note": (
+        "\n\n> **Lưu ý:** Câu trả lời trên có thể chưa đầy đủ hoàn toàn mọi ý trong câu hỏi của bạn{missing_suffix}. "
+        "Bạn có thể liên hệ Phòng Đào tạo (Phòng 105-E3, SĐT: 024.3754.7865) hoặc Cổng thông tin đào tạo UET để xác nhận thêm thông tin chi tiết nhé."
+    ),
+    "ambiguous_followup_note": (
+        "\n\n> **Gợi ý:** Nếu bạn muốn tra cứu chính xác theo trường hợp của mình, "
+        "bạn có thể cho mình biết thêm **ngành học, khóa tuyển sinh hoặc hệ đào tạo (Chuẩn/CLC)** nhé."
+    ),
+}
+
+_VOICE_AMBIGUOUS_NOTE_RE = re.compile(
+    r"\s*Nếu bạn muốn tra cứu chính xác hơn theo trường hợp của mình,\s*"
+    r"bạn hãy cho mình biết thêm ngành học,\s*khóa tuyển sinh hoặc hệ đào tạo cụ thể nhé\.\s*",
+    re.IGNORECASE,
+)
+
+_CACHED_AGENT_TEMPLATES: Optional[Dict[str, str]] = None
+
+
+def _get_default_agent_note_templates() -> Dict[str, str]:
+    """Đọc mẫu ghi chú từ config.yaml (cache 1 lần), fallback về template mặc định."""
+    global _CACHED_AGENT_TEMPLATES
+    if _CACHED_AGENT_TEMPLATES is not None:
+        return _CACHED_AGENT_TEMPLATES
+    merged = dict(_DEFAULT_AGENT_NOTE_TEMPLATES)
+    try:
+        from src.utils.helpers import load_yaml_config
+
+        cfg = load_yaml_config()
+        tpl_cfg = cfg.get("templates") if isinstance(cfg, dict) else None
+        if isinstance(tpl_cfg, dict):
+            for key in ("answer_incomplete_note", "ambiguous_followup_note"):
+                if tpl_cfg.get(key):
+                    merged[key] = str(tpl_cfg[key])
+    except Exception:
+        pass
+    _CACHED_AGENT_TEMPLATES = merged
+    return merged
+
+
+def strip_agent_notes(answer: str, templates: Optional[Dict[str, str]] = None) -> str:
+    """
+    Loại bỏ các khối ghi chú template (`answer_incomplete_note`, `ambiguous_followup_note`,
+    và câu gợi ý voice mode) do Agent nối vào cuối câu trả lời, tránh làm sai lệch
+    token precision / faithfulness khi chấm offline.
+    """
+    if not answer:
+        return ""
+    text = unicodedata.normalize("NFC", str(answer))
+    active_templates = templates if templates is not None else _get_default_agent_note_templates()
+
+    for key in ("ambiguous_followup_note", "answer_incomplete_note"):
+        tpl = active_templates.get(key)
+        if not tpl:
+            continue
+        tpl_norm = unicodedata.normalize("NFC", str(tpl)).strip()
+        if not tpl_norm:
+            continue
+        pattern = re.escape(tpl_norm).replace(re.escape("{missing_suffix}"), ".*?")
+        text = re.sub(r"\s*" + pattern, "", text, flags=re.DOTALL)
+
+    text = _VOICE_AMBIGUOUS_NOTE_RE.sub("", text)
+    return text.rstrip()
+
 
 # ============================================================================
 # Tiền xử lý & Chuẩn hóa Tiếng Việt

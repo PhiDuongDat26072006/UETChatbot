@@ -186,6 +186,24 @@ class TestUETChunker(unittest.TestCase):
         self.assertIn("Điểm chuẩn: 27.85", table_chunks[0].text)
         self.assertIn("[META: Bảng điểm chuẩn trúng tuyển]", table_chunks[0].text)
 
+    def test_markdown_table_cleans_heading_bold_noise_and_deduplicates_meta(self):
+        """8b. Kiểm tra bảng HTML cào về có #### / ** / ' ; ' được làm sạch và không lặp [META: doc.title]."""
+        chunker = UETChunker(chunk_size=800, chunk_overlap=100)
+        doc_title = "THÔNG BÁO ĐIỂM TRÚNG TUYỂN ĐẠI HỌC CHÍNH QUY NĂM 2025"
+        content = (
+            "| #### **STT** | #### **Mã xét tuyển** | #### **Ngành đào tạo** | #### **Điểm ; trúng tuyển** |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | **CN1** | **Công nghệ thông tin** | **28.19** |\n"
+        )
+        doc = ProcessedData(id="doc_table_noisy", title=doc_title, content=content)
+        chunks = chunker.chunk(doc)
+        self.assertEqual(len(chunks), 1)
+        txt = chunks[0].text
+        self.assertNotIn("[META:", txt)
+        self.assertNotIn("####", txt)
+        self.assertNotIn("**", txt)
+        self.assertIn("Ngành đào tạo: Công nghệ thông tin | Điểm trúng tuyển: 28.19", txt)
+
     def test_min_chunk_size_merging_and_noise_filtering(self):
         """9. Kiểm tra gộp chunk mồ côi (< min_chunk_size) và lọc bỏ rác."""
         chunker = UETChunker(chunk_size=400, min_chunk_size=80)

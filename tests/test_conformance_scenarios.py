@@ -236,50 +236,6 @@ class TestConformanceScenariosV3(unittest.TestCase):
         self.assertIsNotNone(resp.contexts)
         self.assertIsNotNone(resp.missing_info)
 
-    def test_n06_ambiguous_goes_straight_to_rag_and_appends_followup_note(self):
-        """N06: AMBIGUOUS không chặn lượt -> đi thẳng retrieval -> gen -> answer_eval -> gắn câu gợi ý cuối phản hồi."""
-        fake_client = FakeDecisionClient(
-            routes=[Route.AMBIGUOUS],
-            evaluate_answers=[Verdict.SUFFICIENT],
-        )
-        graph = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=fake_client,
-        )
-        state = graph.run(query="Học phí một kỳ bao nhiêu?")
-        resp: AgentResponse = state["response"]
-
-        self.assertEqual(resp.status, "ok")
-        self.assertEqual(resp.state, 1)
-        self.assertEqual(resp.route, Route.AMBIGUOUS)
-        self.assertEqual(self.mock_retriever.call_count, 1)
-        self.assertEqual(self.mock_llm.generation_count, 1)
-        self.assertIn("Câu trả lời vòng 1", resp.answer)
-        self.assertIn("**Gợi ý:**", resp.answer)
-        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
-
-    def test_n07_ambiguous_partial_appends_incomplete_and_followup_note_once(self):
-        """N07: AMBIGUOUS nhưng answer_eval THIẾU vượt ngưỡng -> partial kèm lưu ý thiếu và gợi ý ngành/khóa đúng 1 lần."""
-        fake_client = FakeDecisionClient(
-            routes=[Route.AMBIGUOUS],
-            evaluate_answers=[Verdict.INSUFFICIENT, Verdict.INSUFFICIENT],
-        )
-        graph = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=fake_client,
-            config={"agent": {"answer_eval": {"max_retries": 1}}},
-        )
-        state = graph.run(query="Chương trình đào tạo gồm những môn gì?")
-        resp: AgentResponse = state["response"]
-
-        self.assertEqual(resp.status, "partial")
-        self.assertEqual(resp.state, 1)
-        self.assertEqual(resp.route, Route.AMBIGUOUS)
-        self.assertIn("phần còn thiếu", resp.answer.lower())
-        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
-
     def test_n08_run_stream_only_emits_final_approved_answer_after_answer_eval(self):
         """N08: run_stream() chạy qua answer_eval + followup và CHỈ phát token của câu trả lời cuối cùng."""
         fake_client = FakeDecisionClient(

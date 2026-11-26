@@ -466,6 +466,30 @@ class TestRetrievalPipeline(unittest.TestCase):
         self.assertIn("Blockchain", res[0].text)
         self.assertEqual(res[0].metadata["expanded_chunk_ids"], ["lst_0", "lst_1"])
 
+    def test_rrf_per_branch_recall_floor_prevents_vector_starvation(self):
+        """Đảm bảo ứng viên Vector Top-1..2 không bị loại trước Reranker khi vector_weight << bm25_weight."""
+        bm25_res = [
+            RetrievedContext(chunk_id=f"bm_{i}", text=f"BM25 chunk {i}", similarity_score=100 - i, rank=i + 1)
+            for i in range(60)
+        ]
+        vec_res = [
+            RetrievedContext(chunk_id=f"vec_{i}", text=f"Vector chunk {i}", similarity_score=0.9 - i * 0.01, rank=i + 1)
+            for i in range(60)
+        ]
+        fused = HybridSearcher.reciprocal_rank_fusion(
+            bm25_results=bm25_res,
+            vector_results=vec_res,
+            top_n=60,
+            rrf_k=30,
+            bm25_weight=0.60,
+            vector_weight=0.20,
+        )
+        fused_ids = {c.chunk_id for c in fused}
+        self.assertEqual(len(fused), 60)
+        self.assertIn("vec_0", fused_ids)
+        self.assertIn("vec_1", fused_ids)
+        self.assertIn("bm_0", fused_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

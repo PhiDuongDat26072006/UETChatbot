@@ -3,7 +3,7 @@ src/prompts/prompts.py - Kho tập trung TẤT CẢ các prompt của hệ thố
 
 Chỉnh sửa toàn bộ prompt của hệ thống tại duy nhất file này:
   1. JEV Decision Prompts:
-     - Router 3 nhãn (OUT_OF_SCOPE / AMBIGUOUS / QUALIFIED_QUESTION)
+     - Router 2 nhãn (OUT_OF_SCOPE / QUALIFIED_QUESTION)
      - Answer Eval (đánh giá cặp query + answer, không gửi chunk)
   2. LLM Generation Prompts:
      - System Prompt mặc định (chiến lược Answer-first + Soft Follow-up) + Few-shot Examples + User Prompt Template
@@ -20,25 +20,21 @@ from typing import Dict
 # 1. PROMPT CHO JEV DECISION MODEL (2 QUYẾT ĐỊNH VI MÔ)
 # =============================================================================
 
-# --- 1.1. Router (3 nhãn: OUT_OF_SCOPE | AMBIGUOUS | QUALIFIED_QUESTION) ---
+# --- 1.1. Router (2 nhãn: OUT_OF_SCOPE | QUALIFIED_QUESTION) ---
 JEV_ROUTE_INSTRUCTIONS = (
     "Phân loại tin nhắn `query` gửi tới chatbot tư vấn của Trường Đại học Công nghệ - ĐHQGHN (UET). "
     "Nếu tin nhắn không nêu tên trường thì mặc định hiểu là đang hỏi về UET.\n"
     "Phạm vi IN-SCOPE của UET bao gồm MỌI chủ đề liên quan đến Trường ĐH Công nghệ (UET / VNU-UET / các khoa FIT, FET, FEMA, FEPN, FAT, FCE, viện IAI, SAE): "
     "đào tạo, học vụ, quy chế, tuyển sinh, học phí, học bổng, hỗ trợ sinh viên, cẩm nang sức khỏe tinh thần, "
     "nghiên cứu khoa học, phòng thí nghiệm, đối tác, câu lạc bộ, cuộc thi/thành tích sinh viên (như ACM/ICPC), lịch sử và cơ cấu tổ chức của UET.\n"
-    "Chọn 1 nhãn phù hợp nhất theo thứ tự ưu tiên:\n"
+    "Chọn 1 trong 2 nhãn phù hợp nhất:\n"
     "1. OUT_OF_SCOPE: CHỈ chọn cho lời chào, cảm ơn, hỏi danh tính bot, hỏi về trường đại học khác (không phải UET), "
     "hoặc chủ đề đời sống hoàn toàn không liên quan tới UET (thời tiết, giá vàng, thể thao...). "
     "TUYỆT ĐỐI KHÔNG chọn OUT_OF_SCOPE nếu câu hỏi nhắc trực tiếp tới UET, Trường Đại học Công nghệ, hay bất kỳ khoa/viện/bộ môn/cẩm nang/đội tuyển nào của UET.\n"
-    "2. QUALIFIED_QUESTION: Câu hỏi về UET có thể tra cứu trực tiếp, bao gồm: quy chế/quy định áp dụng chung toàn trường "
-    "(tốt nghiệp, thời gian đào tạo, số tín chỉ đăng ký mỗi kỳ, chuẩn ngoại ngữ chung, công thức xét tuyển, học bổng, cảnh báo học vụ), "
-    "hỗ trợ sinh viên/cẩm nang/thành tích/nghiên cứu/lịch sử UET, câu hỏi đã nêu rõ Khoa/Viện/Bộ môn/Ngành/Năm/Chương trình cụ thể, "
+    "2. QUALIFIED_QUESTION: MỌI câu hỏi về UET có thể tra cứu (kể cả câu hỏi ngắn/chung chung về học phí, điểm chuẩn, điều kiện tốt nghiệp, chuẩn ngoại ngữ, học bổng), "
+    "quy chế/quy định toàn trường, hỗ trợ sinh viên/cẩm nang/thành tích/nghiên cứu/lịch sử UET, câu hỏi về Khoa/Viện/Bộ môn/Ngành/Năm/Chương trình cụ thể, "
     "câu liệt kê/tổng quan, câu so sánh hoặc câu nhiều ý.\n"
-    "3. AMBIGUOUS: CHỈ chọn khi câu hỏi về UET quá ngắn/chung chung và hoàn toàn thiếu đối tượng bắt buộc "
-    "(không nêu ngành, khoa, khóa hoặc hệ đào tạo) cho các nội dung thay đổi mạnh theo từng ngành/khóa "
-    "(như học phí cụ thể của một ngành, danh sách môn học của khung chương trình, hoặc điểm chuẩn một ngành cụ thể).\n"
-    "Nếu phân vân giữa AMBIGUOUS và QUALIFIED_QUESTION, LUÔN ưu tiên chọn QUALIFIED_QUESTION."
+    "Nếu phân vân giữa OUT_OF_SCOPE và QUALIFIED_QUESTION khi câu hỏi có thể liên quan đến học vụ/đại học, ưu tiên chọn QUALIFIED_QUESTION."
 )
 
 JEV_ROUTE_CRITERIA: Dict[str, str] = {
@@ -47,18 +43,13 @@ JEV_ROUTE_CRITERIA: Dict[str, str] = {
         "hoặc chủ đề đời sống hoàn toàn không liên quan đến UET. "
         "Ví dụ: 'xin chào', 'cảm ơn nhé', 'bạn là ai?', 'thời tiết hôm nay thế nào?', 'giá vàng SJC hôm nay?'."
     ),
-    "AMBIGUOUS": (
-        "Câu hỏi rất ngắn hoặc quá chung chung về nội dung phụ thuộc chặt vào từng ngành, khóa hoặc hệ đào tạo "
-        "(Chuẩn/CLC) mà người dùng chưa nêu bất kỳ tên ngành, khoa, viện hay năm nào. "
-        "Ví dụ: 'học phí một kỳ bao nhiêu?', 'chương trình học có những môn gì?', 'điểm chuẩn bao nhiêu?'."
-    ),
     "QUALIFIED_QUESTION": (
-        "Mọi câu hỏi về Trường Đại học Công nghệ - ĐHQGHN (UET) đủ thông tin để tra cứu: đào tạo, quy chế chung toàn trường "
-        "(điều kiện tốt nghiệp, thời gian đào tạo tối đa, tín chỉ đăng ký, chuẩn đầu ra ngoại ngữ, công thức xét tuyển, học bổng, cảnh báo học vụ), "
+        "Mọi câu hỏi liên quan đến Trường Đại học Công nghệ - ĐHQGHN (UET): đào tạo, quy chế chung toàn trường "
+        "(điều kiện tốt nghiệp, thời gian đào tạo tối đa, tín chỉ đăng ký, chuẩn đầu ra ngoại ngữ, công thức xét tuyển, học phí, học bổng, cảnh báo học vụ), "
         "hỗ trợ sinh viên & cẩm nang sức khỏe tinh thần UET, thành tích/cuộc thi sinh viên UET (ACM/ICPC...), nghiên cứu khoa học, phòng lab, "
-        "lịch sử/cơ cấu các Khoa/Viện/Bộ môn (FIT, FET, SAE, FEPN, FAT, FEMA, IAI...), câu hỏi liệt kê/tổng quan, so sánh và nhiều ý. "
-        "Ví dụ: 'GPA dưới bao nhiêu thì bị cảnh báo học vụ?', 'đường dây nóng trong Cẩm nang sức khỏe tinh thần UET?', "
-        "'đội tuyển ACM/ICPC 2015 của Trường ĐH Công nghệ đạt thứ hạng nào?', 'điểm chuẩn ngành CNTT năm 2024?'."
+        "lịch sử/cơ cấu các Khoa/Viện/Bộ môn (FIT, FET, SAE, FEPN, FAT, FEMA, IAI...), câu hỏi ngắn/chung chung về học vụ UET, câu liệt kê/tổng quan, so sánh và nhiều ý. "
+        "Ví dụ: 'GPA dưới bao nhiêu thì bị cảnh báo học vụ?', 'học phí một kỳ bao nhiêu?', "
+        "'đường dây nóng trong Cẩm nang sức khỏe tinh thần UET?', 'điểm chuẩn ngành CNTT năm 2024?'."
     ),
 }
 

@@ -1,6 +1,6 @@
 """
 src/decision/jev_enums.py - Các Enum định nghĩa nhãn và phán quyết cho hệ thống JEV Decision Model (v3).
-Luồng "Generate -> Evaluate -> Follow-up" với 3 nhãn router và phán quyết ĐỦ / THIẾU.
+Luồng "Generate -> Evaluate -> Follow-up" với 2 nhãn router và phán quyết ĐỦ / THIẾU.
 """
 
 from __future__ import annotations
@@ -8,10 +8,9 @@ from enum import Enum
 
 
 class Route(str, Enum):
-    """Nhãn định tuyến 3 nhánh từ router_node (JEV)."""
+    """Nhãn định tuyến 2 nhánh từ router_node (JEV)."""
     OUT_OF_SCOPE = "OUT_OF_SCOPE"              # Chào hỏi, cảm ơn, hỏi danh tính bot, hoặc ngoài phạm vi UET
-    AMBIGUOUS = "AMBIGUOUS"                    # Liên quan UET nhưng còn chung chung -> vẫn vào RAG và gắn thêm gợi ý cuối câu
-    QUALIFIED_QUESTION = "QUALIFIED_QUESTION"  # Đủ thông tin để tra cứu trực tiếp, kể cả câu so sánh / nhiều ý
+    QUALIFIED_QUESTION = "QUALIFIED_QUESTION"  # Câu hỏi về UET (kể cả câu ngắn, so sánh, nhiều ý) -> vào RAG trực tiếp
 
 
 class Verdict(str, Enum):

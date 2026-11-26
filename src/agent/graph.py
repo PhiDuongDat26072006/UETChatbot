@@ -1,10 +1,9 @@
 """
 src/agent/graph.py - Xây dựng đồ thị trạng thái điều phối Agentic RAG v3 ("Generate -> Evaluate -> Follow-up").
 Gồm 6 node chính + 1 node lỗi ẩn (fail_node cho lỗi dịch vụ JEV/LLM):
-  1. router_node (JEV 3 nhãn: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION)
+  1. router_node (JEV 2 nhãn: OUT_OF_SCOPE, QUALIFIED_QUESTION)
      - OUT_OF_SCOPE -> out_of_scope_node
-     - QUALIFIED_QUESTION & AMBIGUOUS -> đi thẳng vào retrieval_node (không chặn lượt hỏi ngược);
-       riêng AMBIGUOUS tự động gắn câu gợi ý mềm ở cuối phản hồi cuối cùng đã qua answer_eval.
+     - QUALIFIED_QUESTION -> đi thẳng vào retrieval_node
   2. out_of_scope_node (Template)
   3. retrieval_node (BM25 + Vector + GraphRAG + RRF + Rerank + Soft Faculty Filter + tích lũy context_pool)
   4. generation_node (LLM sinh câu trả lời theo chiến lược Answer-first + Soft Follow-up)
@@ -80,7 +79,6 @@ class UETAgentGraph:
     Bộ điều phối Đồ thị trạng thái Agentic RAG v3 (6 node chính + fail_node ẩn).
     Luồng chính:
       - Happy path: router (JEV) -> retrieval -> generation (LLM) -> answer_eval (JEV) -> END (2 JEV + 1 LLM).
-      - AMBIGUOUS path: router=AMBIGUOUS -> vẫn đi thẳng retrieval -> generation -> answer_eval -> gắn câu gợi ý cuối câu -> END.
       - Follow-up loop: answer_eval THIẾU (retry <= max_retries) -> followup_query (LLM) -> retrieval -> generation -> answer_eval.
       - Partial exit (Q1=A): answer_eval THIẾU (retry > max_retries) -> trả câu trả lời tốt nhất (state=1, status='partial') kèm ghi chú.
     """
@@ -149,6 +147,10 @@ class UETAgentGraph:
         gen_cfg = agent_cfg.get("generator", {})
         self.gen_model = gen_cfg.get("model") or default_model
 
+        # Trace verbose (chỉ lưu nội dung câu trả lời từng vòng khi evaluator bật)
+        trace_cfg = agent_cfg.get("trace", {})
+        self.trace_verbose = bool(trace_cfg.get("verbose", False))
+
         # Mẫu template từ config
         templates_cfg = self.raw_config.get("templates", {})
         self.templates = {
@@ -166,11 +168,6 @@ class UETAgentGraph:
                 "answer_incomplete_note",
                 "\n\n> **Lưu ý:** Câu trả lời trên có thể chưa đầy đủ hoàn toàn mọi ý trong câu hỏi của bạn{missing_suffix}. "
                 "Bạn có thể liên hệ Phòng Đào tạo (Phòng 105-E3, SĐT: 024.3754.7865) hoặc Cổng thông tin đào tạo UET để xác nhận thêm thông tin chi tiết nhé.",
-            ),
-            "ambiguous_followup_note": templates_cfg.get(
-                "ambiguous_followup_note",
-                "\n\n> **Gợi ý:** Nếu bạn muốn tra cứu chính xác theo trường hợp của mình, "
-                "bạn có thể cho mình biết thêm **ngành học, khóa tuyển sinh hoặc hệ đào tạo (Chuẩn/CLC)** nhé.",
             ),
         }
 
@@ -233,37 +230,12 @@ class UETAgentGraph:
             cleaned = re.sub(r"\s*\(\s*Bổ sung\s*:\s*([^)]*)\)", r" \1", cleaned, flags=re.IGNORECASE)
         return UETQueryRewriter.expand_for_retrieval(cleaned)
 
-    def _apply_ambiguous_followup_note(
-        self,
-        answer: str,
-        route: Optional[Route],
-        voice_mode: bool = False,
-    ) -> str:
-        """
-        Khi JEV Router phân loại câu hỏi là AMBIGUOUS, gắn thêm 1 câu gợi ý ngắn ở cuối phản hồi cuối cùng
-        đã qua answer_eval_node (chỉ gắn đúng 1 lần, không chèn Markdown khi ở voice_mode).
-        """
-        if route != Route.AMBIGUOUS or not answer:
-            return answer
-
-        if voice_mode:
-            note = (
-                " Nếu bạn muốn tra cứu chính xác hơn theo trường hợp của mình, "
-                "bạn hãy cho mình biết thêm ngành học, khóa tuyển sinh hoặc hệ đào tạo cụ thể nhé."
-            )
-        else:
-            note = self.templates.get("ambiguous_followup_note") or ""
-
-        if note and note.strip() not in answer:
-            return f"{answer}{note}"
-        return answer
-
     def _get_jev_trace_extras(self) -> Dict[str, Any]:
         meta = getattr(self.decision_client, "last_trace_meta", None)
         if not isinstance(meta, dict):
             return {}
         extras = {}
-        for key in ("server_latency_s", "payload_bytes", "noul_prob"):
+        for key in ("server_latency_s", "payload_bytes", "noul_prob", "raw_label", "parse_fallback"):
             if key in meta and meta[key] is not None:
                 extras[key] = meta[key]
         return extras
@@ -273,7 +245,7 @@ class UETAgentGraph:
     # =========================================================================
 
     def router_node(self, state: AgentState) -> Dict[str, Any]:
-        """1. router_node (JEV): Phân loại câu hỏi thành 3 nhãn OUT_OF_SCOPE | AMBIGUOUS | QUALIFIED_QUESTION."""
+        """1. router_node (JEV): Phân loại câu hỏi thành 2 nhãn OUT_OF_SCOPE | QUALIFIED_QUESTION."""
         q = (state.get("query") or "").strip()
         session_id = state.get("session_id")
         start_t = time.time()
@@ -395,9 +367,13 @@ class UETAgentGraph:
         trace_entry = {
             "node": "retrieval_node",
             "source": "retriever",
+            "round": int(state.get("retry", 0)),
+            "queries": list(queries),
             "queries_count": len(queries),
             "chunks_retrieved": len(retrieved_this_round),
+            "chunk_ids": [c.chunk_id for c in retrieved_this_round],
             "selected_count": len(selected_contexts),
+            "selected_chunk_ids": [c.chunk_id for c in selected_contexts],
             "latency_s": latency,
         }
 
@@ -493,10 +469,13 @@ class UETAgentGraph:
             trace_entry: Dict[str, Any] = {
                 "node": "generation_node",
                 "source": "llm",
+                "round": int(state.get("retry", 0)),
                 "contexts_count": len(contexts),
                 "answer_chars": len(answer),
                 "latency_s": latency,
             }
+            if self.trace_verbose:
+                trace_entry["answer_text"] = answer
             if usage_info is not None:
                 trace_entry["usage"] = usage_info
 
@@ -528,10 +507,10 @@ class UETAgentGraph:
     def answer_eval_node(self, state: AgentState) -> Dict[str, Any]:
         """
         5. answer_eval_node (JEV): Đánh giá cặp (query, answer) — KHÔNG gửi chunk.
-        - ĐỦ -> gắn ambiguous_followup_note (nếu route=AMBIGUOUS) -> AgentResponse(status='ok', state=1) -> END.
+        - ĐỦ -> AgentResponse(status='ok', state=1) -> END.
         - THIẾU -> retry += 1:
             + retry <= max_retries -> followup_query_node.
-            + retry > max_retries -> trả câu trả lời tốt nhất (status='partial', state=1) kèm ghi chú + gợi ý nếu AMBIGUOUS -> END.
+            + retry > max_retries -> trả câu trả lời tốt nhất (status='partial', state=1) kèm ghi chú -> END.
         - Lỗi JEV -> fail_node (Q5).
         """
         q = state.get("query", "")
@@ -568,6 +547,7 @@ class UETAgentGraph:
         trace_entry = {
             "node": "answer_eval_node",
             "decision": "evaluate_answer",
+            "round": int(retry),
             "result": verdict.value,
             "retry_before": retry,
             "source": "jev",
@@ -577,7 +557,7 @@ class UETAgentGraph:
 
         if verdict == Verdict.SUFFICIENT:
             new_trace = (state.get("trace") or []) + [trace_entry]
-            final_answer = self._apply_ambiguous_followup_note(ans, route, voice_mode=voice_mode)
+            final_answer = ans
             logger.info(f"[AnswerEvalNode] JEV phán quyết: ĐỦ ({latency}s) -> Hoàn tất RAG (state=1, status='ok').")
             resp = AgentResponse(
                 status="ok",
@@ -635,7 +615,7 @@ class UETAgentGraph:
                 "execution_steps": (state.get("execution_steps") or []) + [f"answer_eval: INSUFFICIENT ({retry})"],
             }
 
-        # retry > max_retries -> trả câu trả lời tốt nhất kèm ghi chú phần thiếu (+ gợi ý nếu AMBIGUOUS)
+        # retry > max_retries -> trả câu trả lời tốt nhất kèm ghi chú phần thiếu
         chosen_answer = best_answer or ans
         chosen_contexts = best_contexts if best_contexts else list(current_contexts)
         missing_info = state.get("missing_info")
@@ -647,7 +627,6 @@ class UETAgentGraph:
             note = note_template
 
         final_answer = f"{chosen_answer}{note}" if note and note.strip() not in chosen_answer else chosen_answer
-        final_answer = self._apply_ambiguous_followup_note(final_answer, route, voice_mode=voice_mode)
 
         if best_answer_score >= 0.0:
             trace_entry["selected_best_score"] = best_answer_score
@@ -700,6 +679,7 @@ class UETAgentGraph:
 
         trace_entry = {
             "node": "followup_query_node",
+            "round": int(state.get("retry", 0)),
             "source": source,
             "missing_info": missing_info,
             "followup_queries": followup_queries,
@@ -750,7 +730,7 @@ class UETAgentGraph:
         Rẽ nhánh từ router_node:
         - Lỗi JEV -> fail_node
         - OUT_OF_SCOPE -> out_of_scope_node
-        - QUALIFIED_QUESTION hoặc AMBIGUOUS -> đi thẳng vào retrieval_node
+        - QUALIFIED_QUESTION -> đi thẳng vào retrieval_node
         """
         if state.get("fail_reason"):
             return "fail_node"

@@ -32,8 +32,6 @@ from src.base import (
     RawData,
     ProcessedData,
     DataChunk,
-    RetrievedContext,
-    AugmentedPrompt,
     UserQuery,
     Response,
 )
@@ -46,7 +44,7 @@ from src.ingestion import UETDataLoader, clean_whitespace, DataManifestTracker
 from src.chunking import UETChunker
 from src.embeddings import UETEmbedder
 from src.vectordb import UETVectorStore
-from src.prompts import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
+from src.prompts import UETPromptAugmenter
 from src.llm import UETLLMClient
 from src.indexing.chunks import load_chunks_from_dir
 
@@ -96,7 +94,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
     Hỗ trợ điều phối chặng linh hoạt (Multi-Stage Ingestion) và chống xử lý trùng lặp (Deduplication).
     """
 
-    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data", "graph_data"]
+    STAGES: List[str] = ["raw", "processed", "chunked", "vectordb", "indexed_data", "graph_data", "lightrag"]
 
     def __init__(
         self,
@@ -464,7 +462,6 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         Lập chỉ mục BM25 trực tiếp từ data/chunked_data/*.jsonl và lưu ra database/bm25_index.pkl.
         Được thực hiện bởi phân hệ Lập chỉ mục (src.indexing), tách biệt hoàn toàn khỏi phân hệ Retrieval.
         """
-        from src.indexing.chunks import load_chunks_from_dir
         from src.indexing import UETIndexer
 
         chunked_dir = BASE_DIR / "data" / "chunked_data"
@@ -489,6 +486,17 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             )
         self.manifest.save()
 
+        # Tự động đồng bộ lại graph_index.pkl nếu bật cờ auto_sync_on_reindex và đã có graph_index cũ
+        graph_cfg = self.config.get("graph", {})
+        graph_rel = self.config.get("paths", {}).get("graph_index_file", "database/graph_index.pkl")
+        graph_out = Path(graph_rel) if Path(graph_rel).is_absolute() else (BASE_DIR / graph_rel)
+        if bool(graph_cfg.get("auto_sync_on_reindex", True)) and graph_out.exists() and chunks:
+            logger.info("🔄 Phát hiện cập nhật indexed_data -> Tự động đồng bộ lại Unified GraphIndex (0 LLM)...")
+            try:
+                self._run_chunked_to_graph_data(clear_existing=True)
+            except Exception as sync_err:
+                logger.warning(f"Không thể tự động đồng bộ graph_index.pkl: {sync_err}")
+
         return {
             "chunks_indexed": result["indexed_chunks"],
             "sparse_file": str(out_path),
@@ -502,22 +510,44 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         max_chunks: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Xây dựng chỉ mục GraphRAG (Graph Vector Index) từ data/chunked_data/*.jsonl
-        và lưu ra database/graph_index.pkl. Hỗ trợ giới hạn domain / số chunk để thử nghiệm an toàn.
+        Xây dựng chỉ mục Unified GraphRAG (hợp nhất LightRAG graph.json + entity_chroma + Regex chunks)
+        và lưu ra database/graph_index.pkl. Hỗ trợ fallback đọc chunks từ bm25_index.pkl khi chunked_data trống.
         """
-        from src.indexing.chunks import load_chunks_from_dir
-        from src.indexing.graph import GraphIndex
+        from src.graph.graph import GraphIndex
+        from src.indexing.sparse import BM25Index
 
         paths_cfg = self.config.get("paths", {})
         graph_cfg = self.config.get("graph", {})
+        lightrag_cfg = self.config.get("lightrag", {})
 
         chunked_dir = BASE_DIR / "data" / "chunked_data"
         effective_max_chunks = max_chunks if max_chunks is not None else graph_cfg.get("max_chunks")
-        chunks = load_chunks_from_dir(
-            chunked_dir,
-            domain=domain,
-            max_chunks=effective_max_chunks,
-        )
+        try:
+            chunks = load_chunks_from_dir(
+                chunked_dir,
+                domain=domain,
+                max_chunks=effective_max_chunks,
+            )
+        except (FileNotFoundError, ValueError):
+            chunks = []
+
+        # Fallback: Nạp danh sách DataChunk trực tiếp từ database/bm25_index.pkl nếu data/chunked_data trống
+        if not chunks:
+            bm25_rel = paths_cfg.get("bm25_index_file", "database/bm25_index.pkl")
+            bm25_path = Path(bm25_rel) if Path(bm25_rel).is_absolute() else (BASE_DIR / bm25_rel)
+            if bm25_path.exists():
+                logger.info(f"Thư mục chunked_data trống; nạp danh sách chunks từ '{bm25_path}'...")
+                bm25_idx = BM25Index.load(bm25_path)
+                loaded_chunks = list(getattr(bm25_idx, "chunks", []) or [])
+                if domain and domain.lower().strip() != "all":
+                    dom_low = domain.lower().strip()
+                    loaded_chunks = [
+                        c for c in loaded_chunks
+                        if dom_low in str((c.metadata or {}).get("faculty") or (c.metadata or {}).get("domain") or "").lower()
+                    ]
+                if effective_max_chunks is not None:
+                    loaded_chunks = loaded_chunks[: int(effective_max_chunks)]
+                chunks = loaded_chunks
 
         out_path = Path(paths_cfg.get("graph_index_file", "database/graph_index.pkl"))
         if not out_path.is_absolute():
@@ -527,6 +557,28 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         if not cache_path.is_absolute():
             cache_path = BASE_DIR / cache_path
 
+        # Phát hiện kho tri thức LightRAG (graph.json + semantic_units_cache.jsonl + entity_chroma) nếu có
+        merge_lightrag = bool(graph_cfg.get("merge_lightrag_kg", True)) and domain is None and effective_max_chunks is None
+        lr_graph_path: Optional[Path] = None
+        lr_units_path: Optional[Path] = None
+        lr_chroma_dir: Optional[Path] = None
+        if merge_lightrag:
+            cand_lr = Path(lightrag_cfg.get("graph_path", "database/lightrag_db/graph.json"))
+            if not cand_lr.is_absolute():
+                cand_lr = BASE_DIR / cand_lr
+            if cand_lr.exists():
+                lr_graph_path = cand_lr
+                cand_units = Path(lightrag_cfg.get("semantic_units_cache", "database/lightrag_db/semantic_units_cache.jsonl"))
+                if not cand_units.is_absolute():
+                    cand_units = BASE_DIR / cand_units
+                if cand_units.exists():
+                    lr_units_path = cand_units
+                cand_chroma = Path(lightrag_cfg.get("entity_vector_dir", "database/lightrag_db/entity_chroma"))
+                if not cand_chroma.is_absolute():
+                    cand_chroma = BASE_DIR / cand_chroma
+                if (cand_chroma / "chroma.sqlite3").exists():
+                    lr_chroma_dir = cand_chroma
+
         if clear_existing and out_path.exists():
             out_path.unlink()
 
@@ -535,7 +587,12 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         llm_client = UETLLMClient(provider=llm_provider) if enable_llm else None
 
         active_store = self.vector_store
-        fallback_emb = self._embedding_model if active_store.count() > 0 else self.embedding_model
+        # Nếu cần nhúng 11 cụm quan hệ chuẩn hoặc vector dự phòng, truyền embedding_model khi có LightRAG merge
+        fallback_emb = (
+            self.embedding_model
+            if (lr_graph_path is not None or active_store.count() == 0)
+            else self._embedding_model
+        )
 
         graph_index = GraphIndex(
             chunks=chunks,
@@ -549,6 +606,9 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             max_llm_chunks=graph_cfg.get("max_llm_chunks"),
             embed_batch_size=int(graph_cfg.get("embed_batch_size", 256)),
             cache_path=cache_path,
+            lightrag_graph_path=lr_graph_path,
+            semantic_units_path=lr_units_path,
+            entity_chroma_dir=lr_chroma_dir,
         )
         graph_index.save(out_path)
 
@@ -564,6 +624,8 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             "chunks_indexed": graph_index.count(),
             "entities_count": graph_index.entity_count(),
             "triples_count": graph_index.triple_count(),
+            "lightrag_nodes_merged": getattr(graph_index, "lightrag_nodes_merged", 0),
+            "lightrag_edges_merged": getattr(graph_index, "lightrag_edges_merged", 0),
             "llm_calls": graph_index.llm_calls_count,
             "graph_file": str(out_path),
             "status": "success" if chunks else "empty",
@@ -610,11 +672,19 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 f"  • Bước 2: python main.py --ingest --from chunked --to {to_stage} --clear"
             )
 
-        stage_order = {"raw": 0, "processed": 1, "chunked": 2, "vectordb": 3, "indexed_data": 3, "graph_data": 3}
+        stage_order = {
+            "raw": 0,
+            "processed": 1,
+            "chunked": 2,
+            "vectordb": 3,
+            "indexed_data": 3,
+            "graph_data": 3,
+            "lightrag": 3,
+        }
         if stage_order[from_stage] >= stage_order[to_stage]:
             raise ValueError(
                 f"from_stage '{from_stage}' phải đứng trước to_stage '{to_stage}'. "
-                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data / graph_data"
+                f"Thứ tự hợp lệ: raw -> processed -> chunked -> vectordb / indexed_data / graph_data / lightrag"
             )
 
         # ---- XÓA DỮ LIỆU CŨ nếu --clear được bật ----
@@ -626,7 +696,7 @@ class UETIngestionPipeline(BaseIngestionPipeline):
             if from_stage == "raw":
                 stages_to_reset.add("processed")
 
-            # 2. Xóa các file trong folder chunked_data nếu đi qua chặng processed->chunked
+            # 2. Xóa các file trong folder chunked_data CHỈ KHI thực sự đi qua chặng processed -> chunked
             if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
                 chunked_dir = BASE_DIR / "data" / "chunked_data"
                 if chunked_dir.exists():
@@ -661,7 +731,25 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                     logger.info(f"✅ Đã xóa file GraphRAG index cũ ({graph_rel})")
                 stages_to_reset.add("graph_data")
 
-            # 5. Reset manifest entries cho các chặng tương ứng
+            # 5. Xóa Knowledge Graph cũ nếu đích là lightrag
+            if to_stage == "lightrag":
+                lr_cfg = self.config.get("lightrag", {})
+                lr_graph_rel = lr_cfg.get("graph_path", "database/lightrag_db/graph.json")
+                lr_cache_rel = lr_cfg.get("semantic_units_cache", "database/lightrag_db/semantic_units_cache.jsonl")
+                lr_graph_path = Path(lr_graph_rel) if Path(lr_graph_rel).is_absolute() else (BASE_DIR / lr_graph_rel)
+                lr_bak_path = lr_graph_path.with_name(lr_graph_path.name + ".bak")
+                cache_path = Path(lr_cache_rel) if Path(lr_cache_rel).is_absolute() else (BASE_DIR / lr_cache_rel)
+                if lr_graph_path.exists():
+                    lr_graph_path.unlink()
+                    logger.info(f"✅ Đã xóa file đồ thị cũ ({lr_graph_rel})")
+                if lr_bak_path.exists():
+                    lr_bak_path.unlink()
+                if cache_path.exists():
+                    cache_path.unlink()
+                    logger.info(f"✅ Đã xóa semantic units cache cũ ({lr_cache_rel})")
+                stages_to_reset.add("lightrag")
+
+            # 6. Reset manifest entries cho các chặng tương ứng
             if stages_to_reset:
                 self.manifest.reset_stages(list(stages_to_reset))
                 logger.info(f"✅ Đã reset manifest tracking cho các chặng: {list(stages_to_reset)}")
@@ -675,27 +763,27 @@ class UETIngestionPipeline(BaseIngestionPipeline):
 
         with Timer() as timer:
             # Chặng 1: raw -> processed
-            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb"]:
+            if from_stage == "raw" and to_stage in ["processed", "chunked", "vectordb", "lightrag"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: raw -> processed")
                 res_1 = self._run_raw_to_processed()
                 results["transitions"]["raw_to_processed"] = res_1
                 logger.info(f"✔ Hoàn thành raw -> processed: {res_1}")
 
-            # Chặng 2: processed -> chunked
+            # Chặng 2: processed -> chunked (chỉ cần cho RAG truyền thống: vectordb, indexed_data)
             if from_stage in ["raw", "processed"] and to_stage in ["chunked", "vectordb"]:
                 logger.info("▶ BẮT ĐẦU CHẶNG: processed -> chunked")
                 res_2 = self._run_processed_to_chunked()
                 results["transitions"]["processed_to_chunked"] = res_2
                 logger.info(f"✔ Hoàn thành processed -> chunked: {res_2}")
 
-            # Chặng 3a: chunked -> vectordb
+            # Chặng 3a: chunked -> vectordb (RAG truyền thống)
             if from_stage in ["raw", "processed", "chunked"] and to_stage == "vectordb":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> vectordb")
                 res_3 = self._run_chunked_to_vectordb(batch_size=batch_size, clear_existing=clear)
                 results["transitions"]["chunked_to_vectordb"] = res_3
                 logger.info(f"✔ Hoàn thành chunked -> vectordb: {res_3}")
 
-            # Chặng 3b: chunked -> indexed_data
+            # Chặng 3b: chunked -> indexed_data (BM25 RAG truyền thống)
             if from_stage == "chunked" and to_stage == "indexed_data":
                 logger.info("▶ BẮT ĐẦU CHẶNG: chunked -> indexed_data (BM25 Sparse Index)")
                 res_4 = self._run_chunked_to_indexed_data(clear_existing=clear)
@@ -713,9 +801,103 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 results["transitions"]["chunked_to_graph_data"] = res_5
                 logger.info(f"✔ Hoàn thành chunked -> graph_data: {res_5}")
 
+            # Chặng 3d: processed -> lightrag (Xây dựng Knowledge Graph qua Semantic Units)
+            if from_stage in ["raw", "processed", "chunked"] and to_stage == "lightrag":
+                logger.info("▶ BẮT ĐẦU CHẶNG: processed -> lightrag (Xây dựng Knowledge Graph qua Semantic Units)")
+                res_lr = self._run_processed_to_lightrag(clear_existing=clear)
+                results["transitions"]["processed_to_lightrag"] = res_lr
+                logger.info(f"✔ Hoàn thành processed -> lightrag: {res_lr}")
+
         results["latency_seconds"] = round(timer.elapsed, 2)
         logger.info(f"Hoàn thành toàn bộ tiến trình từ '{from_stage}' đến '{to_stage}' trong {results['latency_seconds']}s")
         return results
+
+    def _load_processed_docs(self) -> List[ProcessedData]:
+        """
+        Nạp danh sách tài liệu sạch từ data/processed_data/*.jsonl.
+        Đảm bảo nguyên vẹn cấu trúc văn bản (không bị cắt vụn 800 ký tự)
+        để AdaptiveSemanticExtractor phân tách thành các Semantic Units hoàn chỉnh.
+        """
+        processed_dir = BASE_DIR / "data" / "processed_data"
+        docs: List[ProcessedData] = []
+        if processed_dir.exists():
+            for f in sorted(processed_dir.glob("*.jsonl")):
+                try:
+                    with open(f, "r", encoding="utf-8") as fp:
+                        for line in fp:
+                            if line.strip():
+                                docs.append(ProcessedData(**json.loads(line)))
+                except Exception as e:
+                    logger.warning(f"Lỗi khi đọc file {f}: {e}")
+
+        # Fallback: nếu processed_data trống nhưng có chunked_data
+        if not docs:
+            chunked_dir = BASE_DIR / "data" / "chunked_data"
+            if chunked_dir.exists():
+                from collections import defaultdict
+                from src.indexing.chunks import load_chunks_from_dir
+
+                chunks = load_chunks_from_dir(chunked_dir)
+                if chunks:
+                    logger.info(f"Tái tạo ProcessedData từ {len(chunks)} chunks trong {chunked_dir}...")
+                    doc_map = defaultdict(list)
+                    for c in chunks:
+                        doc_map[c.document_id].append(c)
+
+                    MAX_DOC_CHARS = 60_000
+                    for doc_id, doc_chunks in doc_map.items():
+                        doc_chunks.sort(key=lambda x: getattr(x, "chunk_index", 0))
+                        merged_text = "\n\n".join(c.text for c in doc_chunks)
+                        if len(merged_text) > MAX_DOC_CHARS:
+                            merged_text = merged_text[:MAX_DOC_CHARS]
+
+                        first_chunk = doc_chunks[0]
+                        meta = dict(first_chunk.metadata or {})
+                        title = meta.get("title") or meta.get("heading") or "Tài liệu đào tạo UET"
+                        docs.append(
+                            ProcessedData(
+                                id=doc_id,
+                                raw_data_id=doc_id,
+                                title=title,
+                                content=merged_text,
+                                metadata=meta,
+                            )
+                        )
+        return docs
+
+    def _run_processed_to_lightrag(self, clear_existing: bool = False) -> Dict[str, Any]:
+        """
+        Khởi chạy quy trình trích xuất và xây dựng Knowledge Graph LightRAG:
+        1. Nạp trực tiếp các tài liệu sạch nguyên bản (ProcessedData) từ data/processed_data/*.jsonl.
+        2. Tự động bóc tách thành Semantic Units (Điều/Khoản, Bảng, Heading) qua AdaptiveSemanticExtractor.
+        3. Khởi chạy 2-Pass Extraction (Chặng 1 Root Entities, Chặng 2 Semantic Units).
+        4. Vector hóa và lưu trữ Knowledge Graph.
+        """
+        from src.graph.lightrag_indexer import LightRAGIndexer
+
+        docs = self._load_processed_docs()
+        if not docs:
+            logger.warning("Không tìm thấy tài liệu sạch nào trong data/processed_data. Bỏ qua nạp LightRAG.")
+            return {"status": "skipped", "reason": "no_processed_docs_found"}
+
+        logger.info(f"Đã nạp {len(docs)} tài liệu sạch. Khởi tạo pipeline LightRAG với Semantic Units...")
+
+        cfg = self.config.get("lightrag", {})
+        indexer_cfg = cfg.get("indexer", {})
+        indexer = LightRAGIndexer(
+            llm_provider=indexer_cfg.get("llm_provider"),
+            delay_between_calls=indexer_cfg.get("delay_between_calls", 0.5),
+            max_pass2_retries=indexer_cfg.get("max_pass2_retries", 2),
+            max_workers=indexer_cfg.get("max_workers", 5),
+            header_max_chars=indexer_cfg.get("header_max_chars", 2000),
+            config=self.config,
+        )
+        return indexer.run_full_pipeline(
+            docs=docs,
+            checkpoint_every=indexer_cfg.get("checkpoint_every", 10),
+            clear_existing=clear_existing,
+            max_workers=indexer_cfg.get("max_workers", 5),
+        )
 
 
     def get_stage_stats(self) -> Dict[str, Any]:
@@ -753,6 +935,20 @@ class UETIngestionPipeline(BaseIngestionPipeline):
         graph_exists = graph_file.exists()
         graph_size_mb = round(graph_file.stat().st_size / (1024 * 1024), 2) if graph_exists else 0.0
 
+        lr_rel = self.config.get("lightrag", {}).get("graph_path", "database/lightrag_db/graph.json")
+        lr_file = Path(lr_rel) if Path(lr_rel).is_absolute() else (BASE_DIR / lr_rel)
+        lr_exists = lr_file.exists()
+        lr_size_mb = round(lr_file.stat().st_size / (1024 * 1024), 2) if lr_exists else 0.0
+        ent_count, rel_count = 0, 0
+        if lr_exists:
+            try:
+                with open(lr_file, "r", encoding="utf-8") as gfp:
+                    gdata = json.load(gfp)
+                    ent_count = len(gdata.get("entities") or gdata.get("nodes") or [])
+                    rel_count = len(gdata.get("relations") or gdata.get("edges") or [])
+            except Exception:
+                pass
+
         return {
             "stages": {
                 "raw": {"path": str(raw_dir.relative_to(BASE_DIR)), "file_count": raw_files},
@@ -761,6 +957,13 @@ class UETIngestionPipeline(BaseIngestionPipeline):
                 "vectordb": {"path": "database/vector_db", "vector_count": db_count},
                 "indexed_data": {"path": "database/bm25_index.pkl", "exists": bm25_exists, "size_mb": bm25_size_mb},
                 "graph_data": {"path": str(graph_rel), "exists": graph_exists, "size_mb": graph_size_mb},
+                "lightrag": {
+                    "path": "database/lightrag_db/graph.json",
+                    "exists": lr_exists,
+                    "size_mb": lr_size_mb,
+                    "entity_count": ent_count,
+                    "relation_count": rel_count,
+                },
             },
             "manifest_tracking": self.manifest.get_stats(),
         }
@@ -806,20 +1009,21 @@ class UETRAGPipeline(BaseRAGPipeline):
             )
         self.retriever = retriever
 
-    def query(self, query: UserQuery, top_k: Optional[int] = None) -> Response:
+    def query(self, query: UserQuery, top_k: Optional[int] = None, engine: Optional[str] = None) -> Response:
         """
         Thực thi quy trình trả lời câu hỏi:
-        1. Gọi UETRetriever: BM25 + Vector -> Hybrid RRF (~100 chunks) -> Rerank (20 chunks) -> Top-K
+        1. Gọi UETRetriever: Hỗ trợ động cơ vector, lightrag, hybrid hoặc auto
         2. Ghép ngữ cảnh vào Prompt (AugmentedPrompt) theo chuẩn BaseRAGPipeline
         3. Gọi LLM sinh câu trả lời
         """
         k = top_k if top_k is not None else getattr(self.retriever, "default_top_k", 10)
         with Timer() as timer:
-            # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever
+            # Bước 1: Truy xuất ngữ cảnh bằng UETRetriever (hỗ trợ chọn engine)
             contexts = self.retriever.retrieve(
                 query=query,
                 top_k=k,
                 filters=query.filters,
+                engine=engine,
             )
 
             # Bước 2 & 3: Ghép prompt và gọi LLM
@@ -829,7 +1033,7 @@ class UETRAGPipeline(BaseRAGPipeline):
         response.latency_seconds = round(timer.elapsed, 3)
         return response
 
-    def query_stream(self, query: UserQuery, top_k: Optional[int] = None) -> Generator[str, None, None]:
+    def query_stream(self, query: UserQuery, top_k: Optional[int] = None, engine: Optional[str] = None) -> Generator[str, None, None]:
         """
         Sinh phản hồi dạng luồng (streaming) cho giao diện Web/Chatbot.
         """
@@ -838,6 +1042,7 @@ class UETRAGPipeline(BaseRAGPipeline):
             query=query,
             top_k=k,
             filters=query.filters,
+            engine=engine,
         )
         augmented_prompt = self.prompt_augmenter.augment(query=query, contexts=contexts)
         yield from self.llm.generate_stream(augmented_prompt)
@@ -1020,12 +1225,25 @@ def run_ingest_cli(
         print(f"    File lưu trữ BM25 index: {t.get('sparse_file')}")
     if "chunked_to_graph_data" in transitions:
         t = transitions["chunked_to_graph_data"]
+        lr_info_str = (
+            f", LightRAG merged: +{t.get('lightrag_nodes_merged', 0)} nodes / +{t.get('lightrag_edges_merged', 0)} edges"
+            if t.get("lightrag_nodes_merged") or t.get("lightrag_edges_merged")
+            else ""
+        )
         print(
             f"  • Chặng [chunked ──> graph_data]   : {t.get('chunks_indexed', 0)} chunks -> "
             f"{t.get('entities_count', 0)} entities, {t.get('triples_count', 0)} triples "
-            f"(OpenRouter LLM calls: {t.get('llm_calls', 0)})"
+            f"(OpenRouter LLM calls: {t.get('llm_calls', 0)}{lr_info_str})"
         )
         print(f"    File lưu trữ Graph index: {t.get('graph_file')}")
+    t_lr = transitions.get("processed_to_lightrag") or transitions.get("chunked_to_lightrag")
+    if t_lr:
+        lr_nodes = t_lr.get("final_nodes", t_lr.get("total_entities", 0))
+        lr_edges = t_lr.get("final_edges", t_lr.get("total_relations", 0))
+        lr_file = t_lr.get("graph_path") or t_lr.get("graph_file")
+        status_note = " (tạm dừng sớm do lỗi LLM liên tiếp)" if t_lr.get("aborted_due_to_llm_errors") else ""
+        print(f"  • Chặng [processed ──> lightrag]   : Đã xây dựng Knowledge Graph{status_note}")
+        print(f"    Thực thể: {lr_nodes}, Quan hệ: {lr_edges}, File: {lr_file}")
 
     print(f"\n⏱️  Tổng thời gian thực thi: {res.get('latency_seconds', 0)}s")
     print("=" * 65 + "\n")
@@ -1051,6 +1269,13 @@ def run_ingest_status_cli():
     graph_info = stages.get("graph_data", {})
     g_status_str = f"Sẵn sàng ({graph_info.get('size_mb')} MB)" if graph_info.get("exists") else "Chưa tạo"
     print(f"  6. Giai đoạn [GRAPH_DATA]  : {g_status_str} ({graph_info.get('path')})")
+
+    lr_info = stages.get("lightrag", {})
+    if lr_info.get("exists"):
+        lr_status = f"Sẵn sàng ({lr_info.get('entity_count')} entities, {lr_info.get('relation_count')} relations, {lr_info.get('size_mb')} MB)"
+    else:
+        lr_status = "Chưa tạo (Sẵn sàng khởi chạy với: python main.py --ingest --to lightrag)"
+    print(f"  7. Giai đoạn [LIGHTRAG]    : {lr_status} ({lr_info.get('path')})")
 
     print("\n📋 Sổ cái theo dõi chống trùng lặp (Manifest Tracker):")
     print(f"  • Tổng tài liệu đang theo dõi : {manifest.get('total_tracked_documents', 0)}")

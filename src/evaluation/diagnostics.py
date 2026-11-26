@@ -14,8 +14,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.evaluation.agent_eval import (
+    evaluate_agent_decisions,
+    get_agent_info,
+    has_agent_data,
+)
+
 ERROR_LABELS: Tuple[str, ...] = (
     "OK",
+    "ROUTER_FALSE_OOS",
     "RETRIEVAL_MISS",
     "FALSE_REFUSAL",
     "HALLUCINATION",
@@ -60,6 +67,15 @@ def classify_sample_error(sample_record: Dict[str, Any]) -> Tuple[str, str]:
         if not is_refusal:
             return ("OOD_FAILURE", "Bot trả lời câu hỏi ngoài phạm vi UET thay vì từ chối.")
         return ("OK", "Phát hiện mẫu câu từ chối lịch sự cho câu OOD.")
+
+    # 0. ROUTER_FALSE_OOS: Câu hỏi trong phạm vi UET nhưng bị JEV Router chặn nhầm thành OUT_OF_SCOPE
+    if has_agent_data(sample_record):
+        agent_info = get_agent_info(sample_record)
+        if agent_info.get("route") == "OUT_OF_SCOPE" or agent_info.get("status") == "out_of_scope":
+            return (
+                "ROUTER_FALSE_OOS",
+                "Câu hỏi thuộc phạm vi UET nhưng JEV Router phân loại nhầm thành OUT_OF_SCOPE và chặn trả lời.",
+            )
 
     chunk_hit = retrieval.get("chunk_hit_at_k")
     doc_hit = retrieval.get("doc_hit_at_k")
@@ -321,8 +337,9 @@ def build_e2e_report(
         return (severity, score)
 
     worst_sorted = sorted(scored_samples, key=_rank_worst_key)[:10]
-    worst_samples = [
-        {
+    worst_samples = []
+    for s in worst_sorted:
+        ws_item: Dict[str, Any] = {
             "sample_id": s.get("sample_id"),
             "type": s.get("type"),
             "unit": s.get("unit"),
@@ -334,10 +351,13 @@ def build_e2e_report(
             "judge_scores": (s.get("judge") or {}).get("raw_scores") if (s.get("judge") or {}).get("status") == "ok" else None,
             "query": s.get("query"),
         }
-        for s in worst_sorted
-    ]
+        if s.get("agent_flags"):
+            ws_item["agent_flags"] = list(s["agent_flags"])
+        worst_samples.append(ws_item)
 
-    return {
+    agent_metrics = evaluate_agent_decisions(scored_samples)
+
+    report_out: Dict[str, Any] = {
         "summary": {
             "total_samples": len(scored_samples),
             "in_domain_samples": len(in_domain),
@@ -362,6 +382,9 @@ def build_e2e_report(
         "worst_samples": worst_samples,
         "samples": scored_samples,
     }
+    if agent_metrics is not None:
+        report_out["agent_metrics"] = agent_metrics
+    return report_out
 
 
 def print_e2e_diagnostic_report(report: Dict[str, Any]) -> None:
@@ -447,8 +470,124 @@ def print_e2e_diagnostic_report(report: Dict[str, Any]) -> None:
         print("\n[7] Top mẫu cần ưu tiên kiểm tra:")
         for w in failing[:10]:
             q_short = (w.get("query") or "")[:65]
+            flags_str = f" flags={w['agent_flags']}" if w.get("agent_flags") else ""
             print(
                 f"    • [{w.get('sample_id')}] ({w.get('error_label')}, {w.get('type')}/{w.get('unit')}) "
-                f"overall={w.get('offline_overall')} | {q_short}..."
+                f"overall={w.get('offline_overall')}{flags_str} | {q_short}..."
             )
+
+    agent_m = report.get("agent_metrics")
+    if isinstance(agent_m, dict):
+        print("\n[8] 🤖 ĐÁNH GIÁ QUYẾT ĐỊNH AGENT (JEV / LLM):")
+        rt = agent_m.get("router") or {}
+        if rt:
+            rdist = rt.get("route_distribution") or {}
+            print(
+                f"    • Router JEV (n={rt.get('total_routed', 0)}): "
+                f"QUALIFIED={rdist.get('QUALIFIED_QUESTION', 0)}, "
+                f"OUT_OF_SCOPE={rdist.get('OUT_OF_SCOPE', 0)}"
+                f" | parse_fallback={rt.get('parse_fallback_count', 0)}"
+            )
+            if rt.get("false_oos_rate") is not None:
+                print(
+                    f"      - False OOS Rate (chặn nhầm in-domain): {rt['false_oos_rate']:.4f} "
+                    f"({rt.get('false_oos_count', 0)}/{rt.get('in_domain_total', 0)})"
+                )
+            if rt.get("ood_caught_at_router_rate") is not None:
+                print(
+                    f"      - OOD bắt tại Router (tham khảo)      : {rt['ood_caught_at_router_rate']:.4f} "
+                    f"({rt.get('ood_caught_at_router_count', 0)}/{rt.get('ood_total', 0)})"
+                )
+            if rt.get("explicit_labeled_total", 0) > 0 and rt.get("explicit_accuracy") is not None:
+                print(
+                    f"      - Explicit Route Accuracy             : {rt['explicit_accuracy']:.4f} "
+                    f"(n={rt['explicit_labeled_total']})"
+                )
+
+        ae = agent_m.get("answer_eval") or {}
+        if ae.get("evaluated_samples", 0) > 0:
+            refs = ae.get("reference_source_counts") or {}
+            print(
+                f"    • Answer Eval JEV (n={ae['evaluated_samples']}, "
+                f"ref=judge:{refs.get('judge', 0)}/offline:{refs.get('offline', 0)}): "
+                f"Acc={ae.get('accuracy')} | P={ae.get('precision')} | R={ae.get('recall')} | "
+                f"F1={ae.get('f1')} | ROC-AUC={ae.get('roc_auc')}"
+            )
+            print(
+                f"      - False Accept (cho qua câu sai/thiếu): {ae.get('false_accept_rate')} "
+                f"(n={ae.get('false_accept_count', 0)}: thiếu ý={ae.get('false_accept_incomplete_count', 0)}, "
+                f"bịa đặt={ae.get('false_accept_hallucination_count', 0)})"
+            )
+            print(
+                f"      - False Reject (đánh thiếu oan)       : {ae.get('false_reject_rate')} "
+                f"(n={ae.get('false_reject_count', 0)})"
+            )
+            sweep = ae.get("threshold_sweep") or []
+            if sweep:
+                print("      - Quét ngưỡng noul_prob (không gọi lại pipeline):")
+                print("        thr   |   P    |   R    |   F1   | FalseAcc | FalseRej | EstRetries")
+                for row in sweep:
+                    p_s = f"{row['precision']:.4f}" if row.get("precision") is not None else "  N/A "
+                    r_s = f"{row['recall']:.4f}" if row.get("recall") is not None else "  N/A "
+                    f_s = f"{row['f1']:.4f}" if row.get("f1") is not None else "  N/A "
+                    fa_s = f"{row['false_accept_rate']:.4f}" if row.get("false_accept_rate") is not None else "  N/A "
+                    fr_s = f"{row['false_reject_rate']:.4f}" if row.get("false_reject_rate") is not None else "  N/A "
+                    er_s = f"{row['est_avg_retries']:.2f}" if row.get("est_avg_retries") is not None else " N/A"
+                    print(
+                        f"        {row['threshold']:<5.2f} | {p_s} | {r_s} | {f_s} |  {fa_s}  |  {fr_s}  |   {er_s}"
+                    )
+
+        tr = agent_m.get("trajectory") or {}
+        if tr.get("total_agent_samples", 0) > 0:
+            sdist = tr.get("status_distribution") or {}
+            print(
+                f"    • Trajectory (n={tr['total_agent_samples']}): "
+                f"ok={sdist.get('ok', 0)}, partial={sdist.get('partial', 0)}, "
+                f"out_of_scope={sdist.get('out_of_scope', 0)}, fail={sdist.get('fail', 0)}"
+            )
+            if tr.get("fail_reason_counts"):
+                print(f"      - Fail reasons   : {tr['fail_reason_counts']}")
+            print(
+                f"      - Retries (RAG)  : avg={tr.get('avg_retries_rag')} | "
+                f"triggered={tr.get('retry_triggered_rate')} | dist={tr.get('retry_distribution')}"
+            )
+            if tr.get("avg_jev_calls") is not None:
+                print(
+                    f"      - Avg calls/mẫu  : JEV={tr.get('avg_jev_calls')} | "
+                    f"LLM={tr.get('avg_llm_calls')} | Retrieval={tr.get('avg_retrieval_calls')}"
+                )
+            if tr.get("node_latency_avg_s"):
+                nlat = ", ".join(f"{k}={v}s" for k, v in tr["node_latency_avg_s"].items())
+                print(f"      - Latency/node   : {nlat}")
+            if tr.get("latency_by_route_s"):
+                rlat = ", ".join(f"{k}={v}s" for k, v in tr["latency_by_route_s"].items())
+                print(f"      - Latency/route  : {rlat}")
+
+        lp = agent_m.get("loop")
+        if isinstance(lp, dict) and lp.get("samples_with_retry", 0) > 0:
+            src_str = f", điểm={lp['score_source']}" if lp.get("score_source") else ""
+            print(f"    • Vòng lặp Follow-up (n={lp['samples_with_retry']} mẫu có retry{src_str}):")
+            if lp.get("samples_with_gold", 0) > 0:
+                print(
+                    f"      - Gold recall (n={lp['samples_with_gold']}) : "
+                    f"r0={lp.get('gold_recall_round0')} -> final={lp.get('gold_recall_final')} | "
+                    f"Gold bị loại (max_chunks): {lp.get('gold_evicted_rate')}"
+                )
+            if lp.get("evaluated_samples", 0) > 0:
+                delta_v = lp.get("avg_delta")
+                delta_s = f"{delta_v:+.4f}" if delta_v is not None else "N/A"
+                print(
+                    f"      - Chất lượng vòng lặp: Win={lp.get('win_rate')} | "
+                    f"Harm={lp.get('harm_rate')} | ΔTB={delta_s}"
+                )
+            curve = lp.get("correctness_by_round") or {}
+            curve_parts = []
+            if curve:
+                curve_parts.append(", ".join(f"{k}={v}" for k, v in curve.items()))
+            if lp.get("partial_samples", 0) > 0:
+                curve_parts.append(
+                    f"Partial chọn đúng best: {lp.get('partial_best_answer_accuracy')} (n={lp['partial_samples']})"
+                )
+            if curve_parts:
+                print(f"      - Correctness/vòng   : {' | '.join(curve_parts)}")
     print("=" * 78 + "\n")

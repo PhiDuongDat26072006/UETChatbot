@@ -80,7 +80,8 @@ _FRIENDLY_ERROR_MESSAGES: Dict[str, str] = {
 _RESPONSE_FORMAT_RULES = (
     "\n\n=== QUY TẮC ĐỊNH DẠNG ĐẦU RA BẮT BUỘC ===\n"
     "- TUYỆT ĐỐI KHÔNG dùng biểu tượng cảm xúc hay icon trang trí (emoji như 📌, ⚠️, 💡, ✅, 🎓, 📚, 🔹, 👉...) "
-    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề, lưu ý quan trọng (**Lưu ý quan trọng:**).\n"
+    "trong câu trả lời; hãy dùng **chữ in đậm** cho các tiêu đề và luôn dùng khối trích dẫn Markdown "
+    "(> **Lưu ý quan trọng:** ...) cho phần lưu ý quan trọng.\n"
     "- TUYỆT ĐỐI KHÔNG ghi dòng \"Căn cứ quy chế:\", không liệt kê URL, link hay trích dẫn tên tài liệu tham khảo ở cuối câu trả lời.\n"
     "- ĐIỂM SỐ VÀ CÁC CON SỐ ĐƠN THUẦN (như điểm chuẩn, điểm trúng tuyển, điểm GPA, số tín chỉ, học phí, năm học, mã ngành...): "
     "BẮT BUỘC viết tự nhiên bằng chữ và số thông thường trên cùng dòng văn bản (ví dụ: viết '**25 điểm**', '**28.19 điểm**', '**GPA 3.2**', '**24 tín chỉ**'), "

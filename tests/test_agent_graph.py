@@ -275,39 +275,6 @@ class TestAgentGraphV3(unittest.TestCase):
         plain = "Quy định xét học bổng UET?"
         self.assertEqual(UETAgentGraph._clean_query_for_retrieval(plain), plain)
 
-    def test_ambiguous_goes_straight_to_rag_and_appends_followup_note(self):
-        """Khi JEV phân loại AMBIGUOUS -> vẫn chạy RAG + answer_eval và tự động gắn gợi ý cuối phản hồi."""
-        graph = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(
-                routes=[Route.AMBIGUOUS],
-                evaluate_answers=[Verdict.SUFFICIENT],
-            ),
-        )
-        state = graph.run(query="Học phí một kỳ bao nhiêu?")
-        resp = state["response"]
-        self.assertEqual(resp.status, "ok")
-        self.assertEqual(resp.state, 1)
-        self.assertEqual(resp.route, Route.AMBIGUOUS)
-        self.assertIn("Theo quy chế đào tạo UET", resp.answer)
-        self.assertIn("**Gợi ý:**", resp.answer)
-        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
-        self.assertGreater(len(resp.contexts), 0)
-
-        # Kiểm tra chế độ voice_mode: nối câu gợi ý tự nhiên, không chèn Markdown
-        graph_voice = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(
-                routes=[Route.AMBIGUOUS],
-                evaluate_answers=[Verdict.SUFFICIENT],
-            ),
-        )
-        state_voice = graph_voice.run(query="Học phí một kỳ bao nhiêu?", voice_mode=True)
-        self.assertNotIn("> **Gợi ý:**", state_voice["response"].answer)
-        self.assertIn("ngành học", state_voice["response"].answer.lower())
-
     def test_run_stream_enforces_answer_eval_and_emits_only_final_answer(self):
         """run_stream() bắt buộc qua answer_eval và CHỈ stream token của câu trả lời cuối cùng đã duyệt."""
         class TwoRoundLLM(MockLLMClient):
@@ -333,7 +300,7 @@ class TestAgentGraphV3(unittest.TestCase):
             retriever=self.mock_retriever,
             llm_client=TwoRoundLLM(),
             decision_client=FakeDecisionClient(
-                routes=[Route.AMBIGUOUS],
+                routes=[Route.QUALIFIED_QUESTION],
                 evaluate_answers=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
             ),
         )
@@ -349,8 +316,6 @@ class TestAgentGraphV3(unittest.TestCase):
         self.assertIn("DAP_AN_CUOI_DA_DUYET", tokens_text)
         # Bảo toàn ký tự xuống dòng bảng Markdown
         self.assertIn("\n| Hệ | Yêu cầu |\n", tokens_text)
-        # AMBIGUOUS được gắn câu gợi ý đúng 1 lần
-        self.assertEqual(tokens_text.count("**Gợi ý:**"), 1)
         self.assertEqual(len(done_events), 1)
         self.assertEqual(done_events[0]["status"], "ok")
         self.assertEqual(done_events[0]["retry"], 1)

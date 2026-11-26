@@ -286,7 +286,6 @@ class TestRetrieverMMRIntegration(unittest.TestCase):
                 metadata={"document_id": "doc_other", "data_type": "prose"},
             ),
         ]
-        # tab_1 và tab_2 có vector gần như trùng nhau (chung tiền tố), nhưng khác document với other_doc
         vecs = [
             [0.9, 0.1, 0.0],
             [0.899, 0.101, 0.0],
@@ -304,6 +303,65 @@ class TestRetrieverMMRIntegration(unittest.TestCase):
         )
         selected_ids = [c.chunk_id for c in selected]
         self.assertEqual(selected_ids, ["tab_1", "tab_2"])
+
+    def test_reranker_text_cleaning_and_prior_blending(self):
+        """6. Kiểm tra làm sạch nhiễu Markdown cho Reranker và kết hợp điểm RRF prior."""
+        from src.retrieval.reranker import _clean_text_for_reranker, _blend_rerank_and_prior
+
+        noisy = (
+            "[THÔNG BÁO ĐIỂM TRÚNG TUYỂN NĂM 2025]\n"
+            "[META: THÔNG BÁO ĐIỂM TRÚNG TUYỂN NĂM 2025]\n"
+            "- #### **STT**: 1 | #### **Ngành đào tạo**: **Công nghệ thông tin** | #### **Điểm ; trúng tuyển**: **28.19**"
+        )
+        cleaned = _clean_text_for_reranker(noisy)
+        self.assertNotIn("[META:", cleaned)
+        self.assertNotIn("####", cleaned)
+        self.assertNotIn("**", cleaned)
+        self.assertIn("Ngành đào tạo: Công nghệ thông tin | Điểm trúng tuyển: 28.19", cleaned)
+
+        cands = [
+            RetrievedContext(chunk_id="c_high_rrf", text="A", similarity_score=1.0),
+            RetrievedContext(chunk_id="c_low_rrf", text="B", similarity_score=0.5),
+        ]
+        blended = _blend_rerank_and_prior(cands, rerank_probs=[0.70, 0.72], rerank_weight=0.75)
+        self.assertGreater(blended[0], blended[1])
+
+    def test_hybrid_preserves_same_document_long_title_chunks(self):
+        """7. Kiểm tra chế độ Hybrid không xóa nhầm các chunk cùng tiêu đề văn bản dài > 80 ký tự."""
+        long_prefix = "[THÔNG BÁO ĐIỂM TRÚNG TUYỂN ĐẠI HỌC CHÍNH QUY VÀO TRƯỜNG ĐẠI HỌC CÔNG NGHỆ – ĐHQGHN NĂM 2025]\n"
+        mock_chunks = [
+            DataChunk(chunk_id="c_stt1", text=long_prefix + "STT 1: CN1 - Công nghệ thông tin: 28.19", metadata={}),
+            DataChunk(chunk_id="c_stt15", text=long_prefix + "STT 15: CN15 - Mạng máy tính: 26.73", metadata={}),
+        ]
+
+        class DummyLightRAG:
+            def retrieve(self, query, top_k=5):
+                return [
+                    RetrievedContext(chunk_id=f"graph_{i}", text=f"Graph context {i}", similarity_score=1.0, rank=i + 1)
+                    for i in range(top_k)
+                ]
+
+        embedder = MockEmbeddingWithCount(dim=16)
+        store = MockVectorStoreWithEmbeddingLookup(chunks=mock_chunks)
+        mock_bm25 = MockBM25SearchOnly(chunks=mock_chunks)
+        cfg = {"retrieval": {"enable_mmr": False, "reranker_type": "heuristic", "final_top_k": 5}}
+
+        retriever = UETRetriever(
+            embedding_model=embedder,
+            vector_store=store,
+            bm25_index=mock_bm25,
+            lightrag_retriever=DummyLightRAG(),
+            config=cfg,
+        )
+        res = retriever.retrieve(
+            UserQuery(query_text="điểm chuẩn ngành công nghệ thông tin năm 2025"),
+            top_k=5,
+            engine="hybrid",
+        )
+        returned_ids = [r.chunk_id for r in res]
+        self.assertEqual(sum(1 for cid in returned_ids if cid.startswith("graph_")), 1)
+        self.assertIn("c_stt1", returned_ids)
+        self.assertIn("c_stt15", returned_ids)
 
 
 if __name__ == "__main__":

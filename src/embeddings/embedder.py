@@ -7,6 +7,7 @@ Nhiệm vụ: Chuyển đổi văn bản thành các vector số thực 1024 chi
 from __future__ import annotations
 import hashlib
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -61,6 +62,7 @@ class UETEmbedder(BaseEmbeddingModel):
         self._chroma_ef = None
         self._onnx_session = None
         self._tokenizer = None
+        self._embed_lock = threading.Lock()
 
         self._init_model()
 
@@ -186,76 +188,81 @@ class UETEmbedder(BaseEmbeddingModel):
         if not texts:
             return []
 
+        if not hasattr(self, "_embed_lock") or self._embed_lock is None:
+            self._embed_lock = threading.Lock()
+
         logger.info(f"Đang nhúng {len(texts)} đoạn văn bản bằng mô hình '{self.model_name}' ({self.dimension} chiều)...")
 
-        # 1. Sử dụng ONNX Runtime FP32 (bge-m3)
-        if self._onnx_session is not None and self._tokenizer is not None:
-            try:
-                batch_size = 32
-                all_vectors: List[List[float]] = []
-                out_names = getattr(self, "_onnx_output_names", None)
-                for i in range(0, len(texts), batch_size):
-                    batch = texts[i : i + batch_size]
-                    encoded = self._tokenizer(
-                        batch,
-                        padding=True,
-                        truncation=True,
-                        max_length=512,
-                        return_tensors="np",
+        with self._embed_lock:
+            # 1. Sử dụng ONNX Runtime FP32 (bge-m3)
+            if self._onnx_session is not None and self._tokenizer is not None:
+                try:
+                    batch_size = 32
+                    all_vectors: List[List[float]] = []
+                    out_names = getattr(self, "_onnx_output_names", None)
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i : i + batch_size]
+                        encoded = self._tokenizer(
+                            batch,
+                            padding=True,
+                            truncation=True,
+                            max_length=512,
+                            return_tensors="np",
+                        )
+                        ort_inputs = {
+                            "input_ids": encoded["input_ids"].astype(np.int64),
+                            "attention_mask": encoded["attention_mask"].astype(np.int64),
+                        }
+                        if out_names:
+                            ort_outputs = self._onnx_session.run(out_names, ort_inputs)
+                            sentence_emb = ort_outputs[0]
+                        else:
+                            ort_outputs = self._onnx_session.run(None, ort_inputs)
+                            sentence_emb = None
+                            for out in ort_outputs:
+                                if out.ndim == 2:
+                                    sentence_emb = out
+                                    break
+                            if sentence_emb is None:
+                                sentence_emb = ort_outputs[0][:, 0, :]
+
+                        # Đảm bảo chuẩn hóa L2 vector
+                        norms = np.linalg.norm(sentence_emb, ord=2, axis=-1, keepdims=True)
+                        norms = np.maximum(norms, 1e-12)
+                        sentence_emb = sentence_emb / norms
+
+                        for vec in sentence_emb:
+                            all_vectors.append(vec.tolist())
+                    return all_vectors
+                except Exception as e:
+                    logger.error(f"Lỗi khi nhúng bằng ONNX Runtime: {e}. Fallback sang SentenceTransformer.")
+
+            # 2. Sử dụng SentenceTransformer (bge-m3) PyTorch
+            if self._st_model is not None:
+                try:
+                    st_device = str(getattr(self._st_model, "device", "cpu")).lower()
+                    st_batch_size = 64 if st_device.startswith("cuda") else 32
+                    raw_vectors = self._st_model.encode(
+                        texts,
+                        batch_size=st_batch_size,
+                        normalize_embeddings=True,
+                        show_progress_bar=False,
                     )
-                    ort_inputs = {
-                        "input_ids": encoded["input_ids"].astype(np.int64),
-                        "attention_mask": encoded["attention_mask"].astype(np.int64),
-                    }
-                    if out_names:
-                        ort_outputs = self._onnx_session.run(out_names, ort_inputs)
-                        sentence_emb = ort_outputs[0]
-                    else:
-                        ort_outputs = self._onnx_session.run(None, ort_inputs)
-                        sentence_emb = None
-                        for out in ort_outputs:
-                            if out.ndim == 2:
-                                sentence_emb = out
-                                break
-                        if sentence_emb is None:
-                            sentence_emb = ort_outputs[0][:, 0, :]
+                    return [vec.tolist() if hasattr(vec, "tolist") else list(vec) for vec in raw_vectors]
+                except Exception as e:
+                    logger.error(f"Lỗi khi nhúng bằng SentenceTransformer '{self.model_name}': {e}.")
 
-                    # Đảm bảo chuẩn hóa L2 vector
-                    norms = np.linalg.norm(sentence_emb, ord=2, axis=-1, keepdims=True)
-                    norms = np.maximum(norms, 1e-12)
-                    sentence_emb = sentence_emb / norms
-                    for vec in sentence_emb:
-                        all_vectors.append(vec.tolist())
-                return all_vectors
-            except Exception as e:
-                logger.error(f"Lỗi khi nhúng bằng ONNX Runtime: {e}. Fallback sang SentenceTransformer.")
-
-        # 2. Sử dụng SentenceTransformer (bge-m3) PyTorch
-        if self._st_model is not None:
-            try:
-                st_device = str(getattr(self._st_model, "device", "cpu")).lower()
-                st_batch_size = 64 if st_device.startswith("cuda") else 32
-                raw_vectors = self._st_model.encode(
-                    texts,
-                    batch_size=st_batch_size,
-                    normalize_embeddings=True,
-                    show_progress_bar=False,
-                )
-                return [vec.tolist() if hasattr(vec, "tolist") else list(vec) for vec in raw_vectors]
-            except Exception as e:
-                logger.error(f"Lỗi khi nhúng bằng SentenceTransformer '{self.model_name}': {e}.")
-
-        # 2. Sử dụng Chroma Default (MiniLM 384)
-        if self._chroma_ef is not None and self._dimension == 384:
-            try:
-                batch_size = 64
-                all_vectors: List[List[float]] = []
-                for i in range(0, len(texts), batch_size):
-                    batch = texts[i : i + batch_size]
-                    raw_vectors = self._chroma_ef(batch)
-                    all_vectors.extend([list(vec) for vec in raw_vectors])
-                return all_vectors
-            except Exception as e:
-                logger.error(f"Lỗi khi nhúng bằng Chroma EF: {e}.")
+            # 3. Sử dụng Chroma Default (MiniLM 384)
+            if self._chroma_ef is not None and self._dimension == 384:
+                try:
+                    batch_size = 64
+                    all_vectors = []
+                    for i in range(0, len(texts), batch_size):
+                        batch = texts[i : i + batch_size]
+                        raw_vectors = self._chroma_ef(batch)
+                        all_vectors.extend([list(vec) for vec in raw_vectors])
+                    return all_vectors
+                except Exception as e:
+                    logger.error(f"Lỗi khi nhúng bằng Chroma EF: {e}.")
 
         return [self._fallback_vector(t) for t in texts]

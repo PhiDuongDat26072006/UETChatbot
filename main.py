@@ -24,7 +24,7 @@ if str(BASE_DIR) not in sys.path:
 def print_banner():
     banner = """
 ========================================================================
-     🎓 UET CHATBOT - HỆ THỐNG TRA CỨU QUY CHẾ ĐÀO TẠO UET (VNU)      
+     🎓 UET CHATBOT - HỆ THỐNG TRA CỨU QUY CHẾ ĐÀO TẠO UET (VNU)
                  Kiến trúc RAG Modular cho Nhóm Phát Triển
 ========================================================================
     """
@@ -61,6 +61,7 @@ def main():
     eval_group.add_argument("--samples", "--num-samples", type=int, default=None, dest="samples", help="Số lượng mẫu kiểm thử (mặc định: toàn bộ)")
     eval_group.add_argument("--domain", type=str, default=None, help="Lọc theo khoa/lĩnh vực: fit, fet, fema, sae, handbook, tuyensinh, overview, all")
     eval_group.add_argument("--top_k", "--top-k", type=int, default=None, dest="top_k", help="Số lượng đoạn ngữ cảnh k (mặc định: lấy từ config.yaml)")
+    eval_group.add_argument("--engine", type=str, choices=["vector", "lightrag", "hybrid", "auto"], default=None, help="Động cơ truy xuất: vector, lightrag, hybrid, auto (mặc định: lấy từ config.yaml)")
     eval_group.add_argument("--output", type=str, default=None, help="Đường dẫn file JSON để lưu kết quả đánh giá")
 
     # 3. Nhóm Đánh giá nâng cao (Benchmark 2 pha & tùy chọn chuyên sâu)
@@ -76,6 +77,7 @@ def main():
     eval_adv_group.add_argument("--no-semantic", action="store_true", help="Tắt semantic cosine (bge-m3) khi chấm E2E offline")
     eval_adv_group.add_argument("--no-resume", action="store_true", help="Không tái sử dụng snapshot cũ khi chạy Pha 1")
     eval_adv_group.add_argument("--use-cache", action="store_true", help="Bật cache retrieval theo hash cấu hình (mặc định: tắt)")
+    eval_adv_group.add_argument("--no-cache", action="store_true", help="Tắt cache retrieval (mặc định)")
     eval_adv_group.add_argument("--use-ragas", action="store_true", help="Sử dụng Ragas thay vì bộ đánh giá mặc định")
 
     # 4. Nhóm Nạp & lập chỉ mục dữ liệu đa chặng
@@ -83,7 +85,7 @@ def main():
     ingest_group.add_argument("--ingest", action="store_true", help="Kích hoạt quy trình điều phối và nạp dữ liệu qua các chặng")
     ingest_group.add_argument("--status", action="store_true", help="Xem báo cáo thống kê số lượng dữ liệu ở từng chặng")
     ingest_group.add_argument("--from", dest="from_stage", default="raw", choices=["raw", "processed", "chunked"], help="Chặng dữ liệu xuất phát (mặc định: raw)")
-    ingest_group.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
+    ingest_group.add_argument("--to", dest="to_stage", default="vectordb", choices=["processed", "chunked", "vectordb", "indexed_data", "graph_data", "lightrag"], help="Chặng dữ liệu đích đến (mặc định: vectordb)")
     ingest_group.add_argument("--clear", "--reset", action="store_true", dest="clear", help="Xóa dữ liệu cũ ở chặng đích trước khi nạp lại")
 
     args = parser.parse_args()
@@ -105,11 +107,11 @@ def main():
             run_web(host=args.host, port=args.port, open_browser=True)
         elif args.cli:
             from src.interfaces.cli import run_cli
-            run_cli()
+            run_cli(engine=args.engine)
         else:
             print("⚠️  Vui lòng chỉ định một trong hai hình thức trải nghiệm:")
             print("  1. Khởi chạy Giao diện WEB:      python main.py --run --web [--graph] [--agentic]")
-            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli [--graph] [--agentic]\n")
+            print("  2. Khởi chạy Chatbot trên CLI:   python main.py --run --cli [--graph] [--agentic] [--engine hybrid|lightrag|vector|auto]\n")
 
     elif args.eval:
         from src.utils.helpers import load_yaml_config
@@ -239,15 +241,23 @@ def main():
         print("     • Lưu kết quả retrieval:          python main.py --eval --retrieval --output eval_retrieval.json")
         print("  6. Thống kê trạng thái dữ liệu:      python main.py --ingest --status")
         print("  7. Nạp dữ liệu đa chặng (Ingest):    python main.py --ingest --from <stage> --to <stage>")
-        print("\n💡 Quy trình nạp mới dữ liệu toàn diện (2 bước tuần tự):")
+        print("\n💡 Quy trình nạp mới dữ liệu toàn diện (4 bước tuần tự):")
         print("  • Bước 1 (Chunking & ChromaDB):      python main.py --ingest --from processed --to vectordb --clear")
         print("  • Bước 2 (BM25 Sparse Index):        python main.py --ingest --from chunked --to indexed_data --clear")
+        print("  • Bước 3 (LightRAG Knowledge Graph): python main.py --ingest --from processed --to lightrag")
+        print("  • Bước 4 (Unified ChunkBridge):      python main.py --ingest --from chunked --to graph_data --clear")
         print("\n📌 Các thao tác đơn chặng:")
         print("  • Từ raw -> processed:               python main.py --ingest --from raw --to processed")
         print("  • Từ processed -> chunked:           python main.py --ingest --from processed --to chunked")
         print("  • Tái tạo nhanh BM25 từ chunked:     python main.py --ingest --from chunked --to indexed_data")
-        print("  • Xây dựng GraphRAG Vector Index:    python main.py --ingest --from chunked --to graph_data\n")
-        print(" 8. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
+        print("  • Đồng bộ cầu nối GraphIndex:        python main.py --ingest --from chunked --to graph_data")
+        print("  • Cập nhật đồ thị LightRAG (resume): python main.py --ingest --from processed --to lightrag\n")
+        print("  9. Chatbot dòng lệnh với các động cơ (Engines):")
+        print("     • Tự động chọn (mặc định):        python main.py --run --cli --engine auto")
+        print("     • Động cơ lai (Graph + Vector):   python main.py --run --cli --engine hybrid")
+        print("     • Động cơ đồ thị LightRAG:        python main.py --run --cli --engine lightrag")
+        print("     • Động cơ Vector truyền thống:    python main.py --run --cli --engine vector\n")
+        print(" 10. Lệnh chạy kiểm tra/đánh nhãn lại evaluate dataset:  python tests/eval_reviewer_app.py")
 
 if __name__ == "__main__":
     main()

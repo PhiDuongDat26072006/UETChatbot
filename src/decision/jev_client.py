@@ -1,7 +1,7 @@
 """
 src/decision/jev_client.py - Triển khai DecisionClient Protocol, JevDecisionClient và FakeDecisionClient (v3).
 Sử dụng mô hình System One JEV (strands-decider / typesafe/jev) cho 2 quyết định vi mô:
-  1. route(query) -> Route (3 nhãn: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION)
+  1. route(query) -> Route (2 nhãn: OUT_OF_SCOPE, QUALIFIED_QUESTION)
   2. evaluate_answer(query, answer) -> Verdict (chỉ đọc câu hỏi + câu trả lời, không gửi chunk)
 Giữ nguyên cơ chế bảo vệ: _call_lock tuần tự, CircuitBreaker, tách connect/read timeout, nhận diện lỗi CUDA (D10).
 """
@@ -111,7 +111,7 @@ class DecisionClient(Protocol):
         ...
 
     def route(self, query: str, session_id: Optional[str] = None) -> Route:
-        """Phân loại 3 nhánh ý định: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION."""
+        """Phân loại 2 nhánh ý định: OUT_OF_SCOPE, QUALIFIED_QUESTION."""
         ...
 
     def evaluate_answer(self, query: str, answer: str, session_id: Optional[str] = None) -> Verdict:
@@ -123,6 +123,7 @@ class DecisionClient(Protocol):
 _LEGACY_ROUTE_MAP: Dict[str, Route] = {
     "SINGLE_HOP": Route.QUALIFIED_QUESTION,
     "MULTI_HOP": Route.QUALIFIED_QUESTION,
+    "AMBIGUOUS": Route.QUALIFIED_QUESTION,
 }
 
 
@@ -377,10 +378,10 @@ class JevDecisionClient:
 
     def route(self, query: str, session_id: Optional[str] = None) -> Route:
         """
-        Phân loại query thành 1 trong 3 nhãn: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION.
+        Phân loại query thành 1 trong 2 nhãn: OUT_OF_SCOPE, QUALIFIED_QUESTION.
         - Tuyển sinh, điểm chuẩn, ngành học, học phí, học bổng, quy chế UET là IN-SCOPE (D7).
-        - Câu so sánh / nhiều ý nếu đủ thông tin đều thuộc QUALIFIED_QUESTION.
-        - Tương thích ngược: ánh xạ SINGLE_HOP / MULTI_HOP (nếu server trả về) -> QUALIFIED_QUESTION.
+        - Câu ngắn/chung chung về UET, câu so sánh / nhiều ý đều thuộc QUALIFIED_QUESTION.
+        - Tương thích ngược: ánh xạ SINGLE_HOP / MULTI_HOP / AMBIGUOUS (nếu server trả về) -> QUALIFIED_QUESTION.
         """
         state = {"query": query}
         questions = {
@@ -396,6 +397,7 @@ class JevDecisionClient:
 
         if answer_val in _LEGACY_ROUTE_MAP:
             res_route = _LEGACY_ROUTE_MAP[answer_val]
+            self.last_trace_meta = {**meta, "raw_label": answer_val, "parse_fallback": False}
             logger.info(
                 f"[JEV Decision: route] Legacy label '{answer_val}' mapped -> {res_route.value} "
                 f"(latency={meta.get('latency_s')}s)"
@@ -404,12 +406,14 @@ class JevDecisionClient:
 
         if answer_val in Route._value2member_map_:
             res_route = Route(answer_val)
+            self.last_trace_meta = {**meta, "raw_label": answer_val, "parse_fallback": False}
             logger.info(
                 f"[JEV Decision: route] Query='{query[:60]}' -> {res_route.value} "
                 f"(latency={meta.get('latency_s')}s)"
             )
             return res_route
 
+        self.last_trace_meta = {**meta, "raw_label": answer_val, "parse_fallback": True}
         logger.warning(
             f"[JevDecisionClient.route] Phản hồi không khớp enum: {answer_val}. Trả về QUALIFIED_QUESTION."
         )
@@ -485,6 +489,7 @@ class FakeDecisionClient:
 
     def route(self, query: str, session_id: Optional[str] = None) -> Route:
         res = self.routes.pop(0) if self.routes else self.default_route
+        self.last_trace_meta = {"raw_label": res.value, "parse_fallback": False}
         self.history.append({"func": "route", "query": query, "session_id": session_id, "result": res})
         return res
 
