@@ -46,7 +46,7 @@ retrieval:
   candidate_pool_size: 25      # Số ứng viên sau khi ghép Hybrid Search đưa vào Reranker (tối ưu tốc độ & độ phủ)
   fusion_method: "rrf"         # Thuật toán ghép: "rrf" hoặc "linear"
   rrf_k: 30                    # Hằng số làm mượt RRF (ưu ái Top ranks rõ hơn)
-  bm25_weight: 0.60            # Trọng số nhánh BM25 Search (ưu tiên từ khóa chính xác/mã ngành/năm)
+  bm25_weight: 0.50            # Trọng số nhánh BM25 Search (ưu tiên từ khóa chính xác/mã ngành/năm)
   vector_weight: 0.20          # Trọng số nhánh Vector Search
 
   # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
@@ -86,9 +86,14 @@ retrieval:
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
   merge_contiguous_chunks: false        # Giữ false để không ghép/đổi chunk_id trước Reranker (tránh lệch IR eval & phình token)
 
+  # Cấu hình Mở rộng Toàn bảng cho câu hỏi dạng danh sách/liệt kê (Tabular Sibling Expansion)
+  enable_tabular_expansion: true        # Tự động gom toàn bộ dòng cùng bảng khi câu hỏi yêu cầu danh sách/liệt kê
+  tabular_expansion_max_chunks: 25      # Số chunk anh em tối đa gộp cho 1 bảng (tránh phình prompt ở CTĐT ~90 chunk)
+  tabular_expansion_max_chars: 7000     # Giới hạn ký tự tối đa sau khi gộp 1 bảng
+
 # Cấu hình JEV Decision Model (Hỗ trợ Custom Model/Tunnel như tests/test_tunnel.py hoặc OpenRouter)
 jev:
-  endpoint:  "https://paths-llc-personals-journals.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
+  endpoint:  "https://wave-roles-visibility-day.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
   model: "strands-decider-12B-gemma4-v1-2610"
   connect_timeout_s: 5
   read_timeout_s: 30

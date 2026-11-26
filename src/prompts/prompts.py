@@ -64,21 +64,22 @@ JEV_ROUTE_CRITERIA: Dict[str, str] = {
 
 # --- 1.2. Answer Eval (đánh giá cặp query + answer, KHÔNG gửi chunk) ---
 JEV_EVALUATE_ANSWER_INSTRUCTIONS = (
-    "Dựa vào `query` và `answer`, đánh giá xem `answer` đã trả lời rõ ràng các nội dung chính mà `query` hỏi hay chưa. "
+    "Dựa vào `query` và `answer`, đánh giá xem `answer` đã trả lời rõ ràng, đầy đủ các nội dung chính mà `query` hỏi hay chưa. "
     "Không yêu cầu bổ sung thêm các chi tiết phụ mà người dùng không hỏi; chỉ đánh giá là chưa đạt (false) khi "
     "`answer` báo chưa có thông tin/không tìm thấy dữ liệu cho câu hỏi chính, bỏ sót một ý chính hoặc một vế so sánh, "
-    "hoặc trả lời quá chung chung chưa đi vào trọng tâm."
+    "chỉ liệt kê một vài mục đại diện khi câu hỏi yêu cầu danh sách đầy đủ, hoặc trả lời quá chung chung chưa đi vào trọng tâm."
 )
 
 JEV_EVALUATE_ANSWER_CRITERIA: Dict[str, str] = {
     "true": (
-        "Câu trả lời đã giải đáp trực tiếp, cụ thể các ý chính hoặc đối tượng được hỏi trong `query` "
+        "Câu trả lời đã giải đáp trực tiếp, cụ thể và đầy đủ các ý chính hoặc đối tượng được hỏi trong `query` "
         "(chấp nhận có thêm lưu ý tham khảo hoặc gợi ý liên hệ Phòng Đào tạo ở cuối câu trả lời)."
     ),
     "false": (
         "Câu trả lời báo chưa có thông tin/không tìm thấy dữ liệu cho đúng đối tượng, năm hoặc chỉ số được hỏi "
         "(kể cả khi có đưa thêm số liệu thay thế của năm khác hoặc chỉ số khác như ngưỡng sàn thay cho điểm chuẩn), "
-        "bỏ trống một ý chính hoặc một vế so sánh, thiếu số liệu/điều kiện cốt lõi, hoặc chỉ trả lời chung chung."
+        "bỏ trống một ý chính hoặc một vế so sánh, chỉ liệt kê một vài mục tiêu biểu/đại diện khi câu hỏi yêu cầu danh sách đầy đủ "
+        "(ví dụ tự nêu có 18 ngành nhưng chỉ liệt kê 2-3 ngành), thiếu số liệu/điều kiện cốt lõi, hoặc chỉ trả lời chung chung."
     ),
 }
 

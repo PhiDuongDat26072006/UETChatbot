@@ -42,6 +42,16 @@ _ENTITY_CODE_RE = re.compile(
     r"\b(?:\d{2,5}/[a-zđ]+(?:-[a-zđ0-9]+)+|(?:int|elt|ema|epn|pes|mat|phy|flf|cn|k)\d{1,4}[a-z]?)\b",
     re.IGNORECASE,
 )
+_LIST_QUERY_RE = re.compile(
+    r"(?:danh\s+sách|danh\s+mục|liệt\s+kê|toàn\s+bộ|tất\s+cả|những\s+ngành|các\s+ngành|"
+    r"những\s+môn|các\s+môn|những\s+chương\s+trình|các\s+chương\s+trình|bao\s+gồm\s+những|"
+    r"gồm\s+những|gồm\s+các|có\s+những|có\s+các|những\s+loại|các\s+loại|"
+    r"bảng\s+điểm\s+chuẩn|bảng\s+học\s+phí|bảng\s+quy\s+đổi)",
+    re.IGNORECASE,
+)
+_TABULAR_ROW_RE = re.compile(r"(?:\|\s*\*\*|^\s*-\s*\*\*[^*]+\*\*:|\|\s*---+\s*\|)", re.MULTILINE)
+_META_LINE_RE = re.compile(r"^\s*(\[META:[^\]]+\])\s*$", re.MULTILINE)
+_FOOTNOTE_URL_RE = re.compile(r"\[\[\d+\]\]\(https?://[^)]+\)")
 
 
 class UETRetriever:
@@ -141,11 +151,17 @@ class UETRetriever:
         self.adjacent_window_size: int = int(retrieval_cfg.get("adjacent_window_size", 1))
         self.merge_contiguous_chunks: bool = bool(retrieval_cfg.get("merge_contiguous_chunks", False))
 
+        # Cấu hình Mở rộng Toàn bảng cho câu hỏi dạng danh sách/liệt kê (Tabular Sibling Expansion)
+        self.enable_tabular_expansion: bool = bool(retrieval_cfg.get("enable_tabular_expansion", True))
+        self.tabular_expansion_max_chunks: int = int(retrieval_cfg.get("tabular_expansion_max_chunks", 25))
+        self.tabular_expansion_max_chars: int = int(retrieval_cfg.get("tabular_expansion_max_chars", 7000))
+
         # Chỉ sử dụng BM25Index từ src.indexing.sparse.
         # Cho phép dependency injection khi kiểm thử, không nạp file ổ cứng nếu vector_store là mock in-memory.
         self.bm25_index = bm25_index if bm25_index is not None else BM25Index()
         self.graph_index = graph_index
         self._adjacent_lookup: Optional[Dict[Tuple[str, int], DataChunk]] = None
+        self._doc_chunks_lookup: Optional[Dict[str, List[Tuple[int, DataChunk]]]] = None
 
         self.reranker = reranker or RerankerFactory.create(
             reranker_type=reranker_type,
@@ -167,6 +183,7 @@ class UETRetriever:
         """Lập chỉ mục BM25 in-memory cho danh sách DataChunk (phục vụ kiểm thử hoặc dữ liệu nhỏ)."""
         self.bm25_index = BM25Index(chunks)
         self._adjacent_lookup = None
+        self._doc_chunks_lookup = None
         return self.bm25_index.count()
 
     def _load_graph_index(self) -> int:
@@ -388,6 +405,249 @@ class UETRetriever:
         body = "\n".join(lines[idx:]).strip()
         return body if body else (text or "").strip()
 
+    def _get_doc_chunks_lookup(self) -> Dict[str, List[Tuple[int, DataChunk]]]:
+        """Xây dựng bảng tra cứu lười document_id -> danh sách (chunk_index, DataChunk) đã sắp xếp."""
+        if self._doc_chunks_lookup is not None:
+            return self._doc_chunks_lookup
+        grouped: Dict[str, List[Tuple[int, DataChunk]]] = {}
+        for (doc_id, cidx), ch in self._get_adjacent_lookup().items():
+            grouped.setdefault(doc_id, []).append((cidx, ch))
+        for doc_id in grouped:
+            grouped[doc_id].sort(key=lambda item: item[0])
+        self._doc_chunks_lookup = grouped
+        return grouped
+
+    @staticmethod
+    def _is_list_query(query_text: str) -> bool:
+        """Nhận diện câu hỏi mang ý định liệt kê danh sách / bảng đầy đủ."""
+        return bool(_LIST_QUERY_RE.search(query_text or ""))
+
+    @staticmethod
+    def _extract_meta_header(text: str) -> str:
+        """Trích xuất dòng [META: ...] (nếu có) để nhóm các chunk thuộc cùng một bảng."""
+        m = _META_LINE_RE.search(text or "")
+        return m.group(1).strip() if m else ""
+
+    @staticmethod
+    def _is_tabular_chunk(text: str) -> bool:
+        """Nhận diện chunk chứa dòng bảng biểu / danh mục có cấu trúc."""
+        body = UETRetriever._strip_chunk_header(text)
+        return bool(_TABULAR_ROW_RE.search(body))
+
+    @staticmethod
+    def _compact_table_row(text: str) -> str:
+        """Bỏ header lặp [Title]/[META: ...] và rút gọn link chú thích dài lặp lại trong từng dòng bảng."""
+        body = UETRetriever._strip_chunk_header(text)
+        body = _FOOTNOTE_URL_RE.sub("", body)
+        return re.sub(r"[ \t]{2,}", " ", body).strip()
+
+    @staticmethod
+    def _extract_header_lines(text: str) -> str:
+        """Giữ lại các dòng tiêu đề [Title] và [META: ...] ở đầu khối bảng gộp."""
+        headers: List[str] = []
+        for line in (text or "").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                headers.append(stripped)
+            else:
+                break
+        return "\n".join(headers)
+
+    def _expand_tabular_siblings(
+        self,
+        query_text: str,
+        final_contexts: List[RetrievedContext],
+    ) -> List[RetrievedContext]:
+        """
+        Khi câu hỏi mang ý định liệt kê danh sách đầy đủ và Top-K trúng bảng bị cắt lẻ
+        (mỗi dòng/vài dòng là 1 chunk chung document_id + [META: ...]), tự động gom các
+        chunk anh em liền kề cùng bảng thành 1 khối ngữ cảnh đầy đủ.
+        Giữ nguyên chunk_id, rank và độ dài final_contexts để không làm sai lệch IR eval.
+        """
+        if not self.enable_tabular_expansion or not final_contexts or not self._is_list_query(query_text):
+            return final_contexts
+
+        doc_lookup = self._get_doc_chunks_lookup()
+        if not doc_lookup:
+            return final_contexts
+
+        max_chunks = max(2, int(self.tabular_expansion_max_chunks))
+        max_chars = max(1500, int(self.tabular_expansion_max_chars))
+        max_tables = 2
+
+        # Ghi nhận các document đã có ít nhất 1 chunk dạng bảng trong Top-K
+        docs_with_tabular_seed = set()
+        for ctx in final_contexts:
+            meta = ctx.metadata or {}
+            did = str(meta.get("document_id") or meta.get("doc_id") or "")
+            if did and self._is_tabular_chunk(ctx.text):
+                docs_with_tabular_seed.add(did)
+
+        expanded_tables: set = set()
+        expanded_results = list(final_contexts)
+        tables_expanded = 0
+
+        for i, ctx in enumerate(expanded_results):
+            if tables_expanded >= max_tables:
+                break
+
+            meta = dict(ctx.metadata) if ctx.metadata else {}
+            doc_id = str(meta.get("document_id") or meta.get("doc_id") or "")
+            cidx_raw = meta.get("chunk_index")
+            if not doc_id or doc_id not in doc_lookup:
+                continue
+
+            doc_chunks = doc_lookup[doc_id]
+            sibling_run: List[DataChunk] = []
+            table_key: Optional[Tuple[str, str]] = None
+            prepend_intro = False
+
+            if self._is_tabular_chunk(ctx.text) and cidx_raw is not None:
+                try:
+                    center_idx = int(cidx_raw)
+                except (TypeError, ValueError):
+                    continue
+
+                meta_hdr = self._extract_meta_header(ctx.text)
+                table_key = (doc_id, meta_hdr)
+                if table_key in expanded_tables:
+                    continue
+
+                # Tìm vị trí center_idx trong doc_chunks
+                pos = next((idx for idx, (ci, _) in enumerate(doc_chunks) if ci == center_idx), None)
+                if pos is None:
+                    continue
+
+                # Quét lùi và tiến liên tiếp trong cùng bảng (cùng meta_hdr & là chunk bảng)
+                left = pos
+                while left > 0:
+                    prev_ci, prev_ch = doc_chunks[left - 1]
+                    curr_ci, _ = doc_chunks[left]
+                    if (
+                        curr_ci - prev_ci <= 1
+                        and self._is_tabular_chunk(prev_ch.text)
+                        and self._extract_meta_header(prev_ch.text) == meta_hdr
+                    ):
+                        left -= 1
+                    else:
+                        break
+
+                right = pos
+                while right + 1 < len(doc_chunks):
+                    curr_ci, _ = doc_chunks[right]
+                    next_ci, next_ch = doc_chunks[right + 1]
+                    if (
+                        next_ci - curr_ci <= 1
+                        and self._is_tabular_chunk(next_ch.text)
+                        and self._extract_meta_header(next_ch.text) == meta_hdr
+                    ):
+                        right += 1
+                    else:
+                        break
+
+                run_items = [ch for _, ch in doc_chunks[left : right + 1]]
+                if len(run_items) < 2:
+                    continue
+
+                # Nếu bảng quá dài (vd CTĐT ~85 chunk), chỉ lấy cửa sổ max_chunks quanh seed
+                if len(run_items) > max_chunks:
+                    rel_pos = pos - left
+                    half = max_chunks // 2
+                    start_i = max(0, min(rel_pos - half, len(run_items) - max_chunks))
+                    sibling_run = run_items[start_i : start_i + max_chunks]
+                else:
+                    sibling_run = run_items
+
+            elif doc_id not in docs_with_tabular_seed:
+                # Case B: Chunk Top-K là đoạn giới thiệu của tài liệu có bảng (chưa có chunk bảng nào trong Top-K)
+                # Tìm khối bảng liền kề đầu tiên có kích thước gọn (2..max_chunks)
+                best_run: List[DataChunk] = []
+                cur_run: List[DataChunk] = []
+                cur_meta: Optional[str] = None
+                prev_ci: Optional[int] = None
+                for ci, ch in doc_chunks:
+                    if self._is_tabular_chunk(ch.text):
+                        mh = self._extract_meta_header(ch.text)
+                        if cur_run and prev_ci is not None and ci - prev_ci <= 1 and mh == cur_meta:
+                            cur_run.append(ch)
+                        else:
+                            if 2 <= len(cur_run) <= max_chunks and not best_run:
+                                best_run = cur_run
+                                break
+                            cur_run = [ch]
+                            cur_meta = mh
+                        prev_ci = ci
+                    else:
+                        if 2 <= len(cur_run) <= max_chunks and not best_run:
+                            best_run = cur_run
+                            break
+                        cur_run = []
+                        cur_meta = None
+                        prev_ci = None
+                if not best_run and 2 <= len(cur_run) <= max_chunks:
+                    best_run = cur_run
+
+                if not best_run:
+                    continue
+
+                meta_hdr = self._extract_meta_header(best_run[0].text)
+                table_key = (doc_id, meta_hdr)
+                if table_key in expanded_tables:
+                    continue
+                sibling_run = best_run
+                prepend_intro = True
+
+            if not sibling_run or table_key is None:
+                continue
+
+            # Ghép 1 header duy nhất + từng dòng bảng đã rút gọn, tuân thủ giới hạn max_chars
+            parts: List[str] = []
+            if prepend_intro:
+                parts.append(ctx.text.strip())
+                hdr = self._extract_meta_header(sibling_run[0].text)
+                if hdr:
+                    parts.append(hdr)
+            else:
+                hdr_block = self._extract_header_lines(sibling_run[0].text)
+                if hdr_block:
+                    parts.append(hdr_block)
+
+            total_len = sum(len(p) for p in parts)
+            merged_ids: List[str] = [ctx.chunk_id] if prepend_intro else []
+            seen_bodies: set = set()
+
+            for ch in sibling_run:
+                row_body = self._compact_table_row(ch.text)
+                if not row_body or row_body in seen_bodies:
+                    continue
+                if total_len + len(row_body) + 1 > max_chars and len(merged_ids) >= 2:
+                    break
+                parts.append(row_body)
+                seen_bodies.add(row_body)
+                if ch.chunk_id not in merged_ids:
+                    merged_ids.append(ch.chunk_id)
+                total_len += len(row_body) + 1
+
+            if len(merged_ids) >= 2:
+                meta["tabular_expanded"] = True
+                meta["expanded_chunk_ids"] = merged_ids
+                meta["expanded_chunk_count"] = len(merged_ids)
+                expanded_results[i] = RetrievedContext(
+                    chunk_id=ctx.chunk_id,
+                    text="\n".join(parts),
+                    similarity_score=ctx.similarity_score,
+                    rank=ctx.rank,
+                    metadata=meta,
+                )
+                expanded_tables.add(table_key)
+                tables_expanded += 1
+                logger.info(
+                    f"[TabularExpansion] Đã gộp {len(merged_ids)} chunks cùng bảng "
+                    f"(doc={doc_id[:8]}..., {total_len} ký tự) cho câu hỏi danh sách."
+                )
+
+        return expanded_results
+
     def _expand_adjacent_chunks(self, final_contexts: List[RetrievedContext]) -> List[RetrievedContext]:
         """
         Mở rộng ngữ cảnh liền kề (±adjacent_window_size) cho Top-K chunks điểm cao nhất.
@@ -409,6 +669,8 @@ class UETRetriever:
         for i in range(expand_limit):
             ctx = expanded_results[i]
             meta = dict(ctx.metadata) if ctx.metadata else {}
+            if meta.get("tabular_expanded"):
+                continue
             doc_id = meta.get("document_id") or meta.get("doc_id")
             cidx_raw = meta.get("chunk_index")
             if not doc_id or cidx_raw is None:
@@ -642,6 +904,7 @@ class UETRetriever:
         for i, ctx in enumerate(final_contexts, 1):
             ctx.rank = i
 
+        final_contexts = self._expand_tabular_siblings(query_text, final_contexts)
         final_contexts = self._expand_adjacent_chunks(final_contexts)
 
         logger.info(
