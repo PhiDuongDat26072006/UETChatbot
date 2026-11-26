@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 
 from src.base import RetrievedContext, UserQuery, AugmentedPrompt, Response
 from src.agent.graph import UETAgentGraph
-from src.agent.clarify_store import ClarifySessionStore
 from src.decision import (
     Route,
     Verdict,
@@ -68,23 +67,16 @@ class MockRetriever:
 
 
 class MockLLM:
-    """Mock LLM hỗ trợ đếm số lần gọi generate và generate_json (clarify_ask / followup_query)."""
+    """Mock LLM hỗ trợ đếm số lần gọi generate và generate_json (followup_query)."""
 
     def __init__(
         self,
         fail_generate: bool = False,
-        clarify_payload: Optional[Dict[str, Any]] = None,
         followup_payloads: Optional[List[Dict[str, Any]]] = None,
     ):
         self.fail_generate = fail_generate
         self.generation_count = 0
         self.followup_call_count = 0
-        self.clarify_call_count = 0
-        self.clarify_payload = clarify_payload or {
-            "known_info": ["chủ đề học bổng"],
-            "missing_info": ["ngành học", "hệ đào tạo Chuẩn/CLC"],
-            "question": "Bạn vui lòng cho biết bạn đang học ngành nào và hệ Chuẩn hay CLC nhé?",
-        }
         self.followup_payloads = list(followup_payloads) if followup_payloads else []
 
     def generate(self, prompt: AugmentedPrompt, model: Optional[str] = None) -> Response:
@@ -101,9 +93,6 @@ class MockLLM:
 
     def generate_json(self, prompt: AugmentedPrompt, model: Optional[str] = None) -> Optional[Dict[str, Any]]:
         text = prompt.formatted_prompt.lower()
-        if "known_info" in text and "missing_info" in text and "question" in text:
-            self.clarify_call_count += 1
-            return dict(self.clarify_payload)
         if "followup_queries" in text:
             self.followup_call_count += 1
             if self.followup_payloads:
@@ -157,7 +146,7 @@ class TestConformanceScenariosV3(unittest.TestCase):
         self.assertEqual(resp.status, "ok")
         self.assertEqual(resp.state, 1)
         self.assertEqual(resp.route, Route.QUALIFIED_QUESTION)
-        self.assertEqual(resp.counters, {"retry": 0, "retried3": 0})
+        self.assertEqual(resp.counters, {"retry": 0})
         self.assertIsNotNone(resp.contexts)
         self.assertGreater(len(resp.contexts), 0)
         # Đúng 2 lượt JEV (route + evaluate_answer) và 1 lượt LLM (generation)
@@ -247,128 +236,69 @@ class TestConformanceScenariosV3(unittest.TestCase):
         self.assertIsNotNone(resp.contexts)
         self.assertIsNotNone(resp.missing_info)
 
-    def test_n06_ambiguous_supplement_sufficient_passes_missing_info(self):
-        """N06: AMBIGUOUS, bổ sung ĐỦ -> effective_query đúng, JEV check_supplement nhận missing_info."""
-        clarify_store = ClarifySessionStore()
-        session_id = "test_session_n06"
-
-        # Lượt 1: AMBIGUOUS -> clarify_ask trả JSON known_info / missing_info / question
-        fake_client_1 = FakeDecisionClient(routes=[Route.AMBIGUOUS])
-        graph_1 = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=fake_client_1,
-            clarify_store=clarify_store,
-        )
-        state_1 = graph_1.run(query="Điều kiện xét học bổng?", session_id=session_id)
-        resp_1: AgentResponse = state_1["response"]
-
-        self.assertEqual(resp_1.status, "clarify")
-        self.assertEqual(resp_1.state, 0)
-        self.assertTrue(clarify_store.has_pending_session(session_id))
-        saved = clarify_store.get_session(session_id)
-        self.assertEqual(saved["known_info"], ["chủ đề học bổng"])
-        self.assertEqual(saved["missing_info"], ["ngành học", "hệ đào tạo Chuẩn/CLC"])
-
-        # Lượt 2: Người dùng bổ sung -> clarify_check (nhận missing_info) -> ĐỦ -> retrieval -> gen -> eval ĐỦ
-        fake_client_2 = FakeDecisionClient(
-            check_supplements=[Verdict.SUFFICIENT],
+    def test_n06_ambiguous_goes_straight_to_rag_and_appends_followup_note(self):
+        """N06: AMBIGUOUS không chặn lượt -> đi thẳng retrieval -> gen -> answer_eval -> gắn câu gợi ý cuối phản hồi."""
+        fake_client = FakeDecisionClient(
+            routes=[Route.AMBIGUOUS],
             evaluate_answers=[Verdict.SUFFICIENT],
         )
-        graph_2 = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=fake_client_2,
-            clarify_store=clarify_store,
-        )
-        state_2 = graph_2.run(query="Em học ngành CNTT hệ Chuẩn ạ", session_id=session_id)
-        resp_2: AgentResponse = state_2["response"]
-
-        self.assertEqual(resp_2.status, "ok")
-        self.assertEqual(resp_2.state, 1)
-        self.assertFalse(clarify_store.has_pending_session(session_id))
-        self.assertIn("CNTT", state_2["effective_query"])
-        # Khẳng định JEV check_supplement đã nhận đúng missing_info từ bước ask
-        chk_calls = [h for h in fake_client_2.history if h["func"] == "check_supplement"]
-        self.assertEqual(len(chk_calls), 1)
-        self.assertEqual(chk_calls[0]["missing_info"], ["ngành học", "hệ đào tạo Chuẩn/CLC"])
-
-    def test_n07_ambiguous_insufficient_3_times_then_sufficient(self):
-        """N07: AMBIGUOUS, THIẾU x3 rồi ĐỦ -> LLM hỏi 4 lần, retried3=3, tiếp tục RAG."""
-        clarify_store = ClarifySessionStore()
-        session_id = "test_session_n07"
-
         graph = UETAgentGraph(
             retriever=self.mock_retriever,
             llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(routes=[Route.AMBIGUOUS]),
-            clarify_store=clarify_store,
+            decision_client=fake_client,
         )
-        graph.run(query="Học phí thế nào?", session_id=session_id)
+        state = graph.run(query="Học phí một kỳ bao nhiêu?")
+        resp: AgentResponse = state["response"]
 
-        for i in range(1, 4):
-            g = UETAgentGraph(
-                retriever=self.mock_retriever,
-                llm_client=self.mock_llm,
-                decision_client=FakeDecisionClient(check_supplements=[Verdict.INSUFFICIENT]),
-                clarify_store=clarify_store,
-            )
-            st = g.run(query=f"Bổ sung chưa đủ lần {i}", session_id=session_id)
-            self.assertEqual(st["retried3"], i)
-            self.assertEqual(st["response"].status, "clarify")
+        self.assertEqual(resp.status, "ok")
+        self.assertEqual(resp.state, 1)
+        self.assertEqual(resp.route, Route.AMBIGUOUS)
+        self.assertEqual(self.mock_retriever.call_count, 1)
+        self.assertEqual(self.mock_llm.generation_count, 1)
+        self.assertIn("Câu trả lời vòng 1", resp.answer)
+        self.assertIn("**Gợi ý:**", resp.answer)
+        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
 
-        # Lần hỏi tổng cộng của LLM = 1 (ban đầu) + 3 (sau 3 lần THIẾU) = 4 lần
-        self.assertEqual(self.mock_llm.clarify_call_count, 4)
-
-        g_ok = UETAgentGraph(
-            retriever=self.mock_retriever,
-            llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(
-                check_supplements=[Verdict.SUFFICIENT],
-                evaluate_answers=[Verdict.SUFFICIENT],
-            ),
-            clarify_store=clarify_store,
+    def test_n07_ambiguous_partial_appends_incomplete_and_followup_note_once(self):
+        """N07: AMBIGUOUS nhưng answer_eval THIẾU vượt ngưỡng -> partial kèm lưu ý thiếu và gợi ý ngành/khóa đúng 1 lần."""
+        fake_client = FakeDecisionClient(
+            routes=[Route.AMBIGUOUS],
+            evaluate_answers=[Verdict.INSUFFICIENT, Verdict.INSUFFICIENT],
         )
-        st_ok = g_ok.run(query="Khoa học máy tính hệ CLC", session_id=session_id)
-        self.assertEqual(st_ok["response"].status, "ok")
-        self.assertEqual(st_ok["retried3"], 3)
-        self.assertFalse(clarify_store.has_pending_session(session_id))
-
-    def test_n08_ambiguous_insufficient_4_times_exhausted(self):
-        """N08: AMBIGUOUS, THIẾU x4 -> clarify_exhausted, state=0, phiên chờ đã xóa."""
-        clarify_store = ClarifySessionStore()
-        session_id = "test_session_n08"
-
         graph = UETAgentGraph(
             retriever=self.mock_retriever,
             llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(routes=[Route.AMBIGUOUS]),
-            clarify_store=clarify_store,
+            decision_client=fake_client,
+            config={"agent": {"answer_eval": {"max_retries": 1}}},
         )
-        graph.run(query="Quy chế ra sao?", session_id=session_id)
+        state = graph.run(query="Chương trình đào tạo gồm những môn gì?")
+        resp: AgentResponse = state["response"]
 
-        for i in range(1, 4):
-            g = UETAgentGraph(
-                retriever=self.mock_retriever,
-                llm_client=self.mock_llm,
-                decision_client=FakeDecisionClient(check_supplements=[Verdict.INSUFFICIENT]),
-                clarify_store=clarify_store,
-            )
-            g.run(query=f"Trả lời thiếu {i}", session_id=session_id)
+        self.assertEqual(resp.status, "partial")
+        self.assertEqual(resp.state, 1)
+        self.assertEqual(resp.route, Route.AMBIGUOUS)
+        self.assertIn("phần còn thiếu", resp.answer.lower())
+        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
 
-        g_exh = UETAgentGraph(
+    def test_n08_run_stream_only_emits_final_approved_answer_after_answer_eval(self):
+        """N08: run_stream() chạy qua answer_eval + followup và CHỈ phát token của câu trả lời cuối cùng."""
+        fake_client = FakeDecisionClient(
+            routes=[Route.QUALIFIED_QUESTION],
+            evaluate_answers=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
+        )
+        graph = UETAgentGraph(
             retriever=self.mock_retriever,
             llm_client=self.mock_llm,
-            decision_client=FakeDecisionClient(check_supplements=[Verdict.INSUFFICIENT]),
-            clarify_store=clarify_store,
+            decision_client=fake_client,
         )
-        st_exh = g_exh.run(query="Vẫn thiếu lần 4", session_id=session_id)
-        resp = st_exh["response"]
+        events = list(graph.run_stream(query="Quy định học lại và học phí học lại UET?"))
+        emitted_tokens = "".join(e["content"] for e in events if e["type"] == "token")
+        done_ev = [e for e in events if e["type"] == "done"][-1]
 
-        self.assertEqual(resp.status, "clarify_exhausted")
-        self.assertEqual(resp.state, 0)
-        self.assertEqual(st_exh["retried3"], 4)
-        self.assertFalse(clarify_store.has_pending_session(session_id))
+        self.assertNotIn("Câu trả lời vòng 1", emitted_tokens)
+        self.assertIn("Câu trả lời vòng 2", emitted_tokens)
+        self.assertEqual(done_ev["status"], "ok")
+        self.assertEqual(done_ev["retry"], 1)
 
     def test_n09_comparison_2_majors_followup_fills_missing_major(self):
         """N09: Câu so sánh 2 ngành, vòng 1 chỉ có 1 ngành -> eval THIẾU -> follow-up hỏi ngành còn lại -> vòng 2 đủ 2 ngành."""

@@ -22,7 +22,6 @@ from src.base import (
     Response,
 )
 from src.agent.graph import UETAgentGraph
-from src.agent.clarify_store import ClarifySessionStore
 from src.decision import DecisionClient, AgentResponse, Route
 from src.utils.helpers import Timer, get_logger, load_yaml_config
 
@@ -43,7 +42,6 @@ class UETAgenticRAGPipeline(BaseRAGPipeline):
         llm: Optional[BaseLLM] = None,
         retriever=None,
         decision_client: Optional[DecisionClient] = None,
-        clarify_store: Optional[ClarifySessionStore] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         cfg = config or load_yaml_config()
@@ -78,18 +76,26 @@ class UETAgenticRAGPipeline(BaseRAGPipeline):
             llm_client=self.llm,
             prompt_augmenter=self.prompt_augmenter,
             decision_client=decision_client,
-            clarify_store=clarify_store,
             config=cfg,
         )
         logger.info("Khởi tạo thành công UETAgenticRAGPipeline với JEV LangGraph v3.")
 
-    def query(self, query: UserQuery, top_k: Optional[int] = None) -> Response:
+    def query(
+        self,
+        query: UserQuery,
+        top_k: Optional[int] = None,
+        extra_format_rules: Optional[str] = None,
+        voice_mode: bool = False,
+    ) -> Response:
         """Thực thi câu hỏi thông qua Đồ thị trạng thái Agentic RAG JEV v3."""
         with Timer() as timer:
             final_state = self.agent_graph.run(
                 query=query.query_text,
                 user_query=query,
                 session_id=query.session_id,
+                top_k=top_k,
+                extra_format_rules=extra_format_rules,
+                voice_mode=voice_mode,
             )
 
             agent_resp: Optional[AgentResponse] = final_state.get("response")
@@ -113,9 +119,7 @@ class UETAgenticRAGPipeline(BaseRAGPipeline):
                 "state": state_val,
                 "route": route_val,
                 "retry": final_state.get("retry", 0),
-                "retried3": final_state.get("retried3", 0),
                 "missing_info": final_state.get("missing_info"),
-                "effective_query": final_state.get("effective_query"),
                 "followup_queries": final_state.get("followup_queries", []),
                 "used_queries": final_state.get("used_queries", []),
                 "execution_steps": final_state.get("execution_steps", []),
@@ -135,28 +139,44 @@ class UETAgenticRAGPipeline(BaseRAGPipeline):
 
         return response
 
-    def query_stream(self, query: UserQuery, top_k: Optional[int] = None) -> Generator[str, None, None]:
-        """Hỗ trợ phản hồi dạng luồng (Streaming) cho giao diện Web / SSE API."""
-        final_state = self.agent_graph.run(
+    def stream_events(
+        self,
+        query: UserQuery,
+        top_k: Optional[int] = None,
+        extra_format_rules: Optional[str] = None,
+        voice_mode: bool = False,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Phát luồng sự kiện tiến độ theo từng node LangGraph (status) và CHỈ xuất
+        `sources` + `token` của phản hồi cuối cùng đã qua `answer_eval_node`.
+        """
+        yield from self.agent_graph.run_stream(
             query=query.query_text,
             user_query=query,
             session_id=query.session_id,
+            top_k=top_k,
+            extra_format_rules=extra_format_rules,
+            voice_mode=voice_mode,
         )
-        answer = final_state.get("answer", "")
-        if not answer:
-            return
 
-        words = answer.split(" ")
-        chunk = []
-        for w in words:
-            chunk.append(w)
-            if len(chunk) >= 4:
-                yield " ".join(chunk) + " "
-                chunk = []
-        if chunk:
-            yield " ".join(chunk)
+    def query_stream(
+        self,
+        query: UserQuery,
+        top_k: Optional[int] = None,
+        extra_format_rules: Optional[str] = None,
+        voice_mode: bool = False,
+    ) -> Generator[str, None, None]:
+        """Hỗ trợ phản hồi dạng luồng (Streaming) chỉ trả về các token của câu trả lời cuối cùng đã duyệt."""
+        for event in self.stream_events(
+            query=query,
+            top_k=top_k,
+            extra_format_rules=extra_format_rules,
+            voice_mode=voice_mode,
+        ):
+            if event.get("type") == "token" and event.get("content"):
+                yield event["content"]
 
     def close_session(self, session_id: Optional[str]) -> None:
-        """Đóng kết nối HTTP Session (JEV + LLM) và dọn trạng thái phiên khi kết thúc trò chuyện."""
+        """Đóng kết nối HTTP Session (JEV + LLM) khi kết thúc trò chuyện."""
         if hasattr(self.agent_graph, "close_session"):
             self.agent_graph.close_session(session_id)

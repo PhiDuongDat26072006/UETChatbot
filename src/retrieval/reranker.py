@@ -247,6 +247,55 @@ class JinaONNXReranker(BaseReranker):
     chạy trực tiếp trên ONNX Runtime CPU với tốc độ cao và tiêu tốn ít bộ nhớ.
     """
 
+    @staticmethod
+    def _parse_bool_flag(val: Any) -> Optional[bool]:
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return bool(val)
+        if isinstance(val, str):
+            low = val.strip().lower()
+            if low in ("1", "true", "yes", "on", "gpu", "cuda"):
+                return True
+            if low in ("0", "false", "no", "off", "cpu"):
+                return False
+        return None
+
+    @classmethod
+    def resolve_providers(
+        cls,
+        use_gpu: Optional[bool] = None,
+        providers: Optional[List[str]] = None,
+        cfg_providers: Optional[List[str]] = None,
+        cfg_use_gpu: Optional[bool] = None,
+    ) -> tuple[bool, List[str]]:
+        """
+        Xác định chế độ GPU/CPU và danh sách ONNX Execution Providers:
+        Thứ tự ưu tiên: tham số `use_gpu` -> biến môi trường `RERANKER_USE_GPU` -> config -> mặc định True.
+        - Khi use_gpu=False: ép chỉ dùng `["CPUExecutionProvider"]`.
+        - Khi use_gpu=True: ưu tiên `CUDAExecutionProvider` trước `CPUExecutionProvider`.
+        """
+        resolved_gpu = cls._parse_bool_flag(use_gpu)
+        if resolved_gpu is None:
+            env_gpu = os.getenv("RERANKER_USE_GPU")
+            if env_gpu is not None and env_gpu.strip() != "":
+                resolved_gpu = cls._parse_bool_flag(env_gpu)
+        if resolved_gpu is None:
+            resolved_gpu = cls._parse_bool_flag(cfg_use_gpu)
+        if resolved_gpu is None:
+            base_provs = list(providers or cfg_providers or ["CUDAExecutionProvider", "CPUExecutionProvider"])
+            resolved_gpu = any("CUDA" in str(p) for p in base_provs)
+
+        if not resolved_gpu:
+            return False, ["CPUExecutionProvider"]
+
+        req = list(providers or cfg_providers or ["CUDAExecutionProvider", "CPUExecutionProvider"])
+        if "CUDAExecutionProvider" not in req:
+            req.insert(0, "CUDAExecutionProvider")
+        if "CPUExecutionProvider" not in req:
+            req.append("CPUExecutionProvider")
+        return True, req
+
     def __init__(
         self,
         model_name: str = "jinaai/jina-reranker-v2-base-multilingual",
@@ -254,11 +303,15 @@ class JinaONNXReranker(BaseReranker):
         max_length: Optional[int] = None,
         batch_size: Optional[int] = None,
         providers: Optional[List[str]] = None,
+        use_gpu: Optional[bool] = None,
     ):
         try:
-            cfg = load_yaml_config().get("agent", {}).get("reranker", {})
+            full_cfg = load_yaml_config()
+            cfg = full_cfg.get("agent", {}).get("reranker", {})
+            ret_cfg = full_cfg.get("retrieval", {})
         except Exception:
             cfg = {}
+            ret_cfg = {}
 
         if "/" not in model_name and not Path(model_name).exists():
             repo_id = f"jinaai/{model_name}"
@@ -269,6 +322,13 @@ class JinaONNXReranker(BaseReranker):
         self.onnx_filename = onnx_filename
         self.max_length = int(max_length) if max_length is not None else int(cfg.get("max_length", 512))
         self.batch_size = max(1, int(batch_size) if batch_size is not None else int(cfg.get("batch_size", 8)))
+        cfg_use_gpu = ret_cfg.get("reranker_use_gpu", cfg.get("use_gpu"))
+        self.use_gpu, req_provs = self.resolve_providers(
+            use_gpu=use_gpu,
+            providers=providers,
+            cfg_providers=cfg.get("providers"),
+            cfg_use_gpu=cfg_use_gpu,
+        )
         self._session = None
         self._tokenizer = None
         self._active_providers: List[str] = []
@@ -279,7 +339,10 @@ class JinaONNXReranker(BaseReranker):
             from transformers import AutoTokenizer
             from huggingface_hub import hf_hub_download
 
-            logger.info(f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}', batch_size={self.batch_size}, max_length={self.max_length}...")
+            logger.info(
+                f"Đang tải Jina ONNX Reranker: repo='{repo_id}', file='{onnx_filename}', "
+                f"use_gpu={self.use_gpu}, batch_size={self.batch_size}, max_length={self.max_length}..."
+            )
 
             if Path(onnx_filename).is_file():
                 onnx_path = str(Path(onnx_filename).resolve())
@@ -298,9 +361,8 @@ class JinaONNXReranker(BaseReranker):
             except TypeError:
                 self._tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
 
-            # Tự động preload CUDA/cuDNN DLLs (Windows ORT >= 1.21 và Linux/Colab) khi ưu tiên GPU
-            req_provs = list(providers or cfg.get("providers", ["CUDAExecutionProvider", "CPUExecutionProvider"]))
-            wants_cuda = any("CUDA" in str(p) for p in req_provs)
+            # Chỉ preload CUDA/cuDNN DLLs khi bật use_gpu=True
+            wants_cuda = self.use_gpu and any("CUDA" in str(p) for p in req_provs)
             if wants_cuda:
                 try:
                     import torch  # noqa: F401 - preload CUDA runtime shared libraries on Colab/Linux
@@ -313,6 +375,12 @@ class JinaONNXReranker(BaseReranker):
                         logger.debug(f"Bỏ qua preload_dlls cho ONNX CUDA: {dll_err}")
 
             available = set(ort.get_available_providers())
+            if wants_cuda and "CUDAExecutionProvider" not in available:
+                logger.warning(
+                    "reranker_use_gpu=True nhưng môi trường Python hiện tại chưa có CUDAExecutionProvider "
+                    f"(available={sorted(available)}). Tự động fallback sang CPUExecutionProvider. "
+                    "Hãy chạy bằng môi trường cài onnxruntime-gpu (vd .venv) để tăng tốc GPU."
+                )
             effective_provs = [p for p in req_provs if p in available]
             if "CPUExecutionProvider" not in effective_provs:
                 effective_provs.append("CPUExecutionProvider")
@@ -960,6 +1028,10 @@ class RerankerFactory:
             jina_kwargs["max_length"] = int(kwargs["max_length"])
         if kwargs.get("batch_size") is not None:
             jina_kwargs["batch_size"] = int(kwargs["batch_size"])
+        if kwargs.get("use_gpu") is not None:
+            jina_kwargs["use_gpu"] = bool(kwargs["use_gpu"])
+        if kwargs.get("providers") is not None:
+            jina_kwargs["providers"] = list(kwargs["providers"])
 
         if rtype in ("onnx", "jina", "jina_onnx") or "jina" in model_str:
             return JinaONNXReranker(

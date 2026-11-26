@@ -33,7 +33,7 @@ class TestJevEnumsAndModelsV3(unittest.TestCase):
             answer="Đáp án mẫu",
             contexts=[],
             route=Route.QUALIFIED_QUESTION,
-            counters={"retry": 4, "retried3": 0},
+            counters={"retry": 4},
             trace=[{"node": "router_node", "result": "QUALIFIED_QUESTION"}],
             fail_reason=None,
             missing_info="điểm chuẩn ngành AI",
@@ -41,7 +41,7 @@ class TestJevEnumsAndModelsV3(unittest.TestCase):
         self.assertEqual(resp.status, "partial")
         self.assertEqual(resp.state, 1)
         self.assertEqual(resp.route, Route.QUALIFIED_QUESTION)
-        self.assertEqual(resp.counters, {"retry": 4, "retried3": 0})
+        self.assertEqual(resp.counters, {"retry": 4})
         self.assertEqual(resp.missing_info, "điểm chuẩn ngành AI")
 
 
@@ -51,27 +51,18 @@ class TestFakeDecisionClientV3(unittest.TestCase):
 
         self.assertTrue(client.check_health())
         self.assertEqual(client.route("Câu hỏi bất kỳ"), Route.QUALIFIED_QUESTION)
-        self.assertEqual(
-            client.check_supplement("query", "last_ask", ["supp"], missing_info=["ngành", "khóa"]),
-            Verdict.SUFFICIENT,
-        )
         self.assertEqual(client.evaluate_answer("query", "answer"), Verdict.SUFFICIENT)
-        self.assertEqual(len(client.history), 4)
-        self.assertEqual(client.history[2]["missing_info"], ["ngành", "khóa"])
+        self.assertEqual(len(client.history), 3)
 
     def test_fake_client_scripted_sequence(self):
         client = FakeDecisionClient(
             routes=[Route.OUT_OF_SCOPE, Route.AMBIGUOUS],
-            check_supplements=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
             evaluate_answers=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
         )
 
         self.assertEqual(client.route("q1"), Route.OUT_OF_SCOPE)
         self.assertEqual(client.route("q2"), Route.AMBIGUOUS)
         self.assertEqual(client.route("q3"), Route.QUALIFIED_QUESTION)
-
-        self.assertEqual(client.check_supplement("q", "ask", ["s1"], missing_info=["ngành"]), Verdict.INSUFFICIENT)
-        self.assertEqual(client.check_supplement("q", "ask", ["s2"], missing_info=["ngành"]), Verdict.SUFFICIENT)
 
         self.assertEqual(client.evaluate_answer("q", "a1"), Verdict.INSUFFICIENT)
         self.assertEqual(client.evaluate_answer("q", "a2"), Verdict.SUFFICIENT)
@@ -84,7 +75,6 @@ class TestJevDecisionClientMockHTTP(unittest.TestCase):
             api_key="test-key",
             model="test-jev-model",
             answer_eval_threshold=answer_threshold,
-            clarify_threshold=0.5,
         )
 
     @staticmethod
@@ -115,24 +105,6 @@ class TestJevDecisionClientMockHTTP(unittest.TestCase):
                 self.assertEqual(sent_json["state"], {"query": "Điểm chuẩn ngành CNTT và AI?"})
                 criteria_keys = set(sent_json["questions"]["route"]["criteria"].keys())
                 self.assertEqual(criteria_keys, {"OUT_OF_SCOPE", "AMBIGUOUS", "QUALIFIED_QUESTION"})
-
-    def test_check_supplement_sends_missing_info(self):
-        client = self._make_client()
-        with patch.object(
-            client._session,
-            "post",
-            return_value=self._mock_http_ok({"answers": {"sufficiency": {"noul": 0.82}}, "latency": 0.12}),
-        ) as mock_post:
-            verdict = client.check_supplement(
-                query="Học phí là bao nhiêu?",
-                last_ask="Bạn học ngành nào và hệ nào?",
-                supplements=["CNTT hệ Chuẩn"],
-                missing_info=["ngành", "hệ đào tạo"],
-            )
-            self.assertEqual(verdict, Verdict.SUFFICIENT)
-            sent_state = mock_post.call_args.kwargs["json"]["state"]
-            self.assertEqual(sent_state["missing_info"], ["ngành", "hệ đào tạo"])
-            self.assertEqual(sent_state["supplements"], ["CNTT hệ Chuẩn"])
 
     def test_evaluate_answer_only_sends_query_and_answer(self):
         client = self._make_client(answer_threshold=0.5)
@@ -186,9 +158,6 @@ class TestCircuitBreakerAndNoSilentFallback(unittest.TestCase):
         )
         with self.assertRaises(Exception):
             client.route("Test query")
-
-        with self.assertRaises(Exception):
-            client.check_supplement("q", "ask", ["supp"], missing_info=["ngành"])
 
         with self.assertRaises(Exception):
             client.evaluate_answer("q", "ans")

@@ -132,7 +132,8 @@ class UETLLMClient(BaseLLM):
             if custom_api_key is not None
             else os.getenv("LLM_API_KEY", custom_cfg.get("api_key", ""))
         )
-        self.custom_api_max_tokens = int(custom_cfg.get("max_tokens", 2048))
+        self.max_tokens = int(llm_cfg.get("max_tokens", 2048))
+        self.custom_api_max_tokens = int(custom_cfg.get("max_tokens", self.max_tokens))
         self.custom_api_connect_timeout_s = float(custom_cfg.get("connect_timeout_s", 10.0))
         self.custom_api_timeout_s = float(custom_cfg.get("timeout_s", 120.0))
         self.custom_api_health_path = str(custom_cfg.get("health_path", "/health"))
@@ -149,6 +150,7 @@ class UETLLMClient(BaseLLM):
         self.openrouter_delay = float(
             openrouter_cfg.get("delay_seconds", self.DEFAULT_CONFIGS["openrouter"]["delay"])
         )
+        self.openrouter_max_tokens = int(openrouter_cfg.get("max_tokens", self.max_tokens))
         raw_routing = openrouter_cfg.get("provider_routing")
         self.openrouter_provider_routing: Optional[Dict[str, Any]] = (
             dict(raw_routing) if isinstance(raw_routing, dict) and raw_routing else None
@@ -692,6 +694,7 @@ class UETLLMClient(BaseLLM):
         model: Optional[str] = None,
         session_id: Optional[str] = None,
         temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[str, str, Dict[str, Any]]:
         """Gọi OpenRouter API (OpenAI-compatible, mặc định Tencent Hy4)."""
         if not self.openrouter_keys:
@@ -716,6 +719,7 @@ class UETLLMClient(BaseLLM):
         payload: Dict[str, Any] = {
             "model": target_model,
             "messages": [{"role": "user", "content": prompt_text}],
+            "max_tokens": max_tokens if max_tokens is not None else self.openrouter_max_tokens,
             "temperature": self.temperature if temperature is None else temperature,
         }
         self._apply_openrouter_reasoning(payload)
@@ -1124,6 +1128,7 @@ class UETLLMClient(BaseLLM):
                 payload = {
                     "model": self.openrouter_model,
                     "messages": [{"role": "user", "content": prompt.formatted_prompt}],
+                    "max_tokens": self.openrouter_max_tokens,
                     "temperature": self.temperature,
                     "stream": True,
                 }

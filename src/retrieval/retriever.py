@@ -122,6 +122,14 @@ class UETRetriever:
         reranker_type = retrieval_cfg.get("reranker_type", "auto")
         reranker_model = retrieval_cfg.get("reranker_model", None)
         onnx_filename = retrieval_cfg.get("onnx_filename", None)
+        agent_reranker_cfg = raw_config.get("agent", {}).get("reranker", {})
+        env_reranker_gpu = os.environ.get("RERANKER_USE_GPU") if config is None else None
+        if env_reranker_gpu is not None and env_reranker_gpu.strip() != "":
+            self.reranker_use_gpu: bool = env_reranker_gpu.strip().lower() in ("1", "true", "yes", "on", "gpu", "cuda")
+        else:
+            self.reranker_use_gpu = bool(
+                retrieval_cfg.get("reranker_use_gpu", agent_reranker_cfg.get("use_gpu", True))
+            )
         self.rerank_max_length: int = int(retrieval_cfg.get("rerank_max_length", 512))
         self.rerank_batch_size: int = int(retrieval_cfg.get("rerank_batch_size", 8))
         self.rerank_blend_alpha: float = float(retrieval_cfg.get("rerank_blend_alpha", 0.65))
@@ -129,9 +137,9 @@ class UETRetriever:
 
         # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion)
         self.enable_adjacent_expansion: bool = bool(retrieval_cfg.get("enable_adjacent_expansion", False))
-        self.adjacent_expansion_top_k: int = int(retrieval_cfg.get("adjacent_expansion_top_k", 3))
+        self.adjacent_expansion_top_k: int = int(retrieval_cfg.get("adjacent_expansion_top_k", 2))
         self.adjacent_window_size: int = int(retrieval_cfg.get("adjacent_window_size", 1))
-        self.merge_contiguous_chunks: bool = bool(retrieval_cfg.get("merge_contiguous_chunks", True))
+        self.merge_contiguous_chunks: bool = bool(retrieval_cfg.get("merge_contiguous_chunks", False))
 
         # Chỉ sử dụng BM25Index từ src.indexing.sparse.
         # Cho phép dependency injection khi kiểm thử, không nạp file ổ cứng nếu vector_store là mock in-memory.
@@ -145,6 +153,7 @@ class UETRetriever:
             onnx_filename=onnx_filename,
             max_length=self.rerank_max_length,
             batch_size=self.rerank_batch_size,
+            use_gpu=self.reranker_use_gpu,
         )
 
         # Chỉ nạp artifact từ ổ đĩa khi chạy với persistent VectorStore thật (không nạp trong unit test mock store).
@@ -383,8 +392,9 @@ class UETRetriever:
         """
         Mở rộng ngữ cảnh liền kề (±adjacent_window_size) cho Top-K chunks điểm cao nhất.
         Giữ nguyên chunk_id, rank và độ dài final_contexts để không làm sai lệch IR evaluation.
+        Chạy độc lập với `merge_contiguous_chunks` (tiền Reranker) để tránh đổi chunk_id trước khi rerank.
         """
-        if not self.enable_adjacent_expansion or not self.merge_contiguous_chunks or not final_contexts:
+        if not self.enable_adjacent_expansion or not final_contexts:
             return final_contexts
 
         lookup = self._get_adjacent_lookup()

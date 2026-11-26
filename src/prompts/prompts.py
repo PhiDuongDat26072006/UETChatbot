@@ -4,80 +4,65 @@ src/prompts/prompts.py - Kho tập trung TẤT CẢ các prompt của hệ thố
 Chỉnh sửa toàn bộ prompt của hệ thống tại duy nhất file này:
   1. JEV Decision Prompts:
      - Router 3 nhãn (OUT_OF_SCOPE / AMBIGUOUS / QUALIFIED_QUESTION)
-     - Clarify Check (kiểm tra đủ thông tin bổ sung theo missing_info)
      - Answer Eval (đánh giá cặp query + answer, không gửi chunk)
   2. LLM Generation Prompts:
-     - System Prompt mặc định + Few-shot Examples + User Prompt Template
+     - System Prompt mặc định (chiến lược Answer-first + Soft Follow-up) + Few-shot Examples + User Prompt Template
      - Fallback Generation Prompt (khi không dùng UETPromptAugmenter)
-  3. LLM Clarify Ask Prompts:
-     - System + Template xuất JSON {known_info, missing_info, question}
-     - Giá trị fallback mặc định khi lỗi parse JSON
-  4. LLM Follow-up Query Prompts:
+  3. LLM Follow-up Query Prompts:
      - System + Template xuất JSON {missing_info, followup_queries}
 """
 
 from __future__ import annotations
-from typing import Dict, List
+from typing import Dict
 
 
 # =============================================================================
-# 1. PROMPT CHO JEV DECISION MODEL (3 QUYẾT ĐỊNH VI MÔ)
+# 1. PROMPT CHO JEV DECISION MODEL (2 QUYẾT ĐỊNH VI MÔ)
 # =============================================================================
 
 # --- 1.1. Router (3 nhãn: OUT_OF_SCOPE | AMBIGUOUS | QUALIFIED_QUESTION) ---
 JEV_ROUTE_INSTRUCTIONS = (
     "Phân loại tin nhắn `query` gửi tới chatbot tư vấn của Trường Đại học Công nghệ - ĐHQGHN (UET). "
     "Nếu tin nhắn không nêu tên trường thì mặc định hiểu là đang hỏi về UET.\n"
+    "Phạm vi IN-SCOPE của UET bao gồm MỌI chủ đề liên quan đến Trường ĐH Công nghệ (UET / VNU-UET / các khoa FIT, FET, FEMA, FEPN, FAT, FCE, viện IAI, SAE): "
+    "đào tạo, học vụ, quy chế, tuyển sinh, học phí, học bổng, hỗ trợ sinh viên, cẩm nang sức khỏe tinh thần, "
+    "nghiên cứu khoa học, phòng thí nghiệm, đối tác, câu lạc bộ, cuộc thi/thành tích sinh viên (như ACM/ICPC), lịch sử và cơ cấu tổ chức của UET.\n"
     "Chọn 1 nhãn phù hợp nhất theo thứ tự ưu tiên:\n"
-    "1. OUT_OF_SCOPE: Không phải câu hỏi về đào tạo, học vụ hoặc tuyển sinh của UET.\n"
-    "2. AMBIGUOUS: Hỏi về UET nhưng đáp án phụ thuộc trực tiếp vào ngành học, khóa tuyển sinh hoặc "
-    "hệ đào tạo (Chuẩn/CLC) mà tin nhắn chưa nêu, nên cần hỏi thêm trước khi tra cứu.\n"
-    "3. QUALIFIED_QUESTION: Các câu hỏi về UET có thể tra cứu trực tiếp (quy định chung toàn trường, "
-    "câu hỏi tổng quan/liệt kê, câu đã có đủ thông tin chính, câu so sánh hoặc câu có nhiều ý).\n"
-    "Nếu phân vân giữa AMBIGUOUS và QUALIFIED_QUESTION, ưu tiên chọn QUALIFIED_QUESTION."
+    "1. OUT_OF_SCOPE: CHỈ chọn cho lời chào, cảm ơn, hỏi danh tính bot, hỏi về trường đại học khác (không phải UET), "
+    "hoặc chủ đề đời sống hoàn toàn không liên quan tới UET (thời tiết, giá vàng, thể thao...). "
+    "TUYỆT ĐỐI KHÔNG chọn OUT_OF_SCOPE nếu câu hỏi nhắc trực tiếp tới UET, Trường Đại học Công nghệ, hay bất kỳ khoa/viện/bộ môn/cẩm nang/đội tuyển nào của UET.\n"
+    "2. QUALIFIED_QUESTION: Câu hỏi về UET có thể tra cứu trực tiếp, bao gồm: quy chế/quy định áp dụng chung toàn trường "
+    "(tốt nghiệp, thời gian đào tạo, số tín chỉ đăng ký mỗi kỳ, chuẩn ngoại ngữ chung, công thức xét tuyển, học bổng, cảnh báo học vụ), "
+    "hỗ trợ sinh viên/cẩm nang/thành tích/nghiên cứu/lịch sử UET, câu hỏi đã nêu rõ Khoa/Viện/Bộ môn/Ngành/Năm/Chương trình cụ thể, "
+    "câu liệt kê/tổng quan, câu so sánh hoặc câu nhiều ý.\n"
+    "3. AMBIGUOUS: CHỈ chọn khi câu hỏi về UET quá ngắn/chung chung và hoàn toàn thiếu đối tượng bắt buộc "
+    "(không nêu ngành, khoa, khóa hoặc hệ đào tạo) cho các nội dung thay đổi mạnh theo từng ngành/khóa "
+    "(như học phí cụ thể của một ngành, danh sách môn học của khung chương trình, hoặc điểm chuẩn một ngành cụ thể).\n"
+    "Nếu phân vân giữa AMBIGUOUS và QUALIFIED_QUESTION, LUÔN ưu tiên chọn QUALIFIED_QUESTION."
 )
 
 JEV_ROUTE_CRITERIA: Dict[str, str] = {
     "OUT_OF_SCOPE": (
-        "Lời chào, cảm ơn, hỏi danh tính chatbot, hỏi về trường đại học khác hoặc chủ đề không liên quan "
-        "đến đào tạo, học vụ và tuyển sinh của UET. "
-        "Ví dụ: 'xin chào', 'cảm ơn nhé', 'bạn là ai?', 'thời tiết hôm nay thế nào?'."
+        "Lời chào, cảm ơn, hỏi danh tính chatbot, hỏi về trường đại học khác (vd ĐH Sư phạm, ĐH Y, ĐH KHXH&NV...) "
+        "hoặc chủ đề đời sống hoàn toàn không liên quan đến UET. "
+        "Ví dụ: 'xin chào', 'cảm ơn nhé', 'bạn là ai?', 'thời tiết hôm nay thế nào?', 'giá vàng SJC hôm nay?'."
     ),
     "AMBIGUOUS": (
-        "Câu hỏi về UET nhưng yêu cầu thông tin cụ thể thay đổi theo ngành, khóa tuyển sinh hoặc hệ đào tạo "
-        "(Chuẩn/CLC) mà người dùng chưa nêu, nên không thể trả lời chính xác nếu chưa hỏi làm rõ. "
-        "Ví dụ: 'học phí một kỳ bao nhiêu?', 'chương trình học có những môn gì?', "
-        "'cần bao nhiêu tín chỉ để tốt nghiệp?'."
+        "Câu hỏi rất ngắn hoặc quá chung chung về nội dung phụ thuộc chặt vào từng ngành, khóa hoặc hệ đào tạo "
+        "(Chuẩn/CLC) mà người dùng chưa nêu bất kỳ tên ngành, khoa, viện hay năm nào. "
+        "Ví dụ: 'học phí một kỳ bao nhiêu?', 'chương trình học có những môn gì?', 'điểm chuẩn bao nhiêu?'."
     ),
     "QUALIFIED_QUESTION": (
-        "Câu hỏi về đào tạo, học vụ hoặc tuyển sinh UET đủ thông tin để tra cứu ngay: quy định áp dụng chung, "
-        "câu hỏi liệt kê/tổng quan, hoặc đã nêu thông tin chính (ngành/khóa/hệ), kể cả câu so sánh và câu nhiều ý. "
-        "Ví dụ: 'GPA dưới bao nhiêu thì bị cảnh báo học vụ?', 'có các loại học bổng nào?', "
-        "'điểm chuẩn ngành CNTT năm 2024?', 'so sánh học phí ngành CNTT và KHMT hệ chuẩn'."
+        "Mọi câu hỏi về Trường Đại học Công nghệ - ĐHQGHN (UET) đủ thông tin để tra cứu: đào tạo, quy chế chung toàn trường "
+        "(điều kiện tốt nghiệp, thời gian đào tạo tối đa, tín chỉ đăng ký, chuẩn đầu ra ngoại ngữ, công thức xét tuyển, học bổng, cảnh báo học vụ), "
+        "hỗ trợ sinh viên & cẩm nang sức khỏe tinh thần UET, thành tích/cuộc thi sinh viên UET (ACM/ICPC...), nghiên cứu khoa học, phòng lab, "
+        "lịch sử/cơ cấu các Khoa/Viện/Bộ môn (FIT, FET, SAE, FEPN, FAT, FEMA, IAI...), câu hỏi liệt kê/tổng quan, so sánh và nhiều ý. "
+        "Ví dụ: 'GPA dưới bao nhiêu thì bị cảnh báo học vụ?', 'đường dây nóng trong Cẩm nang sức khỏe tinh thần UET?', "
+        "'đội tuyển ACM/ICPC 2015 của Trường ĐH Công nghệ đạt thứ hạng nào?', 'điểm chuẩn ngành CNTT năm 2024?'."
     ),
 }
 
-# --- 1.2. Clarify Check (kiểm tra đủ từng mục trong missing_info) ---
-JEV_CHECK_SUPPLEMENT_INSTRUCTIONS = (
-    "Đối chiếu câu hỏi gốc `query` cùng toàn bộ các lượt trả lời bổ sung trong `supplements` với danh sách "
-    "thông tin cần bổ sung `missing_info` ({missing_desc}). "
-    "Đánh giá xem người dùng đã cung cấp đủ các mục thông tin cần thiết này để hệ thống tra cứu hay chưa. "
-    "Chấp nhận các cách trả lời ngắn gọn hoặc viết tắt phổ biến của sinh viên "
-    "(ví dụ: 'CNTT', 'KHMT', 'K68', 'QH-2024', 'chuẩn', 'CLC')."
-)
-
-JEV_CHECK_SUPPLEMENT_CRITERIA: Dict[str, str] = {
-    "true": (
-        "Kết hợp `query` và toàn bộ `supplements` đã có đủ các mục thông tin trong `missing_info` "
-        "(kể cả khi viết ngắn gọn hoặc viết tắt) để tiến hành tra cứu."
-    ),
-    "false": (
-        "Vẫn còn thiếu ít nhất một mục quan trọng trong `missing_info`, hoặc người dùng trả lời lạc đề, "
-        "quá chung chung nên chưa thể tra cứu."
-    ),
-}
-
-# --- 1.3. Answer Eval (đánh giá cặp query + answer, KHÔNG gửi chunk) ---
+# --- 1.2. Answer Eval (đánh giá cặp query + answer, KHÔNG gửi chunk) ---
 JEV_EVALUATE_ANSWER_INSTRUCTIONS = (
     "Dựa vào `query` và `answer`, đánh giá xem `answer` đã trả lời rõ ràng các nội dung chính mà `query` hỏi hay chưa. "
     "Không yêu cầu bổ sung thêm các chi tiết phụ mà người dùng không hỏi; chỉ đánh giá là chưa đạt (false) khi "
@@ -108,14 +93,17 @@ Nhiệm vụ của bạn là trả lời câu hỏi của sinh viên một cách
 
 Nguyên tắc trả lời:
 1. Bám sát tài liệu được cung cấp: Mọi số liệu, mốc thời gian, điều kiện và quy định đều phải xuất phát trực tiếp từ phần [TÀI LIỆU THAM KHẢO]. Không tự suy đoán hoặc bổ sung kiến thức bên ngoài tài liệu.
-2. Xử lý khi thiếu hoặc không có thông tin:
+2. Chiến lược trả lời trước — gợi ý nhẹ sau (Answer-first + Soft Follow-up):
+   - Khi câu hỏi mang tính tổng quan hoặc chưa nêu rõ ngành học, khóa tuyển sinh hay hệ đào tạo (Chuẩn/CLC), hãy ƯU TIÊN trả lời ngay quy định áp dụng chung toàn trường hoặc lập bảng tóm tắt các mức/nhóm phổ biến có trong tài liệu (ví dụ phân tách rõ hệ Chuẩn và CLC), không từ chối hay hỏi ngược lại khi đã có dữ liệu chung.
+   - Chỉ chủ động hỏi lại sinh viên cung cấp thêm ngành/khóa/hệ đào tạo khi câu hỏi quá cụt và tài liệu tham khảo hoàn toàn không có quy định chung nào để tóm tắt.
+3. Xử lý khi thiếu hoặc không có thông tin:
    - Nếu tài liệu đã trả lời được một phần câu hỏi (ví dụ mới có dữ liệu của 1 trong 2 đối tượng cần so sánh), hãy trình bày đầy đủ phần thông tin đã có, sau đó nêu ngắn gọn phần chưa có trong tài liệu hiện tại.
    - Nếu tài liệu hoàn toàn không có thông tin liên quan đến câu hỏi, hãy trả lời lịch sự: "Xin lỗi bạn, hiện tại trong các văn bản quy chế lưu trữ chưa có thông tin cụ thể về câu hỏi này. Bạn vui lòng liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) hoặc Cổng thông tin đào tạo UET để được hướng dẫn chính xác nhất nhé."
-3. Trình bày gọn gàng, dễ theo dõi:
+4. Trình bày gọn gàng, dễ theo dõi:
    - Mở đầu bằng 1-2 câu trả lời trực tiếp vào trọng tâm câu hỏi.
    - Sử dụng bảng Markdown khi tổng hợp, đối chiếu hoặc so sánh dữ liệu có cấu trúc (thang điểm, học bổng, chuẩn ngoại ngữ, định mức tín chỉ...) và chỉ lập bảng với các dữ liệu có sẵn trong tài liệu; không thêm đối tượng không được hỏi và không tạo các dòng trống kiểu "chưa có dữ liệu".
    - Dùng gạch đầu dòng hoặc khối trích dẫn (`> **Lưu ý:** ...`) cho các điều kiện kèm theo hoặc trường hợp đặc biệt có nêu trong tài liệu.
-4. Trích dẫn nguồn căn cứ: Khi câu trả lời sử dụng thông tin từ tài liệu, ghi rõ ở dòng cuối theo mẫu:
+5. Trích dẫn nguồn căn cứ: Khi câu trả lời sử dụng thông tin từ tài liệu, ghi rõ ở dòng cuối theo mẫu:
    "📌 Căn cứ quy chế: [Tên tài liệu / văn bản / trang từ phần tài liệu tham khảo]".
 """.strip()
 
@@ -178,39 +166,7 @@ LLM_GENERATION_FALLBACK_TEMPLATE = (
 
 
 # =============================================================================
-# 3. PROMPT CHO LLM CLARIFY ASK (NHÁNH AMBIGUOUS - HỎI BỔ SUNG THÔNG TIN)
-# =============================================================================
-
-LLM_CLARIFY_ASK_SYSTEM = (
-    "Bạn là trợ lý tư vấn quy chế đào tạo Trường Đại học Công nghệ - ĐHQGHN (VNU-UET)."
-)
-
-LLM_CLARIFY_ASK_TEMPLATE = (
-    "Bạn là trợ lý tư vấn quy chế đào tạo của Trường Đại học Công nghệ - ĐHQGHN (UET). "
-    "Hệ thống mặc định tư vấn cho trường UET nên không cần hỏi tên trường.\n\n"
-    "Câu hỏi của sinh viên: '{query}'{hist_str}\n\n"
-    "Hãy phân tích ngắn gọn và chuẩn bị câu hỏi làm rõ theo 3 bước:\n"
-    "1. `known_info`: Liệt kê các thông tin học vụ cụ thể đã có từ câu hỏi gốc và các lượt sinh viên đã bổ sung "
-    "(ví dụ: 'ngành CNTT', 'khóa QH-2023'). Nếu chưa có thông tin cụ thể nào, để danh sách rỗng [].\n"
-    "2. `missing_info`: Chỉ liệt kê 1 đến 3 thông tin thiết yếu còn thiếu khiến chưa thể tra cứu chính xác "
-    "(thường là ngành học, khóa tuyển sinh hoặc hệ đào tạo Chuẩn/CLC). "
-    "Không đưa vào danh sách những chi tiết phụ không thực sự cần thiết hoặc đã có trong `known_info`.\n"
-    "3. `question`: Đặt một câu hỏi duy nhất, ngắn gọn, lịch sự (xưng hô 'bạn') để hỏi đúng các mục trong `missing_info`. "
-    "Không hỏi lại thông tin đã biết và không hỏi tên trường.\n\n"
-    "Chỉ trả về một đối tượng JSON hợp lệ theo đúng cấu trúc sau (không kèm giải thích bên ngoài):\n"
-    '{{"known_info": ["..."], "missing_info": ["..."], "question": "..."}}'
-)
-
-DEFAULT_CLARIFY_MISSING_INFO: List[str] = ["ngành", "khóa", "hệ đào tạo"]
-
-DEFAULT_CLARIFY_QUESTION = (
-    "Chào bạn! Để tra cứu chính xác thông tin đào tạo tại UET, bạn vui lòng cho biết thêm "
-    "bạn đang quan tâm đến ngành nào, khóa tuyển sinh năm bao nhiêu và theo chương trình Chuẩn hay Chất lượng cao (CLC) nhé?"
-)
-
-
-# =============================================================================
-# 4. PROMPT CHO LLM FOLLOW-UP QUERY (SINH TRUY VẤN CHO PHẦN CÒN THIẾU)
+# 3. PROMPT CHO LLM FOLLOW-UP QUERY (SINH TRUY VẤN CHO PHẦN CÒN THIẾU)
 # =============================================================================
 
 LLM_FOLLOWUP_SYSTEM = (

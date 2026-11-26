@@ -8,7 +8,7 @@ import unittest
 from typing import Any, Dict, List, Optional
 
 from src.base import RetrievedContext, UserQuery, AugmentedPrompt, Response
-from src.agent.graph import UETAgentGraph, DEFAULT_CLARIFY_MISSING_INFO
+from src.agent.graph import UETAgentGraph
 from src.agent.agent_pipeline import UETAgenticRAGPipeline
 from src.agent.followup import UETFollowupQueryGenerator
 from src.agent.rewriter import UETQueryRewriter
@@ -111,13 +111,10 @@ class TestAgentGraphV3(unittest.TestCase):
         )
 
     def test_graph_topology_matches_v3_diagram(self):
-        """Khẳng định đồ thị có đúng 9 node chính + fail_node ẩn, không còn decompose/grader/hallucination."""
+        """Khẳng định đồ thị có đúng 6 node chính + fail_node ẩn, không còn các node clarify chặn lượt."""
         expected_nodes = {
             "router_node",
             "out_of_scope_node",
-            "clarify_ask_node",
-            "clarify_check_node",
-            "clarify_exhausted_node",
             "retrieval_node",
             "generation_node",
             "answer_eval_node",
@@ -130,6 +127,9 @@ class TestAgentGraphV3(unittest.TestCase):
         mermaid = self.graph.app.get_graph().draw_mermaid()
         self.assertIn("answer_eval_node", mermaid)
         self.assertIn("followup_query_node", mermaid)
+        self.assertNotIn("clarify_ask_node", mermaid)
+        self.assertNotIn("clarify_check_node", mermaid)
+        self.assertNotIn("clarify_exhausted_node", mermaid)
         self.assertNotIn("decompose_node", mermaid)
         self.assertNotIn("grader_node", mermaid)
         self.assertNotIn("hallucination_node", mermaid)
@@ -275,18 +275,85 @@ class TestAgentGraphV3(unittest.TestCase):
         plain = "Quy định xét học bổng UET?"
         self.assertEqual(UETAgentGraph._clean_query_for_retrieval(plain), plain)
 
-    def test_clarify_ask_json_error_falls_back_cleanly(self):
-        """Khi clarify_ask lỗi parse JSON -> dùng câu hỏi mặc định và missing_info mặc định."""
-        failing_json_llm = MockLLMClient(raise_on_json=True)
+    def test_ambiguous_goes_straight_to_rag_and_appends_followup_note(self):
+        """Khi JEV phân loại AMBIGUOUS -> vẫn chạy RAG + answer_eval và tự động gắn gợi ý cuối phản hồi."""
         graph = UETAgentGraph(
             retriever=self.mock_retriever,
-            llm_client=failing_json_llm,
-            decision_client=FakeDecisionClient(routes=[Route.AMBIGUOUS]),
+            llm_client=self.mock_llm,
+            decision_client=FakeDecisionClient(
+                routes=[Route.AMBIGUOUS],
+                evaluate_answers=[Verdict.SUFFICIENT],
+            ),
         )
-        state = graph.run(query="Điều kiện tốt nghiệp?", session_id="sess_fallback_json")
-        self.assertEqual(state["response"].status, "clarify")
-        self.assertEqual(state["clarify"]["missing_info"], DEFAULT_CLARIFY_MISSING_INFO)
-        self.assertIn("ngành", state["answer"].lower())
+        state = graph.run(query="Học phí một kỳ bao nhiêu?")
+        resp = state["response"]
+        self.assertEqual(resp.status, "ok")
+        self.assertEqual(resp.state, 1)
+        self.assertEqual(resp.route, Route.AMBIGUOUS)
+        self.assertIn("Theo quy chế đào tạo UET", resp.answer)
+        self.assertIn("**Gợi ý:**", resp.answer)
+        self.assertEqual(resp.answer.count("**Gợi ý:**"), 1)
+        self.assertGreater(len(resp.contexts), 0)
+
+        # Kiểm tra chế độ voice_mode: nối câu gợi ý tự nhiên, không chèn Markdown
+        graph_voice = UETAgentGraph(
+            retriever=self.mock_retriever,
+            llm_client=self.mock_llm,
+            decision_client=FakeDecisionClient(
+                routes=[Route.AMBIGUOUS],
+                evaluate_answers=[Verdict.SUFFICIENT],
+            ),
+        )
+        state_voice = graph_voice.run(query="Học phí một kỳ bao nhiêu?", voice_mode=True)
+        self.assertNotIn("> **Gợi ý:**", state_voice["response"].answer)
+        self.assertIn("ngành học", state_voice["response"].answer.lower())
+
+    def test_run_stream_enforces_answer_eval_and_emits_only_final_answer(self):
+        """run_stream() bắt buộc qua answer_eval và CHỈ stream token của câu trả lời cuối cùng đã duyệt."""
+        class TwoRoundLLM(MockLLMClient):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def generate(self, prompt: AugmentedPrompt, model: Optional[str] = None) -> Response:
+                self.calls += 1
+                if self.calls == 1:
+                    ans = "BAN_NHAP_VONG_1_CHUA_DU"
+                else:
+                    ans = "DAP_AN_CUOI_DA_DUYET\n| Hệ | Yêu cầu |\n| :--- | :--- |\n| Chuẩn | Bậc 3 |"
+                return Response(
+                    query_id=prompt.user_query.query_id,
+                    answer=ans,
+                    sources=prompt.contexts,
+                    model_name="mock-llm-2round",
+                    latency_seconds=0.01,
+                )
+
+        graph = UETAgentGraph(
+            retriever=self.mock_retriever,
+            llm_client=TwoRoundLLM(),
+            decision_client=FakeDecisionClient(
+                routes=[Route.AMBIGUOUS],
+                evaluate_answers=[Verdict.INSUFFICIENT, Verdict.SUFFICIENT],
+            ),
+        )
+        events = list(graph.run_stream(query="Chuẩn tiếng Anh UET là gì?"))
+        status_nodes = [e["node"] for e in events if e["type"] == "status"]
+        tokens_text = "".join(e["content"] for e in events if e["type"] == "token")
+        done_events = [e for e in events if e["type"] == "done"]
+
+        self.assertIn("router_node", status_nodes)
+        self.assertIn("answer_eval_node", status_nodes)
+        self.assertIn("followup_query_node", status_nodes)
+        self.assertNotIn("BAN_NHAP_VONG_1_CHUA_DU", tokens_text)
+        self.assertIn("DAP_AN_CUOI_DA_DUYET", tokens_text)
+        # Bảo toàn ký tự xuống dòng bảng Markdown
+        self.assertIn("\n| Hệ | Yêu cầu |\n", tokens_text)
+        # AMBIGUOUS được gắn câu gợi ý đúng 1 lần
+        self.assertEqual(tokens_text.count("**Gợi ý:**"), 1)
+        self.assertEqual(len(done_events), 1)
+        self.assertEqual(done_events[0]["status"], "ok")
+        self.assertEqual(done_events[0]["retry"], 1)
 
     def test_anchor_count_extraction(self):
         self.assertEqual(
@@ -365,14 +432,19 @@ class TestAgenticRAGPipelineV3(unittest.TestCase):
         self.assertEqual(resp.metadata.get("state"), 1)
         self.assertEqual(resp.metadata.get("route"), "QUALIFIED_QUESTION")
         self.assertEqual(resp.metadata.get("retry"), 0)
-        self.assertEqual(resp.metadata.get("retried3"), 0)
+        self.assertNotIn("retried3", resp.metadata)
         self.assertIn("used_queries", resp.metadata)
         self.assertIn("execution_steps", resp.metadata)
         self.assertIn("trace", resp.metadata)
 
-        # Test stream
+        # Test stream & stream_events
         stream_tokens = list(pipeline.query_stream(uq))
         self.assertIn("Theo quy chế đào tạo UET", "".join(stream_tokens))
+
+        stream_evs = list(pipeline.stream_events(uq))
+        self.assertTrue(any(e["type"] == "status" for e in stream_evs))
+        self.assertTrue(any(e["type"] == "sources" for e in stream_evs))
+        self.assertTrue(any(e["type"] == "done" for e in stream_evs))
 
 
 if __name__ == "__main__":

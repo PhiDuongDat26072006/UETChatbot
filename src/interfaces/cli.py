@@ -107,22 +107,52 @@ def run_cli():
                 )
                 continue
 
-            # Thực hiện truy vấn RAG
-            with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
-                query = UserQuery(query_text=user_input, session_id=cli_session_id)
-                response = rag_pipeline.query(query)
+            # Thực hiện truy vấn RAG (hiển thị tiến độ trực tiếp theo từng bước nếu là Agentic Pipeline)
+            query = UserQuery(query_text=user_input, session_id=cli_session_id)
+            answer_text = ""
+            response_sources = []
+            response_model = getattr(rag_pipeline.llm, "model_name", "AI Engine")
+
+            if hasattr(rag_pipeline, "stream_events"):
+                token_parts = []
+                with console.status("[bold cyan]🔍 Đang xử lý câu hỏi...[/bold cyan]") as status:
+                    for event in rag_pipeline.stream_events(query):
+                        ev_type = event.get("type")
+                        if ev_type == "status" and event.get("message"):
+                            status.update(f"[bold cyan]🔍 {event['message']}[/bold cyan]")
+                        elif ev_type == "sources":
+                            response_sources = list(event.get("sources") or [])
+                            if event.get("model_name"):
+                                response_model = event["model_name"]
+                        elif ev_type == "token" and event.get("content"):
+                            token_parts.append(event["content"])
+                        elif ev_type == "done":
+                            if event.get("answer"):
+                                answer_text = event["answer"]
+                            if event.get("sources") is not None:
+                                response_sources = list(event.get("sources") or [])
+                            if event.get("model_name"):
+                                response_model = event["model_name"]
+                if not answer_text:
+                    answer_text = "".join(token_parts)
+            else:
+                with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
+                    response = rag_pipeline.query(query)
+                    answer_text = response.answer
+                    response_sources = list(response.sources or [])
+                    response_model = response.model_name or response_model
 
             console.print()
             console.print(
                 Panel(
-                    Markdown(response.answer),
-                    title=f"🤖 Trợ Lý UET ({response.model_name or 'AI Engine'})",
+                    Markdown(answer_text),
+                    title=f"🤖 Trợ Lý UET ({response_model})",
                     border_style="green",
                 )
             )
 
             # Hiển thị trích dẫn nguồn
-            if response.sources:
+            if response_sources:
                 sources_table = Table(title="📚 Tài liệu nguồn trích dẫn", show_header=True, header_style="bold magenta")
                 sources_table.add_column("#", style="dim", width=4)
                 sources_table.add_column("Điểm Rerank", style="yellow", width=12)
@@ -130,7 +160,7 @@ def run_cli():
                 sources_table.add_column("Tên tài liệu / Văn bản", style="cyan")
                 sources_table.add_column("Trích đoạn nội dung", style="white")
 
-                for idx, src in enumerate(response.sources[:3], 1):
+                for idx, src in enumerate(response_sources[:3], 1):
                     meta = src.metadata or {}
                     title = meta.get("title") or meta.get("source") or "Tài liệu UET"
                     method = meta.get("search_source") or ("BM25 + Vector" if meta.get("bm25_rank") and meta.get("vector_rank") else "Vector Search" if meta.get("vector_rank") else "BM25")

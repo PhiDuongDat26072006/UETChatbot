@@ -236,6 +236,7 @@ _GEN_ERROR_PHRASES = (
     "mô hình ai tạm thời từ chối dịch vụ",
     "lỗi truy vấn:",
     "không thể tạo câu trả lời do lỗi kết nối",
+    "đang gián đoạn dịch vụ",
 )
 
 

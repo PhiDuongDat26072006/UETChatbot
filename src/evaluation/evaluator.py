@@ -486,6 +486,7 @@ def generate_predictions(
                     sid
                     and ans.strip()
                     and not item.get("error")
+                    and str(item.get("agent_status") or "").lower() != "fail"
                     and not is_generation_error_response(ans, item.get("model_name"))
                 ):
                     existing_valid[sid] = item
@@ -606,8 +607,36 @@ def generate_predictions(
                             tot_lat = round(time.perf_counter() - t_start, 3)
 
             assert resp is not None
+            resp_meta = getattr(resp, "metadata", None) if isinstance(getattr(resp, "metadata", None), dict) else {}
+            trace_entries = resp_meta.get("trace") if isinstance(resp_meta.get("trace"), list) else []
+
+            if ret_lat is None and trace_entries:
+                ret_vals = [
+                    float(t["latency_s"])
+                    for t in trace_entries
+                    if isinstance(t, dict) and t.get("node") == "retrieval_node" and t.get("latency_s") is not None
+                ]
+                if ret_vals:
+                    ret_lat = round(sum(ret_vals), 3)
+
+            if llm_lat is None and trace_entries:
+                llm_vals = [
+                    float(t["latency_s"])
+                    for t in trace_entries
+                    if isinstance(t, dict) and t.get("node") == "generation_node" and t.get("latency_s") is not None
+                ]
+                if llm_vals:
+                    llm_lat = round(sum(llm_vals), 3)
+
+            token_usage = resp_meta.get("usage")
+            if token_usage is None and trace_entries:
+                for t in reversed(trace_entries):
+                    if isinstance(t, dict) and t.get("node") == "generation_node" and t.get("usage") is not None:
+                        token_usage = t.get("usage")
+                        break
+
             meta = dict(sample.metadata or {})
-            records.append({
+            record_item: Dict[str, Any] = {
                 "sample_id": sample.id,
                 "query": sample.query,
                 "type": meta.get("type") or (meta.get("query_types") or ["factoid"])[0],
@@ -624,9 +653,14 @@ def generate_predictions(
                 "retrieval_latency_s": ret_lat,
                 "llm_latency_s": llm_lat,
                 "total_latency_s": tot_lat,
-                "token_usage": (getattr(resp, "metadata", {}) or {}).get("usage"),
+                "token_usage": token_usage,
                 "error": err_msg,
-            })
+            }
+            if resp_meta.get("status") is not None:
+                record_item["agent_status"] = resp_meta.get("status")
+            if resp_meta.get("route") is not None:
+                record_item["agent_route"] = resp_meta.get("route")
+            records.append(record_item)
 
             if output_path and (idx % 10 == 0 or idx == total):
                 snapshot = {
@@ -728,8 +762,12 @@ def _score_single_offline_record(
     else:
         c_hit = 1.0 if (not is_ood and c_rel >= 0.45) else 0.0
 
-    # Nếu câu trả lời thực chất là thông báo lỗi API / 429 fallback, không chấm 0.0 hoặc HALLUCINATION oan
-    if is_generation_error_response(answer, record.get("model_name")) or bool(record.get("error")):
+    # Nếu câu trả lời thực chất là thông báo lỗi API / 429 fallback / fail_node, không chấm 0.0 hoặc HALLUCINATION oan
+    if (
+        is_generation_error_response(answer, record.get("model_name"))
+        or bool(record.get("error"))
+        or str(record.get("agent_status") or "").lower() == "fail"
+    ):
         return (
             {
                 "is_generation_error": True,
@@ -739,7 +777,7 @@ def _score_single_offline_record(
             ret_metrics,
         )
 
-    refusal = is_refusal_response(answer)
+    refusal = is_refusal_response(answer) or str(record.get("agent_status") or "").lower() == "out_of_scope"
 
     if is_ood:
         ood_acc = 1.0 if refusal else 0.0

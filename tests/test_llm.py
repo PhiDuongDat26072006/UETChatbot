@@ -354,6 +354,7 @@ class TestUETLLMClient(unittest.TestCase):
             captured_post["payload"]["provider"],
             {"order": ["wafer/us"], "allow_fallbacks": False},
         )
+        self.assertEqual(captured_post["payload"]["max_tokens"], 2048)
 
         captured_stream = {}
 
@@ -391,6 +392,7 @@ class TestUETLLMClient(unittest.TestCase):
             captured_stream["payload"]["provider"],
             {"order": ["wafer/us"], "allow_fallbacks": False},
         )
+        self.assertEqual(captured_stream["payload"]["max_tokens"], 2048)
 
     def test_easy_switch_between_openrouter_and_custom_api(self):
         """Chỉ cần đổi provider hoặc biến môi trường LLM_PROVIDER là tự khớp đúng model tương ứng."""

@@ -50,7 +50,8 @@ retrieval:
   vector_weight: 0.20          # Trọng số nhánh Vector Search
 
   # Cấu hình GraphRAG Vector Index (Nhánh tìm kiếm đồ thị tri thức 0-LLM lúc truy vấn)
-  enable_graph: true
+  # Tạm tắt vì chưa build database/graph_index.pkl (vẫn có thể bật nhanh qua --graph hoặc ENABLE_GRAPH=1 sau khi build)
+  enable_graph: false
   graph_top_k: 50
   graph_weight: 0.30
   graph_max_hops: 2
@@ -68,6 +69,7 @@ retrieval:
   reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx", "viranker"
   reranker_model: "weights/jina-reranker-v2-base-multilingual"
   onnx_filename: "weights/jina-reranker-v2-base-multilingual/onnx/model.onnx"
+  reranker_use_gpu: true                # true = ưu tiên CUDAExecutionProvider (tự fallback CPU), false = ép chạy CPU (có thể override bằng env RERANKER_USE_GPU=0/1)
   rerank_top_n: 15                      # Số đoạn giữ lại sau Reranker
   rerank_max_length: 512                # Tối ưu tốc độ cho chunk ~800 ký tự
   rerank_batch_size: 16                 # Micro-batch sắp xếp theo độ dài giảm padding dư thừa
@@ -75,18 +77,18 @@ retrieval:
   rerank_weight: 0.65                   # Alias tương thích ngược cho trọng số Reranker
   rrf_blend_weight: 0.35                # Alias tương thích ngược cho trọng số Hybrid/RRF
   enable_entity_anchor_boost: true      # Boost nhẹ khi khớp chính xác năm (2025/2026) / mã học phần / số QĐ
-  final_top_k: 5                        # Số đoạn cuối cùng trả về cho LLM (K=5 hoặc 10)
+  final_top_k: 6                        # Số đoạn cuối cùng trả về cho LLM (tăng từ 5 -> 6 để bao phủ tốt câu liệt kê)
   score_threshold: null                 # Ngưỡng điểm tối thiểu (tùy chọn)
 
   # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
-  enable_adjacent_expansion: false       # Bật/tắt mở rộng ngữ cảnh liền kề
+  enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
   adjacent_expansion_top_k: 3           # Chỉ mở rộng ngữ cảnh cho Top K chunk điểm cao nhất (Top 3)
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
-  merge_contiguous_chunks: false         # Tự động gộp các chunk nối tiếp trong cùng văn bản thành 1 khối
+  merge_contiguous_chunks: false        # Giữ false để không ghép/đổi chunk_id trước Reranker (tránh lệch IR eval & phình token)
 
 # Cấu hình JEV Decision Model (Hỗ trợ Custom Model/Tunnel như tests/test_tunnel.py hoặc OpenRouter)
 jev:
-  endpoint:  "https://tales-rolls-prizes-paintball.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
+  endpoint:  "https://paths-llc-personals-journals.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
   model: "strands-decider-12B-gemma4-v1-2610"
   connect_timeout_s: 5
   read_timeout_s: 30
@@ -131,6 +133,7 @@ llm:
     - "gemma-4"
   temperature: 0.2
   json_temperature: 0
+  max_tokens: 2048                   # Giới hạn output tokens chung (tránh OpenRouter reserve mặc định 131k tokens -> lỗi 402)
   reasoning_effort: "none"           # Tắt reasoning tokens thừa trên OpenRouter hy4-flash để phản hồi nhanh (~4-7s)
   enable_disk_cache: false
   cache_file: "database/llm_cache.json"
@@ -181,7 +184,6 @@ agent:
 
   noul_threshold:
     answer: 0.5                        # Ngưỡng JEV answer_eval_node (ĐỦ / THIẾU)
-    clarify: 0.5                       # Ngưỡng JEV clarify_check_node (ĐỦ / THIẾU)
 
   contexts:
     max_chunks: 8                      # Số chunk tích lũy tối đa truyền vào LLM
@@ -198,14 +200,10 @@ agent:
     providers: [CUDAExecutionProvider, CPUExecutionProvider]
 
   # Router Node: JEV Decision Model (3 nhãn: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION)
+  # Cả AMBIGUOUS và QUALIFIED_QUESTION đều đi thẳng vào RAG; AMBIGUOUS tự động gắn thêm gợi ý cuối câu trả lời
   router:
     engine: "jev"
     enable_llm: true
-    model: null
-
-  # Nhánh AMBIGUOUS: Giới hạn số lần hỏi bổ sung
-  clarify:
-    max_retries: 3                     # retried3 <= 3 thì hỏi lại, > 3 thì clarify_exhausted
     model: null
 
   # Answer Eval Node: JEV đánh giá (query, answer), không gửi chunk
@@ -226,14 +224,10 @@ agent:
 
 # Các mẫu phản hồi cố định (0 token LLM) - Thống nhất xưng hô "bạn"
 templates:
-  out_of_scope: "Chào bạn! Tôi là UET Chatbot - Trợ lý ảo tư vấn quy chế đào tạo và tuyển sinh của Trường Đại học Công nghệ (VNU-UET). Rất vui được phục vụ bạn! Nếu bạn cần tìm hiểu thông tin học vụ, quy chế, điểm chuẩn hay học phí, hãy chia sẻ để tôi hỗ trợ nhé!"
-  clarify_exhausted: "Xin lỗi bạn, sau nhiều lần hỏi thêm thông tin, bạn vẫn chưa cung cấp đủ dữ liệu để tôi tra cứu chính xác. Bạn vui lòng đặt lại câu hỏi đầy đủ hơn (nêu rõ ngành, khóa, chương trình đào tạo) hoặc liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) để được hướng dẫn chi tiết nhé."
+  out_of_scope: "Chào bạn! Tôi là UET Chatbot - Trợ lý ảo tư vấn quy chế đào tạo và tuyển sinh của Trường Đại học Công nghệ (VNU-UET). Nội dung bạn hỏi hiện nằm ngoài phạm vi hỗ trợ của tôi. Rất vui được phục vụ bạn nếu bạn cần tìm hiểu thông tin học vụ, quy chế, điểm chuẩn hay học phí của UET nhé!"
   fail_service: "Xin lỗi bạn, hệ thống kiểm tra và tra cứu thông tin đang gián đoạn dịch vụ, vui lòng thử lại sau ít phút hoặc liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) để được hỗ trợ nhé."
   answer_incomplete_note: "\n\n> **Lưu ý:** Câu trả lời trên có thể chưa đầy đủ hoàn toàn mọi ý trong câu hỏi của bạn{missing_suffix}. Bạn có thể liên hệ Phòng Đào tạo (Phòng 105-E3, SĐT: 024.3754.7865) hoặc Cổng thông tin đào tạo UET để xác nhận thêm thông tin chi tiết nhé."
-
-# Cấu hình lưu trữ phiên chờ bổ sung nhánh AMBIGUOUS
-clarify_session:
-  ttl_s: 900                           # Thời gian sống của phiên chờ làm rõ: 15 phút
+  ambiguous_followup_note: "\n\n> **Gợi ý:** Nếu bạn muốn tra cứu chính xác theo trường hợp của mình, bạn có thể cho mình biết thêm **ngành học, khóa tuyển sinh hoặc hệ đào tạo (Chuẩn/CLC)** nhé."
 
 prompt:
   include_few_shot: false              # Tắt few-shot dài để giảm input tokens và tăng tốc LLM generation

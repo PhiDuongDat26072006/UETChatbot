@@ -1,9 +1,8 @@
 """
 src/decision/jev_client.py - Triển khai DecisionClient Protocol, JevDecisionClient và FakeDecisionClient (v3).
-Sử dụng mô hình System One JEV (strands-decider / typesafe/jev) cho 3 quyết định vi mô:
+Sử dụng mô hình System One JEV (strands-decider / typesafe/jev) cho 2 quyết định vi mô:
   1. route(query) -> Route (3 nhãn: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION)
-  2. check_supplement(query, last_ask, supplements, missing_info) -> Verdict
-  3. evaluate_answer(query, answer) -> Verdict (chỉ đọc câu hỏi + câu trả lời, không gửi chunk)
+  2. evaluate_answer(query, answer) -> Verdict (chỉ đọc câu hỏi + câu trả lời, không gửi chunk)
 Giữ nguyên cơ chế bảo vệ: _call_lock tuần tự, CircuitBreaker, tách connect/read timeout, nhận diện lỗi CUDA (D10).
 """
 
@@ -22,8 +21,6 @@ from src.decision.jev_enums import Route, Verdict
 from src.prompts.prompts import (
     JEV_ROUTE_INSTRUCTIONS,
     JEV_ROUTE_CRITERIA,
-    JEV_CHECK_SUPPLEMENT_INSTRUCTIONS,
-    JEV_CHECK_SUPPLEMENT_CRITERIA,
     JEV_EVALUATE_ANSWER_INSTRUCTIONS,
     JEV_EVALUATE_ANSWER_CRITERIA,
 )
@@ -117,17 +114,6 @@ class DecisionClient(Protocol):
         """Phân loại 3 nhánh ý định: OUT_OF_SCOPE, AMBIGUOUS, QUALIFIED_QUESTION."""
         ...
 
-    def check_supplement(
-        self,
-        query: str,
-        last_ask: str,
-        supplements: List[str],
-        missing_info: Optional[List[str]] = None,
-        session_id: Optional[str] = None,
-    ) -> Verdict:
-        """Kiểm tra thông tin sinh viên vừa bổ sung đã ĐỦ từng mục cụ thể trong missing_info chưa."""
-        ...
-
     def evaluate_answer(self, query: str, answer: str, session_id: Optional[str] = None) -> Verdict:
         """Đánh giá câu trả lời đã giải đáp đầy đủ mọi ý của câu hỏi hay còn THIẾU (chỉ đọc query + answer)."""
         ...
@@ -172,7 +158,6 @@ class JevDecisionClient:
         breaker_failures: int = 2,
         breaker_open_s: float = 20.0,
         answer_eval_threshold: float = 0.5,
-        clarify_threshold: float = 0.5,
         session_ttl_s: float = 1800.0,
     ):
         try:
@@ -215,7 +200,6 @@ class JevDecisionClient:
 
         noul_cfg = agent_cfg.get("noul_threshold", {})
         self.answer_eval_threshold = float(noul_cfg.get("answer", answer_eval_threshold))
-        self.clarify_threshold = float(noul_cfg.get("clarify", noul_cfg.get("sufficiency", clarify_threshold)))
 
         # Quản lý HTTP Session (Keep-Alive) duy trì xuyên suốt từng phiên trò chuyện (giống tests/test_tunnel.py)
         ttl_val = float(cfg.get("session_ttl_s", session_ttl_s))
@@ -431,47 +415,6 @@ class JevDecisionClient:
         )
         return Route.QUALIFIED_QUESTION
 
-    def check_supplement(
-        self,
-        query: str,
-        last_ask: str,
-        supplements: List[str],
-        missing_info: Optional[List[str]] = None,
-        session_id: Optional[str] = None,
-    ) -> Verdict:
-        """
-        Kiểm tra thông tin sinh viên vừa bổ sung đã ĐỦ từng mục cụ thể trong missing_info chưa.
-        """
-        missing_list = list(missing_info or [])
-        state = {
-            "query": query,
-            "last_ask": last_ask,
-            "missing_info": missing_list,
-            "supplements": supplements,
-        }
-        missing_desc = ", ".join(missing_list) if missing_list else "các thông tin còn thiếu được yêu cầu"
-        questions = {
-            "sufficiency": {
-                "type": "noul",
-                "instructions": JEV_CHECK_SUPPLEMENT_INSTRUCTIONS.format(missing_desc=missing_desc),
-                "criteria": JEV_CHECK_SUPPLEMENT_CRITERIA,
-            }
-        }
-        resp, meta = self._call_decisions_api(state, questions, session_id=session_id)
-        ans_obj = resp.get("answers", {}).get("sufficiency", {})
-        noul_val = ans_obj.get("noul")
-        if noul_val is not None:
-            is_sufficient = float(noul_val) >= self.clarify_threshold
-        else:
-            is_sufficient = bool(ans_obj.get("answer", False))
-        verdict = Verdict.SUFFICIENT if is_sufficient else Verdict.INSUFFICIENT
-        self.last_trace_meta = {**meta, "noul_prob": noul_val}
-        logger.info(
-            f"[JEV Decision: check_supplement] Query='{query[:40]}' missing={missing_list} -> "
-            f"{verdict.value} (noul_prob={noul_val}, latency={meta.get('latency_s')}s)"
-        )
-        return verdict
-
     def evaluate_answer(self, query: str, answer: str, session_id: Optional[str] = None) -> Verdict:
         """
         Đánh giá cặp (câu hỏi, câu trả lời) — KHÔNG gửi chunk ngữ cảnh.
@@ -515,20 +458,18 @@ class JevDecisionClient:
 class FakeDecisionClient:
     """
     Fake Decision Client phục vụ kiểm thử đơn vị và kịch bản offline (v3).
-    Hỗ trợ 3 quyết định: route (3 nhãn), check_supplement (có missing_info), evaluate_answer.
+    Hỗ trợ 2 quyết định: route (3 nhãn) và evaluate_answer.
     """
 
     def __init__(
         self,
         routes: Optional[List[Route]] = None,
-        check_supplements: Optional[List[Verdict]] = None,
         evaluate_answers: Optional[List[Verdict]] = None,
         default_route: Route = Route.QUALIFIED_QUESTION,
         default_verdict: Verdict = Verdict.SUFFICIENT,
         health_status: bool = True,
     ):
         self.routes = list(routes) if routes else []
-        self.check_supplements = list(check_supplements) if check_supplements else []
         self.evaluate_answers = list(evaluate_answers) if evaluate_answers else []
 
         self.default_route = default_route
@@ -545,26 +486,6 @@ class FakeDecisionClient:
     def route(self, query: str, session_id: Optional[str] = None) -> Route:
         res = self.routes.pop(0) if self.routes else self.default_route
         self.history.append({"func": "route", "query": query, "session_id": session_id, "result": res})
-        return res
-
-    def check_supplement(
-        self,
-        query: str,
-        last_ask: str,
-        supplements: List[str],
-        missing_info: Optional[List[str]] = None,
-        session_id: Optional[str] = None,
-    ) -> Verdict:
-        res = self.check_supplements.pop(0) if self.check_supplements else self.default_verdict
-        self.history.append({
-            "func": "check_supplement",
-            "query": query,
-            "last_ask": last_ask,
-            "supplements": list(supplements),
-            "missing_info": list(missing_info) if missing_info is not None else [],
-            "session_id": session_id,
-            "result": res,
-        })
         return res
 
     def evaluate_answer(self, query: str, answer: str, session_id: Optional[str] = None) -> Verdict:

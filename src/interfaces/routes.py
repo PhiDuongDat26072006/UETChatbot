@@ -543,7 +543,20 @@ def create_app():
                 else getattr(pipeline.retriever, "default_top_k", 10)
             )
             try:
-                response = pipeline.query(user_query, top_k=retrieval_top_k)
+                if hasattr(pipeline, "agent_graph"):
+                    format_rules = (
+                        _VOICE_RESPONSE_FORMAT_RULES
+                        if request.voice_mode
+                        else _RESPONSE_FORMAT_RULES
+                    )
+                    response = pipeline.query(
+                        user_query,
+                        top_k=retrieval_top_k,
+                        extra_format_rules=format_rules,
+                        voice_mode=request.voice_mode,
+                    )
+                else:
+                    response = pipeline.query(user_query, top_k=retrieval_top_k)
             except Exception as exc:
                 logger.exception("Lỗi trong pipeline.query tại POST /api/chat: %s", exc)
                 classified = _classify_exception(exc)
@@ -624,34 +637,80 @@ def create_app():
                         else getattr(pipeline.retriever, "default_top_k", 10)
                     )
 
-                    # Hỗ trợ Agentic RAG Pipeline với JEV LangGraph
-                    if hasattr(pipeline, "agent_graph"):
-                        resp = pipeline.query(user_query, top_k=retrieval_top_k)
-                        sources_data = _build_sources_data(resp.sources)
-                        model_name = resp.model_name or "jev-agentic-rag"
-                        sources_payload = {
-                            "type": "sources",
-                            "sources": [s.model_dump() for s in sources_data],
-                            "model_name": model_name,
-                        }
-                        yield f"data: {json.dumps(sources_payload, ensure_ascii=False)}\n\n"
+                    # Hỗ trợ Agentic RAG Pipeline với JEV LangGraph (bắt buộc qua answer_eval, chỉ phát phản hồi cuối)
+                    if hasattr(pipeline, "agent_graph") and hasattr(pipeline, "stream_events"):
+                        format_rules = (
+                            _VOICE_RESPONSE_FORMAT_RULES
+                            if request.voice_mode
+                            else _RESPONSE_FORMAT_RULES
+                        )
+                        accumulated_agent = ""
+                        agent_model_name = getattr(getattr(pipeline, "llm", None), "model_name", "") or "jev-agentic-rag"
 
-                        words = (resp.answer or "").split(" ")
-                        chunk_words = []
-                        for w in words:
-                            chunk_words.append(w)
-                            if len(chunk_words) >= 4:
-                                token_payload = {"type": "token", "content": " ".join(chunk_words) + " "}
+                        for event in pipeline.stream_events(
+                            user_query,
+                            top_k=retrieval_top_k,
+                            extra_format_rules=format_rules,
+                            voice_mode=request.voice_mode,
+                        ):
+                            ev_type = event.get("type")
+                            if ev_type == "status":
+                                status_payload = {
+                                    "type": "status",
+                                    "stage": event.get("node", ""),
+                                    "message": event.get("message", ""),
+                                }
+                                yield f"data: {json.dumps(status_payload, ensure_ascii=False)}\n\n"
+                            elif ev_type == "sources":
+                                sources_data = _build_sources_data(event.get("sources"))
+                                agent_model_name = event.get("model_name") or agent_model_name
+                                sources_payload = {
+                                    "type": "sources",
+                                    "sources": [s.model_dump() for s in sources_data],
+                                    "model_name": agent_model_name,
+                                }
+                                yield f"data: {json.dumps(sources_payload, ensure_ascii=False)}\n\n"
+                            elif ev_type == "token":
+                                chunk = event.get("content") or ""
+                                if not chunk:
+                                    continue
+                                accumulated_agent += chunk
+                                detected = (
+                                    _detect_and_classify_llm_error(accumulated_agent)
+                                    or _detect_and_classify_llm_error(chunk)
+                                )
+                                if detected is not None:
+                                    logger.error(
+                                        "LLM error detected in Agentic /api/chat/stream [%s] model=%s raw=%s",
+                                        detected["error_type"],
+                                        agent_model_name,
+                                        accumulated_agent,
+                                    )
+                                    err_payload = {
+                                        "type": "error",
+                                        "error_type": detected["error_type"],
+                                        "message": detected["message"],
+                                    }
+                                    yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                                    yield "data: [DONE]\n\n"
+                                    return
+                                token_payload = {"type": "token", "content": chunk}
                                 yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
-                                chunk_words = []
-                        if chunk_words:
-                            token_payload = {"type": "token", "content": " ".join(chunk_words)}
-                            yield f"data: {json.dumps(token_payload, ensure_ascii=False)}\n\n"
+                            elif ev_type == "done":
+                                final_ans = event.get("answer") or accumulated_agent
+                                done_payload = {
+                                    "type": "done",
+                                    "latency_seconds": round(timer.elapsed, 3),
+                                    "hide_sources": _is_no_answer_or_out_of_domain(final_ans),
+                                }
+                                yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+                                yield "data: [DONE]\n\n"
+                                return
 
                         done_payload = {
                             "type": "done",
                             "latency_seconds": round(timer.elapsed, 3),
-                            "hide_sources": _is_no_answer_or_out_of_domain(resp.answer),
+                            "hide_sources": _is_no_answer_or_out_of_domain(accumulated_agent),
                         }
                         yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
                         yield "data: [DONE]\n\n"
