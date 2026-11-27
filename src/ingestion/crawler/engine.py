@@ -4,20 +4,47 @@ from collections import deque
 from contextlib import closing
 import json
 import logging
+from urllib.parse import urlsplit
 from src.base import DataSource
 from ..identity import normalize_site_url, source_id, digest
 from ..storage import write_json
 from ..utils import completion_map
 from .parser import parse_page
-from .policy import in_scope, evaluate, resource_type
+from .policy import (
+    discovery_verdict,
+    evaluate,
+    in_discovery_scope,
+    in_scope,
+    resource_type,
+)
+from ..corpus.gate import selected as corpus_selected, prefetch, priority
+from ..overrides import lookup
 
 log = logging.getLogger(__name__)
 
 
 def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick=None):
     site = profile["site"]
+    discover_all = (
+        bool(getattr(options, "discover_all", False))
+        and options.to_stage == "data_source"
+    )
     checkpoint = storage.root / "ingestion_state" / (site + "-crawl.json")
-    key = digest(json.dumps(profile, sort_keys=True, default=str).encode())
+    key = digest(
+        json.dumps(
+            {k: v for k, v in profile.items() if not k.startswith("_")},
+            sort_keys=True,
+            default=str,
+        ).encode()
+    )
+    key = digest(
+        (
+            key
+            + profile.get("_corpus_hash", "")
+            + profile.get("_corpus_mode", "off")
+            + (":discover_all" if discover_all else "")
+        ).encode()
+    )
     saved = json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
     resume = (
         saved.get("profile_hash") == key
@@ -26,18 +53,55 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
     )
     if resume and saved.get("complete"):
         return {"pages": 0, "documents": 0, "errors": 0, "resumed_complete": True}
-    items = (
-        saved.get("frontier", [])
-        if resume
-        else [(normalize_site_url(u, profile), 0, None) for u in profile["seeds"]]
-    )
+    seed_list = []
+    seed_urls = set()
+    initial_urls = list(profile.get("_manual_seeds", [])) + list(profile["seeds"])
+    if discover_all:
+        start_urls = list(profile.get("discovery", {}).get("start_urls", []))
+        existing_html_urls = [
+            rec["uri"]
+            for rec in storage.records("sources", site).values()
+            if rec.get("metadata", {}).get("decision") in {"accepted", "listing"}
+        ]
+        initial_urls = start_urls + initial_urls + existing_html_urls
+    for raw_seed in initial_urls:
+        try:
+            norm_seed = normalize_site_url(raw_seed, profile)
+        except ValueError:
+            continue
+        if discover_all and (
+            resource_type(norm_seed) != "html"
+            or urlsplit(norm_seed).path.startswith("/offline/")
+        ):
+            continue
+        if norm_seed not in seed_urls:
+            seed_urls.add(norm_seed)
+            seed_list.append((norm_seed, 0, None))
+    items = saved.get("frontier", []) if resume else seed_list
     frontier = deque(sorted((tuple(x) for x in items), key=lambda x: x[1]))
     seen = set(saved.get("seen", [])) if resume else set()
     queued = {u for u, _, _ in frontier}
     active = {}
     deferred = []
-    pages = documents = errors = 0
+    pages = documents = errors = prefetch_skipped = corpus_skipped = 0
     flush_every = getattr(options, "flush_every", 20)
+
+    def can_traverse(url):
+        if discover_all:
+            if resource_type(url) != "html" or urlsplit(url).path.startswith("/offline/"):
+                return False
+            rec = storage.records("sources", site).get(source_id(url))
+            if rec and rec["metadata"].get("decision") in {"rejected", "deferred", "alias"}:
+                return False
+            return in_discovery_scope(url, profile)
+        rec = storage.records("sources", site).get(source_id(url))
+        if rec:
+            dec = rec["metadata"].get("decision")
+            if dec in {"rejected", "pending", "deferred", "alias"}:
+                return False
+            if dec in {"accepted", "listing"} and rec["metadata"].get("decision_reason") == "manual_curation":
+                return in_discovery_scope(url, profile) or profile.get("site") == "OTHER"
+        return in_scope(url, profile)
 
     def save():
         storage.flush_pending()
@@ -58,17 +122,70 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
             },
         )
 
-    def fetch(item):
-        try:
-            return fetcher.fetch(item[0], lambda u: in_scope(u, profile)), None
-        except Exception as exc:
-            return None, str(exc)
+    def make_fetcher(rejected_sids, approved_sids):
+        def fetch(item):
+            try:
+                if discover_all:
+                    def allowed_discover(u):
+                        if resource_type(u) != "html" or urlsplit(u).path.startswith("/offline/"):
+                            return False
+                        usid = source_id(u)
+                        if usid in rejected_sids:
+                            return False
+                        return in_discovery_scope(u, profile)
+
+                    return fetcher.fetch(item[0], allowed_discover), None
+
+                blocked = prefetch(item[0], profile)
+                if blocked:
+                    return {"corpus_skip": blocked}, None
+
+                def allowed(u):
+                    rule = lookup(u, profile)
+                    if rule:
+                        return rule["decision"] in {"accepted", "listing"} and (
+                            profile.get("site") == "OTHER"
+                            or u.startswith("https://uet.vnu.edu.vn/offline/")
+                            or in_scope(u, profile)
+                        )
+                    usid = source_id(u)
+                    if usid in rejected_sids:
+                        return False
+                    if source_id(item[0]) in approved_sids or usid in approved_sids:
+                        return in_discovery_scope(u, profile) or profile.get("site") == "OTHER"
+                    return in_scope(u, profile)
+
+                return fetcher.fetch(item[0], allowed), None
+            except Exception as exc:
+                return None, str(exc)
+
+        return fetch
 
     def consume(item, page, error):
-        nonlocal pages, documents, errors
+        nonlocal pages, documents, errors, prefetch_skipped, corpus_skipped
         url, depth, parent = item
-        pages += 1
         identifier = source_id(url)
+        existing_record = storage.records("sources", site).get(identifier)
+        if existing_record and existing_record["metadata"].get("decision") == "rejected":
+            seen.add(url)
+            return
+        if page and page.get("corpus_skip"):
+            source = DataSource.model_validate(existing_record) if existing_record else DataSource(
+                source_id=identifier, source_type="web", uri=url,
+                metadata={"site": site, "faculty": site, "resource_type": "html",
+                          "crawl_depth": depth, "discovered_from": parent,
+                          "decision": evaluate(url, profile)[0]})
+            source.metadata["corpus"] = {
+                "decision": "exclude", "rule_id": page["corpus_skip"], "category": "prefetch",
+                "reason": "URL guard: skipped before HTTP", "priority": 0,
+                "policy_version": profile["_corpus_policy"]["version"],
+                "policy_hash": profile["_corpus_hash"], "evidence": "url_only"}
+            storage.save_source(source)
+            storage.state(site, identifier, "crawl", status="skipped", reason=page["corpus_skip"])
+            seen.add(url)
+            prefetch_skipped += 1
+            return
+        pages += 1
         if error:
             errors += 1
             storage.state(
@@ -77,50 +194,145 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
             deferred.append(item)
             log.warning("[%s] crawl failed %s: %s", site, url, error)
             return
-        html = page["body"].decode(page["encoding"], errors="replace")
-        meta, links = parse_page(html, page["final_url"], profile)
-        decision, reason = evaluate(page["final_url"], profile, meta)
+        is_pdf = resource_type(url) == "pdf" or page.get("encoding") == "binary" or url.lower().endswith(".pdf")
+        if discover_all and is_pdf:
+            seen.add(url)
+            return
+        existing_meta = dict(existing_record["metadata"]) if existing_record else {}
+        if is_pdf:
+            from pathlib import PurePosixPath
+            from urllib.parse import unquote
+            clean_name = PurePosixPath(unquote(urlsplit(page["final_url"]).path)).stem.replace("-", " ").replace(".", " ").strip()
+            meta = {"title": clean_name, "resource_type": "pdf"}
+            links = []
+        else:
+            html = page["body"].decode(page["encoding"], errors="replace")
+            meta, links = parse_page(html, page["final_url"], profile)
+        if discover_all:
+            if existing_meta.get("decision") in {"accepted", "listing", "pending"}:
+                decision = existing_meta["decision"]
+                reason = existing_meta.get("decision_reason", decision)
+            else:
+                decision = "pending"
+                reason = "discovered_pending"
+        elif (
+            not lookup(page["final_url"], profile)
+            and existing_meta.get("decision") in {"accepted", "listing"}
+            and existing_meta.get("decision_reason") == "manual_curation"
+        ):
+            decision, reason = existing_meta["decision"], "manual_curation"
+        else:
+            decision, reason = evaluate(page["final_url"], profile, meta)
+        merged_meta = {
+            **existing_meta,
+            **meta,
+            "site": site,
+            "faculty": site,
+            "resource_type": "pdf" if is_pdf else "html",
+            "discovered_from": existing_meta.get("discovered_from", parent),
+            "crawl_depth": existing_meta.get("crawl_depth", depth),
+            "decision": decision,
+            "decision_reason": reason,
+            "final_url": page["final_url"],
+        }
         source = DataSource(
             source_id=identifier,
             source_type="web",
             uri=url,
-            metadata={
-                **meta,
-                "site": site,
-                "faculty": site,
-                "resource_type": "html",
-                "discovered_from": parent,
-                "crawl_depth": depth,
-                "decision": decision,
-                "decision_reason": reason,
-                "final_url": page["final_url"],
-            },
+            metadata=merged_meta,
         )
-        source = storage.resolve_redirect(source, page, profile)
-        identifier = source.source_id
-        storage.save_source(source)
-        if source.uri in seen:
-            seen.add(url)
-            return
-        if decision != "accepted":
-            storage.remove_processed(site, identifier)
-        # A bounded batch may contain more eligible pages than the remaining limit.
-        if decision == "accepted" and (
-            options.limit is None or documents < options.limit
-        ):
-            on_source(source, page)
-            documents += 1
-        elif decision == "accepted":
-            deferred.append(item)
-            return
+        if discover_all:
+            final_url = page.get("final_url") or url
+            try:
+                final_norm = normalize_site_url(final_url, profile)
+            except ValueError:
+                final_norm = url
+            sources_map = storage.records("sources", site)
+            effective_uri = final_norm
+            if final_norm != url:
+                target_sid = source_id(final_norm)
+                target_existing = sources_map.get(target_sid)
+                if target_existing and target_existing["metadata"].get("decision") == "rejected":
+                    seen.update((url, final_norm))
+                    return
+                if existing_record is not None:
+                    storage.save_source(source)
+                if (
+                    target_existing is None
+                    and in_discovery_scope(final_norm, profile)
+                    and resource_type(final_norm) == "html"
+                ):
+                    storage.save_source(
+                        DataSource(
+                            source_id=target_sid,
+                            source_type="web",
+                            uri=final_norm,
+                            metadata={
+                                **meta,
+                                "site": site,
+                                "faculty": site,
+                                "resource_type": "html",
+                                "discovered_from": existing_meta.get("discovered_from", parent)
+                                if existing_meta.get("decision") != "accepted"
+                                else url,
+                                "crawl_depth": depth,
+                                "decision": "pending",
+                                "decision_reason": "discovered_pending",
+                                "requested_url": url,
+                                "final_url": final_url,
+                            },
+                        )
+                    )
+            else:
+                storage.save_source(source)
+            if effective_uri in seen:
+                seen.add(url)
+                return
+        else:
+            source = storage.resolve_redirect(source, page, profile)
+            identifier = source.source_id
+            redirect_existing = storage.records("sources", site).get(identifier)
+            if redirect_existing and redirect_existing["metadata"].get("decision") == "rejected":
+                seen.update((url, source.uri))
+                return
+            candidate = source.model_dump(mode="json")
+            allowed = corpus_selected(candidate, profile)
+            source.metadata.update(candidate["metadata"])
+            storage.save_source(source)
+            if source.uri in seen:
+                seen.add(url)
+                return
+            if decision != "accepted":
+                storage.remove_processed(site, identifier)
+            # A bounded batch may contain more eligible pages than the remaining limit.
+            if decision == "accepted" and allowed and (
+                options.limit is None or documents < options.limit
+            ):
+                on_source(source, page)
+                documents += 1
+            elif decision == "accepted" and allowed:
+                deferred.append(item)
+                return
+            elif decision == "accepted":
+                corpus_skipped += 1
+            effective_uri = source.uri
+        existing_sources = storage.records("sources", site)
         for link in links:
             target = link["url"]
             kind = resource_type(target)
             if kind == "asset":
                 continue
-            verdict, why = evaluate(target, profile)
             sid = source_id(target)
-            if sid not in storage.records("sources", site):
+            existing_child = existing_sources.get(sid)
+            if existing_child is None:
+                if discover_all:
+                    if not in_discovery_scope(target, profile):
+                        continue
+                    verdict, why = "pending", "discovered_pending"
+                elif lookup(target, profile) or target in seed_urls:
+                    verdict, why = evaluate(target, profile)
+                else:
+                    verdict, why = discovery_verdict(target, profile)
                 storage.save_source(
                     DataSource(
                         source_id=sid,
@@ -138,15 +350,18 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
                         },
                     )
                 )
+            else:
+                verdict = existing_child["metadata"].get("decision")
             if (
                 kind == "html"
-                and in_scope(target, profile)
+                and verdict in ({"accepted", "listing", "pending"} if discover_all else {"accepted", "listing"})
+                and can_traverse(target)
                 and target not in seen
                 and target not in queued
             ):
                 frontier.append((target, depth + 1, url))
                 queued.add(target)
-        seen.update((url, source.uri))
+        seen.update((url, effective_uri))
         storage.state(site, identifier, "crawl", status="completed", url=url)
 
         log.info("[%s] depth=%s %s %s", site, depth, decision, url)
@@ -158,6 +373,11 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
             while frontier and pages < options.max_pages:
                 if options.limit is not None and documents >= options.limit:
                     break
+                # Preserve BFS and explicit seed order; prioritize within each depth.
+                def rank(item):
+                    meta = storage.records("sources", site).get(source_id(item[0]), {}).get("metadata", {})
+                    return (item[1], 0 if item[1] == 0 else -priority(item[0], profile, meta))
+                frontier = deque(sorted(frontier, key=rank))
                 depth = frontier[0][1]
                 level = []
                 while (
@@ -166,7 +386,7 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
                     and pages + len(level) < options.max_pages
                 ):
                     item = frontier.popleft()
-                    if item[0] in seen or not in_scope(item[0], profile):
+                    if item[0] in seen or not can_traverse(item[0]):
                         continue
                     if depth > options.max_depth:
                         deferred.append(item)
@@ -176,8 +396,20 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
                         level.append(item)
                 # Checkpoint before scheduling: crash during a level never loses its URLs.
                 save()
+                sources_snapshot = storage.records("sources", site)
+                rejected_sids = {
+                    sid
+                    for sid, r in sources_snapshot.items()
+                    if r.get("metadata", {}).get("decision") == "rejected"
+                }
+                approved_sids = {
+                    sid
+                    for sid, r in sources_snapshot.items()
+                    if r.get("metadata", {}).get("decision") in {"accepted", "listing"}
+                }
+                fetch_fn = make_fetcher(rejected_sids, approved_sids)
                 with closing(
-                    completion_map(fetch, level, workers, on_tick=on_tick)
+                    completion_map(fetch_fn, level, workers, on_tick=on_tick)
                 ) as results:
                     for item, (page, error) in results:
                         consume(item, page, error)
@@ -194,5 +426,7 @@ def crawl(profile, storage, fetcher, on_source, options, on_commit=None, on_tick
         "pages": pages,
         "documents": documents,
         "errors": errors,
+        "prefetch_skipped": prefetch_skipped,
+        "corpus_skipped": corpus_skipped,
         "remaining": len(frontier) + len(active) + len(deferred),
     }

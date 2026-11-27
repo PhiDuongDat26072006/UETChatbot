@@ -26,87 +26,77 @@ def build_parser():
     parser = argparse.ArgumentParser(description="UET HTML-first ingestion")
     commands = parser.add_subparsers(dest="command", required=True)
     ingest = commands.add_parser("ingest", help="Run staged ingestion")
-    ingest.add_argument(
-        "--from",
-        dest="from_stage",
-        choices=["web", "data_source", "raw"],
-        default="web",
-    )
-    ingest.add_argument(
-        "--to",
-        dest="to_stage",
-        choices=["data_source", "raw", "processed"],
-        default="processed",
-    )
-    ingest.add_argument(
-        "--max-pages",
-        type=positive,
-        default=defaults["max_pages"],
-        help="Fetched pages per site per invocation",
-    )
+    ingest.add_argument("--from", dest="from_stage", choices=["web", "data_source", "raw"], default="web")
+    ingest.add_argument("--to", dest="to_stage", choices=["data_source", "raw", "processed"], default="processed")
+    ingest.add_argument("--max-pages", type=positive, default=defaults["max_pages"], help="Fetched pages per site per invocation")
     ingest.add_argument("--max-depth", type=int, default=defaults["max_depth"])
-    ingest.add_argument(
-        "--limit",
-        type=positive,
-        default=defaults["limit"],
-        help="Document budget per stage across selected sites",
-    )
-    ingest.add_argument(
-        "--download-workers", type=positive, default=defaults["download_workers"]
-    )
-    ingest.add_argument(
-        "--site-workers",
-        type=positive,
-        default=defaults["site_workers"],
-        help="Concurrent sites without --limit",
-    )
-    ingest.add_argument(
-        "--flush-every",
-        type=positive,
-        default=defaults["flush_every"],
-        help="Commit network metadata and extraction results every N completed items",
-    )
+    ingest.add_argument("--limit", type=positive, default=defaults["limit"], help="Document budget per stage across selected sites")
+    ingest.add_argument("--download-workers", type=positive, default=defaults["download_workers"])
+    ingest.add_argument("--site-workers", type=positive, default=defaults["site_workers"], help="Concurrent sites without --limit")
+    ingest.add_argument("--flush-every", type=positive, default=defaults["flush_every"], help="Commit network metadata and extraction results every N completed items")
     ingest.add_argument("--per-host", type=positive, default=defaults["per_host"])
-    ingest.add_argument(
-        "--extract-workers", type=positive, default=defaults["extract_workers"]
-    )
-    ingest.add_argument(
-        "--stream-extract-workers",
-        type=positive,
-        default=defaults["stream_extract_workers"],
-        help="Shared extraction processes for web/data_source -> processed; default: download-workers",
-    )
+    ingest.add_argument("--extract-workers", type=positive, default=defaults["extract_workers"], help="Number of extraction processes for raw -> processed")
+    ingest.add_argument("--stream-extract-workers", type=positive, default=defaults["stream_extract_workers"], help="Shared extraction processes for web/data_source -> processed; default: download-workers")
     ingest.add_argument("--timeout", type=positive, default=defaults["timeout"])
-    ingest.add_argument(
-        "--max-html-bytes", type=positive, default=defaults["max_html_bytes"]
-    )
+    ingest.add_argument("--max-html-bytes", type=positive, default=defaults["max_html_bytes"])
     ingest.add_argument("--retries", type=int, default=defaults["retries"])
-    ingest.add_argument(
-        "--delay",
-        type=nonnegative,
-        default=defaults["delay"],
-        help="Delay per worker before each GET",
-    )
+    ingest.add_argument("--delay", type=nonnegative, default=defaults["delay"], help="Delay per worker before each GET")
+    ingest.add_argument("--overrides", type=Path, help="Exact-URL override YAML")
     ingest.add_argument("--refresh", action="store_true")
     ingest.add_argument("--reprocess", action="store_true")
     ingest.add_argument("--retry-failed", action="store_true")
+    ingest.add_argument("--discover-all", action="store_true", help="Crawl discovery.start_urls in web -> data_source mode into pending without downloading raw/processed")
     status = commands.add_parser("status", help="Read stage counts")
     for command in (ingest, status):
         command.add_argument("--sites", nargs="+", type=str.upper)
         command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
         command.add_argument("--profile-dir", type=Path)
-    ingest.add_argument(
-        "--log-file",
-        type=Path,
-        default=DEFAULT_LOG_FILE,
-        help="Path to project log file (default: logs/app.log)",
-    )
+    ingest.add_argument("--corpus-mode", choices=["off", "balanced", "strict"], default="strict", help="strict (default): include only; balanced: include+review; off: previous behavior")
+    ingest.add_argument("--corpus-config", type=Path, help="Per-site corpus registry YAML")
+    corpus = commands.add_parser("filter", help="Rank UET source links; do not modify ingestion data")
+    corpus.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    corpus.add_argument("--sources", type=Path, help="Default: data/data_source/UET.jsonl")
+    corpus.add_argument("--output-dir", type=Path, help="Default: data/corpus/UET")
+    corpus.add_argument("--policy", type=Path, help="Override policy for one site")
+    corpus.add_argument("--sites", nargs="+", type=str.upper, default=["UET"])
+    corpus.add_argument("--corpus-config", type=Path)
+    corpus.add_argument("--export-processed", action="store_true", help="Export include docs under corpus/<SITE>/processed/")
+    ingest.add_argument("--log-file", type=Path, default=DEFAULT_LOG_FILE, help="Path to project log file (default: logs/app.log)")
+    review = commands.add_parser("review", help="Launch local web UI for source curation")
+    review.add_argument("--host", default="127.0.0.1")
+    review.add_argument("--port", type=positive, default=8001)
+    review.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    review.add_argument("--open-browser", action=argparse.BooleanOptionalAction, default=False, help="Open the review UI in the default browser")
+    migrate = commands.add_parser("migrate-pending", help="Migrate non-accepted/non-alias sources to pending")
+    migrate.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    migrate.add_argument("--profile-dir", type=Path)
+    dedup = commands.add_parser("dedup", help="Deduplicate sources per-site and across all sites")
+    dedup.add_argument("--sites", nargs="+", type=str.upper)
+    dedup.add_argument("--no-cross-site", action="store_true", help="Only deduplicate inside each site")
+    dedup.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    dedup.add_argument("--profile-dir", type=Path)
+    cf = commands.add_parser("cloudflare", help="Sync sources & mobile review decisions with Cloudflare D1")
+    cf.add_argument("--setup", action="store_true", help="Verify Worker URL/secret and save local config")
+    cf.add_argument("--push", action="store_true", help="Push local sources to Cloudflare D1")
+    cf.add_argument("--pull", action="store_true", help="Pull mobile review decisions back into local files")
+    cf.add_argument("--url", help="Deployed Cloudflare Worker URL (or CLOUDFLARE_REVIEW_URL)")
+    cf.add_argument("--secret", help="Cloudflare SYNC_SECRET (or CLOUDFLARE_SYNC_SECRET)")
+    cf.add_argument("--sites", nargs="+", type=str.upper)
+    cf.add_argument("--status", dest="status_filter", choices=["pending", "accepted", "listing", "rejected"], help="Optional status filter for --push or --pull")
+    cf.add_argument("--batch-size", type=positive, default=100, help="Push batch size (1-200)")
+    cf.add_argument("--force", action="store_true", help="Overwrite dirty D1 rows on --push")
+    cf.add_argument("--dry-run", action="store_true", help="Preview --pull changes without writing local files or acking")
+    cf.add_argument("--details", action="store_true", help="Include full per-URL changes list in --pull output")
+    cf.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    cf.add_argument("--profile-dir", type=Path)
     return parser
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "cloudflare" and not (args.setup or args.push or args.pull):
+        parser.error("Choose at least one of --setup, --push, or --pull")
     if args.command == "ingest":
         from .runner import STAGES
 
@@ -120,6 +110,10 @@ def main(argv=None):
             parser.error("--reprocess requires --to processed")
         if args.retry_failed and args.from_stage == "web":
             parser.error("Resume web automatically; --retry-failed is for stored data")
+        if args.discover_all and (
+            args.from_stage != "web" or args.to_stage != "data_source"
+        ):
+            parser.error("--discover-all requires --from web --to data_source")
         if (
             args.retry_failed
             and args.from_stage == "data_source"
@@ -140,13 +134,69 @@ def main(argv=None):
             force=True,
         )
     try:
-        from .runner import run_ingestion, get_status
+        if args.command == "review":
+            from .review_web.app import run_review_web
 
-        result = (
-            run_ingestion(args)
-            if args.command == "ingest"
-            else get_status(args.data_dir, args.profile_dir, args.sites)
-        )
+            run_review_web(
+                host=args.host,
+                port=args.port,
+                data_dir=args.data_dir,
+                open_browser=args.open_browser,
+            )
+            return 0
+        if args.command == "migrate-pending":
+            from .curation import migrate_non_accepted_to_pending
+
+            result = migrate_non_accepted_to_pending(args.data_dir, args.profile_dir)
+        elif args.command == "dedup":
+            from .curation_dedup import deduplicate_all_sites
+
+            result = deduplicate_all_sites(
+                args.data_dir,
+                sites=args.sites,
+                cross_site=not args.no_cross_site,
+                profile_dir=args.profile_dir,
+            )
+        elif args.command == "cloudflare":
+            from .cloudflare_sync import (
+                pull_from_cloudflare,
+                push_to_cloudflare,
+                setup_cloudflare_sync,
+            )
+
+            actions = {}
+            if args.setup:
+                actions["setup"] = setup_cloudflare_sync(args.data_dir, url=args.url, secret=args.secret)
+            if args.pull:
+                actions["pull"] = pull_from_cloudflare(
+                    args.data_dir,
+                    sites=args.sites,
+                    status_filter=args.status_filter,
+                    dry_run=args.dry_run,
+                    details=args.details,
+                    url=args.url,
+                    secret=args.secret,
+                    profile_dir=args.profile_dir,
+                )
+            if args.push:
+                actions["push"] = push_to_cloudflare(
+                    args.data_dir,
+                    sites=args.sites,
+                    status_filter=args.status_filter,
+                    batch_size=args.batch_size,
+                    force=args.force,
+                    url=args.url,
+                    secret=args.secret,
+                    profile_dir=args.profile_dir,
+                )
+            result = next(iter(actions.values())) if len(actions) == 1 else actions
+        elif args.command == "filter":
+            from .corpus.runner import run_filter
+            result = run_filter(args)
+        else:
+            from .runner import run_ingestion, get_status
+            result = (run_ingestion(args) if args.command == "ingest"
+                      else get_status(args.data_dir, args.profile_dir, args.sites))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if result.get("status") == "failed" else 0
     except Exception as exc:

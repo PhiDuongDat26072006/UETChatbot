@@ -1,77 +1,298 @@
 site: UET
 version: 2
+
+# ==============================================================================
+# SEEDS
+# ==============================================================================
 seeds:
-- https://uet.vnu.edu.vn/
+  # --- CORE SCOPE (Đang cào trọng tâm CTĐT, ngoại ngữ và quy chế trên uet.edu.vn / uet.vnu.edu.vn) ---
+  - https://uet.vnu.edu.vn/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/
+  - https://uet.vnu.edu.vn/wp-content/uploads/2022/12/Quy-ch%E1%BA%BF-%C4%90T%C4%90H-3626.pdf
+  - https://uet.vnu.edu.vn/wp-content/uploads/2021/03/Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final.pdf
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-xay-dung-21/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-ky-thuat-hang-khong-vu-tru-nganh-ky-thuat-khong-gian-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-ky-thuat-hang-khong-vu-tru-nganh-ky-thuat-khong-gian-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-ky-thuat-hang-khong-vu-tru-nganh-ky-thuat-khong-gian-3/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-thong-thong-tin-12/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-truyen-thong-va-mang-may-tinh-4/
+  - https://uet.edu.vn/40411/
+  - https://uet.edu.vn/50079/
+  - https://uet.edu.vn/50102/
+  - https://uet.edu.vn/chuong-trinh-da-tao-nganh-ky-thuat-vat-lieu-va-linh-kien-nano-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-chuong-trinh-chuan-quoc-te-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-vien-thong-clc-tt23/
+  - https://uet.edu.vn/40411-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-chuong-trinh-chuan-quoc-te-3/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-nang-luong-tai-truong-dh-cong-nghe-dhqg-ha-noi-co-gi-dac-biet/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-thiet-ke-vi-mach/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-cong-nghe-ky-thuat-dien-tu-vien-thong-dinh-huong-thiet-ke-vi-mach-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-cong-nghe-ky-thuat-dien-tu-vien-thong-dinh-huong-thiet-ke-vi-mach-3/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-cong-nghe-ky-thuat-dien-tu-vien-thong-dinh-huong-thiet-ke-vi-mach/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-chuong-trinh-chuan-quoc-te-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-truyen-du-lieu-va-mang-may-tinh-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-vat-lieu-va-linh-kien-nano-8/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-chat-luong-cao-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-clc-tt23-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-phan-mem-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-phan-mem-8/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-robot-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-vien-thong-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-co-ky-thuat-12/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-co-ky-thuat-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-co-ky-thuat-8/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-hang-khong-vu-tru-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-co-dien-tu-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-co-dien-tu-clc-tt23-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-4-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-truyen-thong-chuong-trinh-chuan-quoc-te/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-dien-tu-vien-thong-clc-tt23-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-ky-thuat-xay-dung-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-nong-nghiep-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-sinh-hoc-5/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-sinh-hoc/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-thong-tin-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-thong-tin-chat-luong-cao-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-cong-nghe-thong-tin-dinh-huong-thi-truong-nhat-ban-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-he-thong-thong-tin-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-12/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-35/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-4-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-8/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-khoa-hoc-may-tinh-chuong-trinh-chuan-quoc-te-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-co-dien-tu-18/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-co-dien-tu-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-dien-tu-19-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-dien-tu-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-dien-tu-8/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-dieu-khien-va-tu-dong-hoa-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-khong-gian/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-may-tinh-15/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-may-tinh-19/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-may-tinh-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-nang-luong-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-phan-mem-24/
+  - https://uet.edu.vn/50079-2/
+  - https://uet.edu.vn/50102-2/
+  - https://uet.edu.vn/chuong-trinh-da-tao-nganh-ky-thuat-vat-lieu-va-linh-kien-micro-nano-2/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-cong-nghe-ky-thuat-sinh-hoc-nganh-cong-nghe-sinh-hoc-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-cong-nghe-vat-lieu-va-vi-dien-tu-nganh-cong-nghe-vat-lieu-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-khoa-hoc-va-ky-thuat-du-lieu-nganh-khoa-hoc-du-lieu-4/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-an-toan-thong-tin/
+  - https://uet.edu.vn/chuong-trinh-dao-tao-nganh-thong-thong-tin-chat-luong-cao-theo-thong-tu-23-4/
+  - https://uet.edu.vn/quy-che-dao-ta%cc%a3o-da%cc%a3i-ho%cc%a3c-tai-dhqghn/
+  - https://uet.edu.vn/quy-che-dao-tao-sau-dai-hoc-o-dai-hoc-quoc-gia-ha-noi/
+  - https://uet.edu.vn/quy-che-dao-tao-thac-si-tai-dai-hoc-quoc-gia-ha-noi/
+  - https://uet.edu.vn/quy-che-dao-tao-thac-si-tai-dhqghn/
+  - https://uet.edu.vn/quy-che-dao-tao-tien-si-tai-dai-hoc-quoc-gia-ha-noi/
+  - https://uet.edu.vn/quy-che-cong-tac-sinh-vien-cua-dai-hoc-quoc-gia-ha-noi-theo-quyet-dinh-32qd-dhqghn/
+  - https://uet.edu.vn/quy-che-dao-tao-dai-hoc-cua-dai-hoc-quoc-gia-ha-noi-theo-quyet-dinh-5115qd-dhqghn/
+  - https://uet.edu.vn/quy-che-dao-tao-dai-hoc-tai-dhqghn/
+  - https://uet.edu.vn/quy-che-moi-ve-dao-tao-bac-dai-hoc-tai-dai-hoc-quoc-gia-ha-noi-tiep-tuc-nang-cao-chat-luong-va-tao-dieu-kien-thuan-loi-hon-cho-nguoi-hoc/
+  - https://uet.edu.vn/quy-che-tuyen-sinh-dai-hoc-chinh-quy-tai-dhqghn/
+  - https://uet.edu.vn/quy-dinh-ve-giam-hoc-phi-doi-voi-cac-hoc-phan-ngoai-ngu-va-cac-hoc-phan-duoc-mien-hoc-va-cong-nhan-diem-cua-chuong-trinh-chat-luong-cao-tt23/
+  - https://uet.edu.vn/quy-dinh-thu-hoc-phi-voi-nguoi-hoc-xin-tam-ngung-hoc-tap-trong-hoc-ki-va-nguoi-hoc-hoan-thanh-chuong-trinh-dao-tao-truoc-han/
+  - https://uet.edu.vn/huong-dan-thuc-hien-quy-dinh-ve-co-che-thu-quan-ly-hoc-phi-doi-voi-co-giao-duc/
+  - https://uet.edu.vn/quy-dinh-ve-co-che-thu-quan-ly-hoc-phi-doi-voi-co-giao-duc-thuoc-thong-giao-duc-quoc-dan-va-chinh-sach-mien-giam-hoc-phi-ho-tro-chi-phi-hoc-tap-gia-dich-vu-trong-linh-vuc-giao-duc-dao-tao/
+  - https://uet.edu.vn/quy-dinh-ve-co-che-thu-quan-ly-hoc-phi-doi-voi-co-giao-duc/
+  - https://uet.edu.vn/dieu-chinh-mot-noi-dung-ve-chuc-dao-tao-va-xac-dinh-chuan-dau-ra-ngoai-ngu/
+  - https://uet.edu.vn/ky-thi-xet-chuan-dau-ra-ngoai-ngu-vnu-test-danh-cho-sinh-vien/
+  - https://uet.edu.vn/nop-minh-chung-mien-hoc-mien-thi-va-chuyen-doi-diem-cac-hoc-phan-ngoai-ngu-cho-sinh-vien-khoa-k70-qh-2025-icq/
+  - https://uet.edu.vn/huong-dan-thu-tuc-ho-so-mien-giam-hoc-phi-cho-sinh-vien-khoa-qh-2026/
+  - https://uet.edu.vn/quy-dinh-dinh-muc-hoc-phi-cac-ctdt-nam-hoc-2026-2027/
+  - https://uet.edu.vn/che-mien-hoc-phi-va-cap-ho-tro-sinh-hoat-phi-voi-cac-hvchncs-tu-khoa-qh-2025/
+  - https://uet.edu.vn/tang-hoc-bong-viettel-nam-hoc-2025-2026-cho-hoc-vien-cao-hoc/
+  - https://uet.edu.vn/thoi-khoa-bieu-hoc-ky-i-nam-hoc-2026-2027-bac-sau-dai-hoc-gui-nguoi-hoc-sau-dai-hoc/
+  - https://uet.edu.vn/tuyen-sinh-bac-tien-si-nam-2026-dot-2/
+  - https://uet.edu.vn/cap-hoc-bong-cho-cac-sinh-vien-co-thanh-tich-xuat-sac-trong-ky-thi-tuyen-sinh-dai-hoc-nam-2026-vao-truong-dai-hoc-cong-nghe/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-dinh-thien-ly-nam-hoc-2026-2027-danh-cho-sinh-vien-nam-cuoi-va-sinh-vien-nam-cuoi-co-hoan-canh-dac-biet/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-dong-hanh-cung-vingroup-nam-hoc-2025-2026/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-img-nam-hoc-2026-2027/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-k-t-nam-hoc-2025-2026/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-tai-nang-pegatron-2027/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-tai-nang-pegatron-nam-hoc-2025-2026/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-thac-si-tai-truong-dai-hoc-korea-han-quoc-do-quy-pony-chung-tai-tro-nam-2026/
+  - https://uet.edu.vn/chuong-trinh-hoc-bong-thac-si-tai-truong-dai-hoc-korea-han-quoc-quy-pony-chung-tai-tro-nam-2026/
+  - https://uet.edu.vn/truong-dai-hoc-cong-nghe-dhqghn-cong-bo-diem-chuan-dai-hoc-chinh-quy-nam-2026/
+  - https://uet.edu.vn/nop-ho-so-huong-chinh-sach-ho-tro-chi-phi-hoc-tap-hoc-ki-i-nam-hoc-2026-2027/
+  - https://uet.edu.vn/nop-ho-so-nhan-tro-cap-xa-hoi-hoc-ky-i-nam-hoc-2026-2027/
+  - https://uet.edu.vn/diem-trung-tuyen-vao-truong-dh-cong-nghe-dhqghn-nam-2024-theo-phuong-thuc-thpt/
+  - https://uet.edu.vn/khung-chuong-trinh-dao-tao-chuan-bac-dai-nganh-tri-tue-nhan-tao/
+  - https://uet.edu.vn/lan-dau-tien-uet-dao-tao-cong-nghe-sinh-hoc-ket-hop-voi-ai-va-khoa-hoc-du-lieu/
+  - https://uet.edu.vn/ban-giam-hieu/
+  - https://uet.edu.vn/ban-hanh-mau-van-bang-giao-duc-dai-hoc-tai-dai-hoc-quoc-gia-ha-noi/
+  - https://uet.edu.vn/ban-hanh-quy-dinh-ve-quan-ly-hoat-dong-hop-tac-quoc-te-cua-dhqghn/
+  - https://uet.edu.vn/bo-mon-cong-nghe-xay-dung-giao-thong/
+  - https://uet.edu.vn/dang-uy/
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
+  # - https://uet.vnu.edu.vn/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/quy-che-dao-tao-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
+  # - https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
+  # - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/quy-che-dao-tao-sau-dai-hoc/
+
+# ==============================================================================
+# SCOPE
+# ==============================================================================
 scope:
   hosts:
-  - uet.vnu.edu.vn
+    - uet.edu.vn
+    - uet.vnu.edu.vn
+
   path_prefixes:
-  - /
+    - /
+
+  # --- CORE SCOPE: Whitelist chỉ nhận CTĐT, Ngoại ngữ và PDF chỉ định trên uet.edu.vn / uet.vnu.edu.vn ---
+  include_patterns:
+    - ^/dao-tao/?$
+    - ^/chuong-trinh-dao-tao
+    - ^/minh-chung-chuan-dau-ra-trinh-ngoai-ngu-duoc-su-dung-de-xet-tot-nghiep-bac-dai-hoc/?$
+    # Chỉ nhận ĐÚNG các file PDF đã chỉ định cụ thể, TUYỆT ĐỐI không nhận các file PDF khác:
+    - Quy-chế-ĐTĐH-3626\.pdf$
+    - Quy-dinh-ve-viec-nop-hoc-phi-tai-truong-DHCN-2021_final\.pdf$
+
   exclude_prefixes:
-  - /wp-admin
-  - /wp-login.php
-  - /feed
-  - /vien-tri-tue-nhan-tao
+    - /wp-admin
+    - /wp-login.php
+    - /feed
+    - /vien-tri-tue-nhan-tao
+    - /en
+    - /cdu-en
+    - /~
+    - /tag
+    - /author
+    - /wp-json
+    - /wp-includes
+    - /static
+
+  # --- GENERAL SCOPE (Mở lại khi cào diện rộng toàn site UET) ---
+  # exclude_prefixes:
+  #   - /wp-admin
+  #   - /wp-login.php
+  #   - /feed
+  #   - /vien-tri-tue-nhan-tao
+  #   - /en
+  #   - /cdu-en
+  #   - /~
+  #   - /tag
+  #   - /events
+  #   - /tp-event-category
+  #   - /Documents
+  #   - /Dropbox
+  #   - /1
+  #   - /dao-tao
+
   listing_exact:
-  - /
-  - /tin-tuc
-  - /thong-bao
-  - /dao-tao
-  - /nghien-cuu
-  - /sinh-vien
-  - /hop-tac
-  - /tuyen-sinh
-  - /gioi-thieu
-  - /khoa-hoc-cong-nghe
-  - /cong-tac-nguoi-hoc
-  listing_patterns:
-  - ^/(category|tag|author)(/|$)
-  - (?:^|/)page(?:/|$)
+    - /dao-tao
+    # --- GENERAL SCOPE ---
+    # - /chuong-trinh-dao-tao
+    # - /
+    # - /tin-tuc
+    # - /thong-bao
+    # - /nghien-cuu
+    # - /sinh-vien
+    # - /hop-tac
+    # - /tuyen-sinh
+    # - /gioi-thieu
+    # - /khoa-hoc-cong-nghe
+    # - /cong-tac-nguoi-hoc
+
+  # --- GENERAL SCOPE ---
+  # listing_patterns:
+  #   - ^/(category|tag|author)(/|$)
+  #   - (?:^|/)page(?:/|$)
+
+# ==============================================================================
+# DISCOVERY
+# ==============================================================================
 discovery:
+  start_urls:
+    - https://uet.vnu.edu.vn/
+    - https://uet.edu.vn/dao-tao/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/chuong-trinh-dao-tao/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-dai-hoc/
+    - https://uet.vnu.edu.vn/category/dao-tao/quy-che-quy-dinh/
+    - https://uet.vnu.edu.vn/category/van-ban-bieu-mau/
+    - https://uet.vnu.edu.vn/category/dao-tao/dao-tao-sau-dai-hoc/
   link_selectors:
-  - .elementor-element a[href]
-  - .event-wrapper a[href]
-  - .jw-posts a[href]
-  - .item-post a[href]
-  - .sc-list-post a[href]
-  - nav a[href]
-  - .container a[href]
-  - article a[href]
-  - .pagination a[href]
-  - main a[href]
-  - '#content a[href]'
+    # --- CORE SCOPE: Bốc link bảng CTĐT và bài viết trọng tâm ---
+    - table a[href]
+    - .entry-content a[href]
+    - .elementor-widget a[href]
+    - '#content a[href]'
+    - nav a[href]
+    - header a[href]
+    - article a[href]
+    - .pagination a[href]
+    - main a[href]
+    - .container a[href]
+    - .item-post a[href]
+    - .sc-list-post a[href]
+    - .jw-posts a[href]
+
+    # --- GENERAL SCOPE ---
+    # - .elementor-element a[href]
+    # - .event-wrapper a[href]
+    # - .jw-posts a[href]
+    # - .item-post a[href]
+    # - .sc-list-post a[href]
+    # - nav a[href]
+    # - .container a[href]
+    # - article a[href]
+    # - .pagination a[href]
+    # - main a[href]
+
+# ==============================================================================
+# EXTRACTION
+# ==============================================================================
 extraction:
   content_selectors:
-  - .page-content-inner > .entry-content
-  - .entry-content:not(.des-related)
-  - .single-post .entry-content
-  - article.post .entry-content
-  - .page .entry-content
-  - .post-content
-  - '#content .container'
+    - .entry-content
+    - .page-content-inner > .entry-content
+    - '#content .container'
+    # --- GENERAL SCOPE ---
+    # - .entry-content:not(.des-related)
+    # - .single-post .entry-content
+    # - article.post .entry-content
+    # - .page .entry-content
+    # - .post-content
+
   title_selectors:
-  - h1.entry-title
-  - h1.td-post-title
-  - article h1
-  - h1
-  - title
+    - h1.entry-title
+    - h1
+    # --- GENERAL SCOPE ---
+    # - h1.td-post-title
+    # - article h1
+    # - title
+
   date_selectors:
-  - meta[property="article:published_time"]
-  - time[datetime]
-  - .entry-date
+    - meta[property="article:published_time"]
+    - time[datetime]
+    - .entry-date
+
   remove_selectors:
-  - .sidebar
-  - aside
-  - .related-posts
-  - .post-views
-  - .breadcrumbs
-  - .entry-tag-share
-  - .entry-navigation-post
-  - .archived-posts
-  - .related-area-site-content
+    - .sidebar
+    - aside
+    - .site-footer
+    # --- GENERAL SCOPE ---
+    # - .related-posts
+    # - .post-views
+    # - .breadcrumbs
+    # - .entry-tag-share
+    # - .entry-navigation-post
+    # - .archived-posts
+    # - .related-area-site-content
+
 quality:
   min_chars: 100
   max_link_density: 0.65
+
 policy:
   published_after: null
   time_sensitive_patterns: []

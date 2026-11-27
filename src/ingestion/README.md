@@ -110,3 +110,6 @@ PROCESSOR_VERSION=html-v2-icons làm processing_key thay đổi: chạy lại ra
 để tái xử lý. Downstream chunk/index không tự cập nhật theo bản vá này.
 Kiểm tra ngoài gói PASS: emoji ghép ZWJ/màu da/cờ, keycap, ký hiệu toán học, URL,
 ảnh thường và cả hai nhánh selector/fallback. Không thêm dependency hoặc tests/.
+
+
+Online corpus gate and selected processed export: see [CORPUS_FILTER.md](CORPUS_FILTER.md).

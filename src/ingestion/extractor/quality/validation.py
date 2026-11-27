@@ -12,8 +12,13 @@ ERROR_PHRASES = (
 
 
 def validate_html(content, profile, node=None):
-    text = node.get_text(" ", strip=True) if node is not None else content
+    # Validate actual output, not text that the renderer discarded.
+    text = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", content).strip()
     reasons = []
+    if re.search(r"</?(?:table|tr|td|th|div|span|script|style|iframe|p|a)\b[^>]*>", content, re.I):
+        reasons.append("residual_html")
+    if node is not None and (node.get("data-extraction-issue") or node.select("[data-extraction-issue]")):
+        reasons.append("unresolved_table_structure")
     if not text.strip():
         reasons.append("empty_content")
     if any(p in text.lower() for p in ERROR_PHRASES):
@@ -24,7 +29,7 @@ def validate_html(content, profile, node=None):
     density = 0.0
     if node is not None:
         density = sum(len(a.get_text(" ", strip=True)) for a in node.select("a")) / max(
-            1, len(text)
+            1, len(node.get_text(" ", strip=True))
         )
         if density > profile.get("quality", {}).get("max_link_density", 0.65):
             reasons.append("link_heavy")

@@ -1,19 +1,29 @@
-"""Stage coordinator; worker threads calculate, one coordinator writes."""
+"""Stage coordinator; process workers extract, one coordinator writes."""
 
 from contextlib import nullcontext
 import logging
 from collections import Counter
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 from src.base import DataSource
 from .config.profiles import load_profiles
 from .crawler.engine import crawl
-from .crawler.policy import evaluate, reconcile_sources
-from .crawler.parser import metadata as extract_metadata
+from .crawler.policy import (
+    discovery_verdict,
+    evaluate,
+    in_discovery_scope,
+    reconcile_sources,
+    resource_type,
+)
+from .crawler.parser import metadata as extract_metadata, parse_page
+from .identity import normalize_site_url, source_id
+from .overrides import lookup
 from .downloader.http import HTMLFetcher
 from .downloader.service import download_source
-from .extractor.pipeline import process_raw, processing_key
 from .storage import Storage, writer_lock, write_json, now
 from .utils import completion_map
+from .corpus.gate import selected as corpus_selected, priority, reconcile as reconcile_corpus, prefetch
 
 log = logging.getLogger(__name__)
 STAGES = ("web", "data_source", "raw", "processed")
@@ -22,7 +32,23 @@ STAGES = ("web", "data_source", "raw", "processed")
 def run_ingestion_serial(
     options, shared_fetcher=None, managed=False, extractor_pool=None
 ):
-    profiles = load_profiles(options.profile_dir, options.sites)
+    if options.to_stage == "processed" and extractor_pool is None:
+        from concurrent.futures import ProcessPoolExecutor
+        from multiprocessing import get_context
+
+        with ProcessPoolExecutor(
+            max_workers=options.extract_workers, mp_context=get_context("spawn")
+        ) as pool:
+            return run_ingestion_serial(options, shared_fetcher, managed, pool)
+    profiles = (
+        {
+            s: p
+            for s, p in options._profiles.items()
+            if not options.sites or s in options.sites
+        }
+        if hasattr(options, "_profiles")
+        else load_profiles(options.profile_dir, options.sites)
+    )
     storage = Storage(options.data_dir)
     report = {
         "run_id": str(uuid4()),
@@ -35,6 +61,9 @@ def run_ingestion_serial(
     fetcher = shared_fetcher or HTMLFetcher(
         options.timeout, options.max_html_bytes, options.retries, options.delay
     )
+    if options.to_stage == "processed":
+        report["extract_processes"] = (options.extract_workers if options.from_stage == "raw"
+                                       else options.stream_extract_workers)
     selected = 0
     processed_selected = 0
     stream = None
@@ -47,6 +76,8 @@ def run_ingestion_serial(
                     storage, site, profile
                 )
 
+                counts["corpus_reclassified"] = reconcile_corpus(storage, site, profile)
+                counts["corpus_enabled"] = bool(profile.get("_corpus_policy"))
                 if extractor_pool is not None:
                     from .streaming import StreamingExtractor
 
@@ -55,7 +86,8 @@ def run_ingestion_serial(
                         if options.limit is None
                         else max(0, options.limit - processed_selected)
                     )
-                    capacity = options.stream_extract_workers
+                    capacity = (options.extract_workers if options.from_stage == "raw"
+                                else options.stream_extract_workers)
                     stream = StreamingExtractor(
                         storage,
                         site,
@@ -72,6 +104,13 @@ def run_ingestion_serial(
                         stream.on_commit()
 
                 def accept(source, page):
+                    row = source.model_dump(mode="json")
+                    allowed = corpus_selected(row, profile)
+                    source.metadata.update(row["metadata"])
+                    storage.save_source(source)
+                    if not allowed:
+                        counts["raw_corpus_skipped"] += 1
+                        return
                     if STAGES.index(options.to_stage) >= 2:
                         record = storage.save_raw(source, page)
                         counts["raw_saved"] += 1
@@ -109,7 +148,7 @@ def run_ingestion_serial(
                         for r in storage.records("sources", site).values()
                         if r["metadata"].get("decision") == "accepted"
                     ]
-                    sources = sorted(sources, key=lambda s: s.uri)
+                    sources = sorted(sources, key=lambda s: (-priority(s.uri, profile, s.metadata), s.uri))
                     latest_raw = {}
                     for row in storage.records("raw", site).values():
                         sid = row["metadata"]["source_id"]
@@ -120,6 +159,11 @@ def run_ingestion_serial(
                             latest_raw[sid] = row
                     jobs = []
                     for source in sources:
+                        row = source.model_dump(mode="json")
+                        # Unknown titles may become include after the first GET.
+                        if prefetch(source.uri, profile) or (source.metadata.get("title") and not corpus_selected(row, profile)):
+                            counts["raw_corpus_skipped"] += 1
+                            continue
                         state = storage.records("state", site).get(
                             "raw:" + source.source_id, {}
                         )
@@ -143,9 +187,74 @@ def run_ingestion_serial(
                         jobs.append((source, previous))
                         selected += 1
 
+                    seed_urls = {
+                        normalize_site_url(u, profile)
+                        for u in profile.get("_manual_seeds", []) + profile.get("seeds", [])
+                    }
+                    rejected_sids = {
+                        sid
+                        for sid, r in storage.records("sources", site).items()
+                        if r.get("metadata", {}).get("decision") == "rejected"
+                    }
+
                     def download(job):
                         source, previous = job
                         try:
+                            parts = urlsplit(source.uri)
+                            if parts.path.startswith("/offline/"):
+                                rel_name = unquote(parts.path.split("/offline/", 1)[1]).strip("/")
+                                offline_root = (storage.root / "offline_docs").resolve()
+                                local_path = (offline_root / rel_name).resolve()
+                                if (
+                                    rel_name
+                                    and local_path.is_relative_to(offline_root)
+                                    and local_path.is_file()
+                                ):
+                                    body = local_path.read_bytes()
+                                    sfx = local_path.suffix.lower()
+                                    is_pdf_file = sfx == ".pdf" or body.startswith(b"%PDF-")
+                                    is_docx_file = sfx == ".docx"
+                                    mime = (
+                                        "application/pdf"
+                                        if is_pdf_file
+                                        else (
+                                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                            if is_docx_file
+                                            else "text/html; charset=utf-8"
+                                        )
+                                    )
+                                    page = {
+                                        "requested_url": source.uri,
+                                        "final_url": source.uri,
+                                        "status_code": 200,
+                                        "headers": {"content-type": mime},
+                                        "body": body,
+                                        "encoding": "binary" if (is_pdf_file or is_docx_file) else "utf-8",
+                                    }
+                                    return source, page, None
+                            if (
+                                source.metadata.get("decision_reason") == "manual_curation"
+                                or site == "OTHER"
+                            ) and lookup(source.uri, profile) is None:
+                                headers = {}
+                                if previous:
+                                    pmeta = previous["metadata"]
+                                    if pmeta.get("etag"):
+                                        headers["If-None-Match"] = pmeta["etag"]
+                                    if pmeta.get("last_modified"):
+                                        headers["If-Modified-Since"] = pmeta["last_modified"]
+                                page = fetcher.fetch(
+                                    source.uri,
+                                    lambda u: (
+                                        source_id(u) not in rejected_sids
+                                        and (
+                                            site == "OTHER"
+                                            or in_discovery_scope(u, profile)
+                                        )
+                                    ),
+                                    headers,
+                                )
+                                return source, page, None
                             return (
                                 source,
                                 download_source(
@@ -193,19 +302,92 @@ def run_ingestion_serial(
                                     site, source.source_id, "raw", status="completed"
                                 )
                             else:
-                                meta = extract_metadata(
-                                    page["body"].decode(
-                                        page["encoding"], errors="replace"
-                                    ),
-                                    profile,
+                                is_docx = page["final_url"].lower().endswith(".docx") or source.uri.lower().endswith(".docx")
+                                is_pdf = (
+                                    source.metadata.get("resource_type") == "pdf"
+                                    or page.get("encoding") == "binary"
+                                    or page["final_url"].lower().endswith(".pdf")
                                 )
-                                decision, reason = evaluate(
-                                    page["final_url"], profile, meta
-                                )
+                                if is_docx:
+                                    from pathlib import PurePosixPath
+
+                                    clean_name = (
+                                        PurePosixPath(unquote(urlsplit(page["final_url"]).path))
+                                        .stem.replace("-", " ")
+                                        .replace("_", " ")
+                                        .strip()
+                                    )
+                                    meta = {"title": clean_name, "resource_type": "office"}
+                                elif is_pdf:
+                                    from pathlib import PurePosixPath
+
+                                    clean_name = (
+                                        PurePosixPath(unquote(urlsplit(page["final_url"]).path))
+                                        .stem.replace("-", " ")
+                                        .replace(".", " ")
+                                        .strip()
+                                    )
+                                    meta = {"title": clean_name, "resource_type": "pdf"}
+                                else:
+                                    meta, links = parse_page(
+                                        page["body"].decode(
+                                            page["encoding"], errors="replace"
+                                        ),
+                                        page["final_url"],
+                                        profile,
+                                    )
+                                    existing_sources = storage.records("sources", site)
+                                    for link in links:
+                                        target = link["url"]
+                                        kind = resource_type(target)
+                                        if kind == "asset":
+                                            continue
+                                        sid = source_id(target)
+                                        if sid not in existing_sources:
+                                            if lookup(target, profile) or target in seed_urls:
+                                                verdict, why = evaluate(target, profile)
+                                            else:
+                                                verdict, why = discovery_verdict(target, profile)
+                                            storage.save_source(
+                                                DataSource(
+                                                    source_id=sid,
+                                                    source_type="web",
+                                                    uri=target,
+                                                    metadata={
+                                                        "site": site,
+                                                        "faculty": site,
+                                                        "resource_type": kind,
+                                                        "discovered_from": source.uri,
+                                                        "link_text": link["link_text"],
+                                                        "crawl_depth": source.metadata.get("crawl_depth", 0) + 1,
+                                                        "decision": verdict,
+                                                        "decision_reason": why,
+                                                    },
+                                                )
+                                            )
+                                if lookup(page["final_url"], profile):
+                                    decision, reason = evaluate(
+                                        page["final_url"], profile, meta
+                                    )
+                                elif source.metadata.get("decision") == "accepted" and (
+                                    source.metadata.get("decision_reason") == "manual_curation"
+                                    or urlsplit(page["final_url"]).path.startswith("/offline/")
+                                    or site == "OTHER"
+                                ):
+                                    decision = "accepted"
+                                    reason = source.metadata.get("decision_reason") or "manual_curation"
+                                else:
+                                    decision, reason = evaluate(
+                                        page["final_url"], profile, meta
+                                    )
                                 source.metadata.update(
                                     meta, decision=decision, decision_reason=reason
                                 )
                                 source = storage.resolve_redirect(source, page, profile)
+                                redirect_existing = storage.records("sources", site).get(source.source_id)
+                                if redirect_existing and redirect_existing["metadata"].get("decision") == "rejected":
+                                    counts["raw_rejected"] += 1
+                                    continue
                                 storage.save_source(source)
                                 if decision == "accepted":
                                     accept(source, page)
@@ -227,108 +409,6 @@ def run_ingestion_serial(
                 if stream is not None:
                     processed_selected += stream.finish()
                     stream = None
-                elif options.to_stage == "processed":
-                    latest = {}
-                    for row in storage.records("raw", site).values():
-                        sid = row["metadata"]["source_id"]
-                        if (
-                            sid not in latest
-                            or row["created_at"] > latest[sid]["created_at"]
-                        ):
-                            latest[sid] = row
-                    jobs = []
-                    for sid, row in sorted(latest.items()):
-                        source = storage.records("sources", site).get(sid)
-                        if source and source["metadata"].get("decision") != "accepted":
-                            storage.remove_processed(site, sid)
-                            continue
-                        state = storage.records("state", site).get(
-                            "processed:" + sid, {}
-                        )
-                        if options.retry_failed and state.get("status") != "failed":
-                            continue
-                        key = processing_key(row, profile)
-                        existing = storage.records("processed", site).get(sid)
-                        if not options.reprocess and state.get("key") == key:
-                            if state.get("status") == "review" or (
-                                existing and existing["raw_data_id"] == row["id"]
-                            ):
-                                counts["processed_skipped"] += 1
-                                continue
-                        if (
-                            options.limit is not None
-                            and processed_selected >= options.limit
-                        ):
-                            break
-                        processed_selected += 1
-                        jobs.append((sid, row, key))
-
-                    def process(job):
-                        sid, row, key = job
-                        try:
-                            return (
-                                job,
-                                process_raw(storage.load_raw(row), profile),
-                                None,
-                            )
-                        except Exception as exc:
-                            return job, None, str(exc)
-
-                    with storage.batched():
-                        for completed, (
-                            _,
-                            ((sid, row, key), result, error),
-                        ) in enumerate(
-                            completion_map(process, jobs, options.extract_workers), 1
-                        ):
-                            if error:
-                                storage.remove_processed(site, sid)
-                                storage.state(
-                                    site,
-                                    sid,
-                                    "processed",
-                                    status="failed",
-                                    key=key,
-                                    error=error,
-                                )
-                                report["errors"].append(
-                                    {
-                                        "site": site,
-                                        "source_id": sid,
-                                        "stage": "processed",
-                                        "error": error,
-                                    }
-                                )
-                                counts["processed_failed"] += 1
-                            else:
-                                document, quality = result
-                                if quality["status"] == "accepted":
-                                    storage.save_processed(site, document)
-                                    status = "completed"
-                                    counts["processed_accepted"] += 1
-                                else:
-                                    storage.remove_processed(site, sid)
-                                    review = (
-                                        storage.root
-                                        / "ingestion_reports"
-                                        / "review"
-                                        / site
-                                        / (sid + ".json")
-                                    )
-                                    write_json(review, document.model_dump(mode="json"))
-                                    status = "review"
-                                    counts["processed_review"] += 1
-                                storage.state(
-                                    site,
-                                    sid,
-                                    "processed",
-                                    status=status,
-                                    key=key,
-                                    quality=quality,
-                                    raw_id=row["id"],
-                                )
-                            if completed % options.flush_every == 0:
-                                storage.flush_pending()
                 log.info("[%s] %s", site, dict(counts))
         except BaseException as exc:
             report["errors"].append(
@@ -369,6 +449,15 @@ def run_ingestion(options):
     # Network stages share a pool; extraction streams only when requested.
     from .network_runner import run_network
 
+    from .overrides import attach
+
+    options._profiles = attach(
+        load_profiles(options.profile_dir), getattr(options, "overrides", None)
+    )
+    from .corpus.gate import attach as attach_corpus
+    options._profiles = attach_corpus(options._profiles, options)
+    if options.sites and set(options.sites) - set(options._profiles):
+        raise ValueError("Unknown sites")
     if options.from_stage in {"web", "data_source"}:
         return run_network(options, run_ingestion_serial)
     return run_ingestion_serial(options)

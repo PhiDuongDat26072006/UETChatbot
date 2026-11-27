@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>UET Review — Duyệt Nguồn Dữ Liệu</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("uet_cf_review_theme");
+        var theme = saved === "dark" || saved === "light" ? saved : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- PIN Lock Overlay -->
+  <section id="auth-screen" class="auth-screen" aria-label="Đăng nhập mã PIN">
+    <div class="auth-card">
+      <div class="brand-mark">UET</div>
+      <h1 class="auth-title">UET Source Review</h1>
+      <p class="auth-subtitle">Nhập mã PIN do quản trị viên cung cấp để bắt đầu lọc và duyệt liên kết nguồn dữ liệu.</p>
+      <form id="auth-form" class="auth-form">
+        <label class="field-label" for="pin-input">Mã PIN truy cập</label>
+        <input
+          id="pin-input"
+          type="password"
+          inputmode="text"
+          autocomplete="current-password"
+          placeholder="Nhập mã PIN..."
+          required
+        />
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+        <button id="auth-submit" type="submit" class="btn btn-primary btn-full">Mở khóa trang duyệt</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Main App -->
+  <div id="app-root" class="app-root" hidden>
+    <header class="topbar">
+      <div class="topbar-row">
+        <div class="brand-inline">
+          <span class="brand-chip">UET</span>
+          <span class="brand-name">Review</span>
+        </div>
+        <div class="topbar-controls">
+          <span id="dirty-pill" class="dirty-pill" title="Số nguồn đã sửa trên cloud chưa kéo về máy">Chưa sync: 0</span>
+          <button type="button" id="theme-toggle-btn" class="btn-icon" aria-label="Đổi giao diện Sáng hoặc Tối" title="Đổi giao diện">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+            </svg>
+          </button>
+          <button type="button" id="refresh-btn" class="btn-icon" aria-label="Tải lại dữ liệu" title="Tải lại">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+              <path d="M16 16h5v5"></path>
+            </svg>
+          </button>
+          <button type="button" id="logout-btn" class="btn-outline-sm">Khóa PIN</button>
+        </div>
+      </div>
+
+      <div class="site-row">
+        <select id="site-select" class="select-input" aria-label="Chọn site"></select>
+        <div class="view-switch" role="group" aria-label="Chế độ xem">
+          <button type="button" id="view-focus-btn" class="view-btn active" data-view="focus">Từng thẻ</button>
+          <button type="button" id="view-list-btn" class="view-btn" data-view="list">Danh sách</button>
+        </div>
+      </div>
+
+      <div class="status-pills" id="status-pills" role="tablist" aria-label="Trạng thái">
+        <button type="button" class="status-pill active" data-status="pending">Chờ duyệt</button>
+        <button type="button" class="status-pill" data-status="accepted">Đã duyệt</button>
+        <button type="button" class="status-pill" data-status="listing">Listing</button>
+        <button type="button" class="status-pill" data-status="rejected">Từ chối</button>
+        <button type="button" class="status-pill" data-status="dirty">Chưa sync</button>
+        <button type="button" class="status-pill" data-status="all">Tất cả</button>
+      </div>
+
+      <div class="search-row">
+        <input id="search-input" type="search" class="search-input" placeholder="Tìm URL, tiêu đề, chủ đề..." />
+        <select id="type-select" class="select-input select-compact" aria-label="Lọc loại tài liệu">
+          <option value="all">Mọi loại</option>
+          <option value="html">HTML</option>
+          <option value="pdf">PDF</option>
+          <option value="office">Office</option>
+        </select>
+        <select id="sort-select" class="select-input select-compact" aria-label="Sắp xếp">
+          <option value="priority">Ưu tiên</option>
+          <option value="depth">Độ sâu</option>
+          <option value="newest">Mới sửa</option>
+          <option value="url">URL A-Z</option>
+        </select>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Focus Mode (1 card at a time) -->
+      <section id="focus-view" class="focus-view" aria-label="Duyệt từng thẻ">
+        <div class="progress-header">
+          <span id="focus-counter" class="counter-text">Đang tải...</span>
+          <button type="button" id="undo-btn" class="btn-outline-sm" hidden>Hoàn tác</button>
+        </div>
+        <div class="progress-track">
+          <div id="focus-progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+
+        <article id="focus-card" class="source-card" hidden>
+          <div class="badge-row" id="card-badges"></div>
+          <h2 id="card-title" class="card-title"></h2>
+          <a id="card-uri" class="card-uri" href="#" target="_blank" rel="noopener noreferrer"></a>
+          <div id="card-meta" class="card-meta"></div>
+
+          <div class="card-tools">
+            <a id="open-link-btn" class="btn-tool" href="#" target="_blank" rel="noopener noreferrer">Mở link gốc</a>
+            <button type="button" id="preview-btn" class="btn-tool">Xem nhanh</button>
+            <button type="button" id="note-toggle-btn" class="btn-tool">Ghi chú</button>
+          </div>
+
+          <div id="note-box" class="note-box" hidden>
+            <input id="card-note-input" type="text" class="note-input" placeholder="Nhập lý do hoặc ghi chú tùy chọn..." />
+          </div>
+
+          <div id="preview-box" class="preview-box" hidden>
+            <div class="preview-head">
+              <strong id="preview-title">Xem nhanh nội dung</strong>
+              <button type="button" id="preview-close-btn" class="btn-link-sm">Đóng</button>
+            </div>
+            <p id="preview-body" class="preview-body"></p>
+          </div>
+        </article>
+
+        <div id="focus-empty" class="empty-state" hidden>
+          <h2 id="focus-empty-title">Không còn nguồn nào trong mục này</h2>
+          <p id="focus-empty-desc">Bạn có thể chuyển sang site khác hoặc đổi bộ lọc trạng thái ở phía trên.</p>
+          <button type="button" id="focus-reload-btn" class="btn btn-primary">Tải lại danh sách</button>
+        </div>
+      </section>
+
+      <!-- List Mode -->
+      <section id="list-view" class="list-view" aria-label="Danh sách nhiều thẻ" hidden>
+        <div class="list-toolbar">
+          <span id="list-summary" class="counter-text">0 nguồn</span>
+          <button type="button" id="list-select-page-btn" class="btn-outline-sm">Chọn trang này</button>
+        </div>
+        <div id="list-cards" class="list-cards"></div>
+        <div id="list-empty" class="empty-state" hidden>
+          <h2>Không có nguồn phù hợp bộ lọc</h2>
+          <p>Thử xóa từ khóa tìm kiếm hoặc chọn trạng thái khác.</p>
+        </div>
+        <div class="pagination-row" id="pagination-row">
+          <button type="button" id="prev-page-btn" class="btn-outline-sm">Trang trước</button>
+          <span id="page-indicator" class="counter-text">Trang 1</span>
+          <button type="button" id="next-page-btn" class="btn-outline-sm">Trang sau</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Focus Sticky Action Dock -->
+    <footer id="focus-dock" class="bottom-dock">
+      <button type="button" id="act-reject" class="action-btn action-reject">Từ chối</button>
+      <button type="button" id="act-listing" class="action-btn action-listing">Listing</button>
+      <button type="button" id="act-skip" class="action-btn action-skip">Bỏ qua</button>
+      <button type="button" id="act-accept" class="action-btn action-accept">Duyệt</button>
+    </footer>
+
+    <!-- List Bulk Action Dock -->
+    <footer id="bulk-dock" class="bottom-dock bulk-dock" hidden>
+      <span id="bulk-count" class="bulk-count">Đã chọn: 0</span>
+      <div class="bulk-buttons">
+        <button type="button" id="bulk-reject" class="action-btn action-reject">Từ chối</button>
+        <button type="button" id="bulk-listing" class="action-btn action-listing">Listing</button>
+        <button type="button" id="bulk-accept" class="action-btn action-accept">Duyệt</button>
+        <button type="button" id="bulk-clear" class="action-btn action-skip">Bỏ</button>
+      </div>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

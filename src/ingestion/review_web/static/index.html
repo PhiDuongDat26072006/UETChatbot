@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UET Ingestion Review — Quản lý &amp; Duyệt Nguồn Dữ Liệu</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("uet_review_theme");
+        var theme = saved === "dark" || saved === "light" ? saved : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
+    <!-- Left Sidebar -->
+    <aside id="sidebar" class="sidebar" aria-label="Điều hướng site và tác vụ toàn cục">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <div class="brand-mark">UET</div>
+          <div class="brand-text">
+            <div class="brand-title">Source Curation</div>
+            <div class="brand-subtitle">Ingestion Pipeline</div>
+          </div>
+        </div>
+        <div class="sidebar-header-actions">
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="btn-icon"
+            title="Chuyển giao diện Sáng / Tối"
+            aria-label="Chuyển giao diện Sáng hoặc Tối"
+          >
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+            </svg>
+          </button>
+          <button
+            type="button"
+            id="sidebar-close-btn"
+            class="btn-icon mobile-only"
+            title="Đóng menu"
+            aria-label="Đóng thanh điều hướng"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Global Summary -->
+      <section class="sidebar-summary" aria-label="Thống kê toàn hệ thống">
+        <div class="summary-grid">
+          <div class="summary-cell">
+            <span class="summary-label">Tổng nguồn</span>
+            <span id="global-total" class="summary-value">-</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Chờ duyệt</span>
+            <span id="global-pending" class="summary-value is-warning">-</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Đã cào / Duyệt</span>
+            <span id="global-ratio" class="summary-value is-primary">-</span>
+          </div>
+          <div class="summary-cell">
+            <span class="summary-label">Offline Docs</span>
+            <span id="global-offline" class="summary-value">-</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Global Quick Actions -->
+      <div class="sidebar-actions">
+        <button type="button" id="btn-offline-scan" class="btn btn-secondary btn-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+          </svg>
+          <span>Quét thư mục Offline</span>
+        </button>
+        <button type="button" id="btn-sidebar-upload" class="btn btn-secondary btn-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>Upload tài liệu Local</span>
+        </button>
+        <button type="button" id="btn-dedup-all" class="btn btn-secondary btn-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>Khử trùng Toàn bộ Site</span>
+        </button>
+        <button type="button" id="btn-ingest-all" class="btn btn-primary btn-full">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="6 3 20 12 6 21 6 3"></polygon>
+          </svg>
+          <span>Chạy Incremental Tất cả</span>
+        </button>
+      </div>
+
+      <!-- Site List -->
+      <div class="site-list-header">
+        <span>Danh sách Site</span>
+        <span id="site-count-pill" class="count-pill">0</span>
+      </div>
+      <nav id="site-list" class="site-list" aria-label="Danh sách site">
+        <div class="site-list-empty">Đang tải danh sách site...</div>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-pane">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="top-header-left">
+          <button
+            type="button"
+            id="mobile-menu-btn"
+            class="btn-icon mobile-only"
+            title="Mở danh sách site"
+            aria-label="Mở danh sách site"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="20" y2="6"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="18" x2="20" y2="18"></line>
+            </svg>
+          </button>
+          <div class="active-site-heading">
+            <div class="active-site-title-row">
+              <h1 id="active-site-name" class="active-site-title">UET</h1>
+              <button
+                type="button"
+                id="btn-refresh"
+                class="btn-icon btn-icon-sm"
+                title="Làm mới dữ liệu"
+                aria-label="Làm mới dữ liệu"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                  <path d="M16 16h5v5"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="active-site-hosts" class="active-site-hosts">Đang tải thông tin host...</div>
+          </div>
+        </div>
+
+        <div class="top-header-actions">
+          <button type="button" id="btn-open-add-urls" class="btn btn-secondary">
+            <span>+ Thêm URL</span>
+          </button>
+          <button type="button" id="btn-open-upload" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Upload Local PDF/DOCX/HTML</span>
+          </button>
+          <button type="button" id="btn-dedup-site" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span>Khử trùng Site này</span>
+          </button>
+          <button type="button" id="btn-ingest-site" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="6 3 20 12 6 21 6 3"></polygon>
+            </svg>
+            <span>Chạy Incremental Site này</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Workspace Scroll Area -->
+      <main class="workspace-body">
+        <!-- Live Ingest Progress Banner -->
+        <section id="ingest-banner" class="ingest-banner hidden" aria-live="polite">
+          <div class="ingest-banner-top">
+            <div class="ingest-banner-status">
+              <span id="ingest-spinner" class="spinner hidden" aria-hidden="true"></span>
+              <span id="ingest-status-badge" class="status-badge">Đang chạy</span>
+              <span id="ingest-title" class="ingest-title">Tiến trình Incremental Ingest</span>
+              <span id="ingest-phase" class="ingest-phase"></span>
+            </div>
+            <button
+              type="button"
+              id="btn-dismiss-ingest"
+              class="btn-icon btn-icon-sm hidden"
+              title="Ẩn thông báo tiến trình"
+              aria-label="Ẩn thông báo tiến trình"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="ingest-metrics">
+            <div class="ingest-metric">
+              <span class="metric-label">Skipped</span>
+              <strong id="ingest-skipped" class="metric-val">0</strong>
+            </div>
+            <div class="ingest-metric">
+              <span class="metric-label">Downloaded</span>
+              <strong id="ingest-downloaded" class="metric-val">0</strong>
+            </div>
+            <div class="ingest-metric">
+              <span class="metric-label">Processed</span>
+              <strong id="ingest-processed" class="metric-val">0</strong>
+            </div>
+            <div class="ingest-metric">
+              <span class="metric-label">New Pending</span>
+              <strong id="ingest-new-pending" class="metric-val">0</strong>
+            </div>
+            <div class="ingest-metric">
+              <span class="metric-label">Rejected Preserved</span>
+              <strong id="ingest-rejected-preserved" class="metric-val">0</strong>
+            </div>
+            <div class="ingest-metric">
+              <span class="metric-label">Errors</span>
+              <strong id="ingest-errors" class="metric-val">0</strong>
+            </div>
+          </div>
+          <div id="ingest-error-msg" class="ingest-error-msg hidden"></div>
+        </section>
+
+        <!-- Clickable Stat Cards -->
+        <section id="stat-cards" class="stat-cards-grid" aria-label="Bộ lọc theo trạng thái nguồn">
+          <button type="button" class="stat-card is-active" data-status="all" aria-pressed="true">
+            <span class="stat-label">Tổng link (Total)</span>
+            <strong id="stat-total" class="stat-value">0</strong>
+            <span class="stat-sub">Tất cả nguồn của site</span>
+          </button>
+          <button type="button" class="stat-card" data-status="pending" aria-pressed="false">
+            <span class="stat-label">Chờ duyệt (Pending)</span>
+            <strong id="stat-pending" class="stat-value is-warning">0</strong>
+            <span class="stat-sub">Chưa tải về tự động</span>
+          </button>
+          <button type="button" class="stat-card" data-status="accepted_queued" aria-pressed="false">
+            <span class="stat-label">Đã duyệt - Chờ cào</span>
+            <strong id="stat-queued" class="stat-value is-primary">0</strong>
+            <span class="stat-sub">Accepted Queued</span>
+          </button>
+          <button type="button" class="stat-card" data-status="accepted_ingested" aria-pressed="false">
+            <span class="stat-label">Đã cào &amp; Parse</span>
+            <strong id="stat-ingested" class="stat-value is-success">0</strong>
+            <span class="stat-sub">Ingested sẵn sàng</span>
+          </button>
+          <button type="button" class="stat-card" data-status="listing" aria-pressed="false">
+            <span class="stat-label">Trang mục lục</span>
+            <strong id="stat-listing" class="stat-value">0</strong>
+            <span class="stat-sub">Listing (chỉ quét link)</span>
+          </button>
+          <button type="button" class="stat-card" data-status="rejected" aria-pressed="false">
+            <span class="stat-label">Đã từ chối (Rejected)</span>
+            <strong id="stat-rejected" class="stat-value is-danger">0</strong>
+            <span id="stat-rejected-sub" class="stat-sub">Thủ công: 0 · Tự động: 0</span>
+          </button>
+          <button type="button" class="stat-card" data-status="failed" aria-pressed="false">
+            <span class="stat-label">Lỗi (Failed)</span>
+            <strong id="stat-failed" class="stat-value is-danger">0</strong>
+            <span class="stat-sub">Cần kiểm tra hoặc cào lại</span>
+          </button>
+        </section>
+
+        <!-- Smart Filter Toolbar -->
+        <section class="filter-toolbar" aria-label="Bộ lọc và tìm kiếm">
+          <div class="filter-row">
+            <div class="search-box">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+              </svg>
+              <input
+                type="search"
+                id="filter-search"
+                class="search-input"
+                placeholder="Tìm theo URL, tiêu đề hoặc anchor text..."
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="type-segment" role="group" aria-label="Loại tài liệu">
+              <button type="button" class="segment-btn is-active" data-type="all">Tất cả</button>
+              <button type="button" class="segment-btn" data-type="html">HTML</button>
+              <button type="button" class="segment-btn" data-type="pdf">PDF</button>
+              <button type="button" class="segment-btn" data-type="local">Local</button>
+            </div>
+
+            <div class="select-group">
+              <label for="filter-discovered-from" class="sr-only">Trang nguồn</label>
+              <select id="filter-discovered-from" class="filter-select" title="Lọc theo trang nguồn">
+                <option value="">Trang nguồn: Tất cả</option>
+              </select>
+
+              <label for="filter-sort" class="sr-only">Sắp xếp</label>
+              <select id="filter-sort" class="filter-select" title="Sắp xếp kết quả">
+                <option value="priority">Sắp xếp: Ưu tiên chủ đề</option>
+                <option value="newest">Sắp xếp: Mới nhất</option>
+                <option value="url">Sắp xếp: URL A-Z</option>
+                <option value="depth">Sắp xếp: Độ sâu BFS</option>
+              </select>
+
+              <button type="button" id="btn-reset-filters" class="btn btn-ghost hidden">
+                Đặt lại bộ lọc
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sticky Bulk Action Bar -->
+        <section id="bulk-bar" class="bulk-bar hidden" aria-label="Thao tác hàng loạt">
+          <div class="bulk-bar-info">
+            <span id="bulk-count-text" class="bulk-count">Đã chọn 0 mục</span>
+            <button type="button" id="btn-clear-selection" class="btn btn-ghost btn-sm">Bỏ chọn</button>
+          </div>
+          <div class="bulk-bar-actions">
+            <button type="button" class="btn btn-accept btn-sm" data-bulk-decision="accepted">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Duyệt (Accept)</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" data-bulk-decision="listing">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+              <span>Đặt Listing</span>
+            </button>
+            <button type="button" class="btn btn-reject btn-sm" data-bulk-decision="rejected">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12"></path>
+              </svg>
+              <span>Từ chối (Reject)</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" data-bulk-decision="pending">
+              <span>Về Pending</span>
+            </button>
+            <button type="button" id="btn-bulk-remove" class="btn btn-danger btn-sm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+              </svg>
+              <span>Xóa khỏi tập</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Source Table Card -->
+        <section class="table-card" aria-label="Bảng danh sách nguồn">
+          <div class="table-scroll">
+            <table class="source-table">
+              <thead>
+                <tr>
+                  <th class="col-check">
+                    <input type="checkbox" id="select-all-checkbox" aria-label="Chọn tất cả trong trang" />
+                  </th>
+                  <th class="col-title">Tiêu đề / Link Text</th>
+                  <th class="col-url">URL</th>
+                  <th class="col-parent">Trang nguồn</th>
+                  <th class="col-type">Loại</th>
+                  <th class="col-status">Trạng thái</th>
+                  <th class="col-actions">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="sources-tbody">
+                <tr>
+                  <td colspan="7" class="table-empty-cell">Đang tải dữ liệu nguồn...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination-bar">
+            <div class="pagination-info">
+              <span id="pagination-summary">Hiển thị 0 / 0 mục</span>
+              <label class="page-size-label">
+                <span>Số dòng:</span>
+                <select id="page-size-select" class="filter-select filter-select-sm">
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+            <div class="pagination-controls">
+              <button type="button" id="btn-prev-page" class="btn btn-secondary btn-sm" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <span>Trước</span>
+              </button>
+              <span id="page-indicator" class="page-indicator">Trang 1 / 1</span>
+              <button type="button" id="btn-next-page" class="btn btn-secondary btn-sm" disabled>
+                <span>Sau</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal 1: Add URLs -->
+  <div id="modal-add-urls" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-add-title" class="modal-title">Thêm URL thủ công</h2>
+          <p id="modal-add-subtitle" class="modal-subtitle">Thêm trực tiếp URL vào site đang chọn</p>
+        </div>
+        <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-add-urls" aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <form id="form-add-urls" class="modal-body">
+        <div class="form-group">
+          <label for="add-urls-input" class="form-label">Danh sách URL (mỗi dòng một URL)</label>
+          <textarea
+            id="add-urls-input"
+            class="form-textarea mono"
+            rows="6"
+            placeholder="https://uet.vnu.edu.vn/quy-che-dao-tao/&#10;https://uet.vnu.edu.vn/wp-content/uploads/..."
+            required
+          ></textarea>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="add-urls-decision" class="form-label">Trạng thái đích</label>
+            <select id="add-urls-decision" class="form-select">
+              <option value="accepted" selected>accepted (Duyệt để cào)</option>
+              <option value="listing">listing (Trang mục lục)</option>
+              <option value="pending">pending (Chờ duyệt sau)</option>
+              <option value="rejected">rejected (Từ chối vĩnh viễn)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="add-urls-note" class="form-label">Ghi chú (tùy chọn)</label>
+            <input type="text" id="add-urls-note" class="form-input" placeholder="Ví dụ: Quy chế mới 2026" />
+          </div>
+        </div>
+        <div id="add-urls-result" class="result-box hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-add-urls">Đóng</button>
+          <button type="submit" id="btn-submit-add-urls" class="btn btn-primary">Thêm URL</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Upload Local Document -->
+  <div id="modal-upload-doc" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-upload-title">
+    <div class="modal-card modal-compact">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-upload-title" class="modal-title">Upload tài liệu Local</h2>
+          <p class="modal-subtitle">Hỗ trợ tệp .pdf, .docx, .html, .htm (lưu vào offline_docs)</p>
+        </div>
+        <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-upload-doc" aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <form id="form-upload-doc" class="modal-body">
+        <div id="upload-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả tệp PDF, DOCX hoặc HTML">
+          <input type="file" id="upload-file-input" class="hidden-input" accept=".pdf,.docx,.html,.htm" />
+          <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <div class="dropzone-text">Kéo thả tệp vào đây hoặc nhấn để chọn tệp</div>
+          <div id="upload-file-info" class="dropzone-file-info">Chưa chọn tệp nào (.pdf, .docx, .html, .htm)</div>
+        </div>
+        <div class="form-group">
+          <label for="upload-decision" class="form-label">Trạng thái ban đầu</label>
+          <select id="upload-decision" class="form-select">
+            <option value="pending" selected>pending (Chờ duyệt)</option>
+            <option value="accepted">accepted (Duyệt ngay để trích xuất)</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-upload-doc">Hủy</button>
+          <button type="submit" id="btn-submit-upload" class="btn btn-primary" disabled>Tải lên</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Live Quick-Inspect -->
+  <div id="modal-preview" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-preview-title">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h2 id="modal-preview-title" class="modal-title">Xem nhanh Live (không lưu raw_data)</h2>
+          <div id="preview-source-url" class="modal-subtitle mono"></div>
+        </div>
+        <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-preview" aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="preview-body" class="modal-body modal-scroll">
+        <div class="modal-loading">Đang tải xem nhanh từ máy chủ đích...</div>
+      </div>
+      <div class="modal-footer modal-footer-between">
+        <button type="button" class="btn btn-secondary" data-close-modal="modal-preview">Đóng</button>
+        <div class="modal-footer-actions">
+          <button type="button" id="preview-btn-reject" class="btn btn-reject">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12"></path>
+            </svg>
+            <span>Từ chối (Reject)</span>
+          </button>
+          <button type="button" id="preview-btn-listing" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+            <span>Đặt Listing</span>
+          </button>
+          <button type="button" id="preview-btn-accept" class="btn btn-accept">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Duyệt (Accept)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Processed Document Viewer -->
+  <div id="modal-processed" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-processed-title">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h2 id="modal-processed-title" class="modal-title">Nội dung đã trích xuất (Processed)</h2>
+          <div id="processed-subtitle" class="modal-subtitle mono"></div>
+        </div>
+        <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-processed" aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="processed-body" class="modal-body modal-scroll">
+        <div class="modal-loading">Đang tải tài liệu đã parse...</div>
+      </div>
+      <div class="modal-footer modal-footer-between">
+        <button type="button" class="btn btn-secondary" data-close-modal="modal-processed">Đóng</button>
+        <div class="modal-footer-actions">
+          <button type="button" id="processed-btn-reject" class="btn btn-reject">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12"></path>
+            </svg>
+            <span>Reject &amp; Xóa khỏi Processed</span>
+          </button>
+          <button type="button" id="processed-btn-reingest" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+              <path d="M16 16h5v5"></path>
+            </svg>
+            <span>Cào lại</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Remove / Purge Confirmation -->
+  <div id="modal-remove" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-remove-title">
+    <div class="modal-card modal-compact">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-remove-title" class="modal-title">Xác nhận xóa nguồn</h2>
+          <p class="modal-subtitle">Gỡ nguồn khỏi danh sách quản lý của site</p>
+        </div>
+        <button type="button" class="btn-icon btn-icon-sm modal-close-btn" data-close-modal="modal-remove" aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="remove-confirm-message" class="confirm-text"></p>
+        <label class="checkbox-row">
+          <input type="checkbox" id="remove-purge-checkbox" />
+          <span>Xóa luôn dữ liệu đã tải (raw_data &amp; processed_data)</span>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close-modal="modal-remove">Hủy</button>
+        <button type="button" id="btn-confirm-remove" class="btn btn-danger">Xác nhận xóa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -20,7 +20,15 @@ def run_network(options, run_serial):
         getattr(options, "stream_extract_workers", None) or options.download_workers
     )
     extractor_pool = None
-    profiles = load_profiles(options.profile_dir, options.sites)
+    profiles = (
+        {
+            s: p
+            for s, p in options._profiles.items()
+            if not options.sites or s in options.sites
+        }
+        if hasattr(options, "_profiles")
+        else load_profiles(options.profile_dir, options.sites)
+    )
     fetcher = HTMLFetcher(
         options.timeout, options.max_html_bytes, options.retries, options.delay
     )

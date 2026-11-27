@@ -138,6 +138,19 @@ class Storage:
                 for _, r in sorted(rows.items())
             ).encode(),
         )
+        if kind == "sources":
+            accepted_path = self.root / "data_source" / f"{site}-accepted.jsonl"
+            accepted_rows = [
+                r for _, r in sorted(rows.items())
+                if r.get("metadata", {}).get("decision") == "accepted"
+            ]
+            atomic_bytes(
+                accepted_path,
+                "".join(
+                    json.dumps(r, ensure_ascii=False) + "\n"
+                    for r in accepted_rows
+                ).encode(),
+            )
 
     def remove_processed(self, site, source):
         if self.records("processed", site).pop(source, None) is not None:
@@ -160,11 +173,14 @@ class Storage:
 
     def resolve_redirect(self, source, page, profile=None):
         """Resolve redirects using configured site identity; retain actual final URL."""
-        final = (
-            normalize_site_url(page["final_url"], profile)
-            if profile
-            else canonicalize_url(page["final_url"])
-        )
+        try:
+            final = (
+                normalize_site_url(page["final_url"], profile)
+                if profile
+                else canonicalize_url(page["final_url"])
+            )
+        except ValueError:
+            return source
         if final == source.uri:
             return source
         site = source.metadata["site"]
@@ -196,12 +212,16 @@ class Storage:
         site = source.metadata["site"]
         sha = digest(page["body"])
         identifier = raw_id(source.source_id, sha)
+        is_pdf = source.metadata.get("resource_type") == "pdf" or source.uri.lower().endswith(".pdf")
+        is_docx = source.uri.lower().endswith(".docx")
+        extension = ".pdf" if is_pdf else (".docx" if is_docx else ".html")
+        folder = "pdf" if is_pdf else ("docx" if is_docx else "html")
         relative = (
             Path("raw_data")
             / site
-            / "html"
+            / folder
             / (slug(source.uri) + "--" + source.source_id)
-            / (identifier + ".html")
+            / (identifier + extension)
         )
         atomic_bytes(self.root / relative, page["body"])
         record = {
@@ -237,9 +257,11 @@ class Storage:
         body = path.read_bytes()
         if digest(body) != record["metadata"]["content_hash"]:
             raise ValueError(f"Raw hash mismatch: {path}")
+        encoding = record["metadata"].get("encoding", "utf-8")
+        content = body.decode(encoding, errors="replace") if encoding != "binary" else ""
         return RawData(
             **record,
-            content=body.decode(record["metadata"]["encoding"], errors="replace"),
+            content=content,
         )
 
     def save_processed(self, site, document):

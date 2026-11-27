@@ -1,5 +1,6 @@
 """Site-specific BS4 extraction, then fallback on untouched original HTML."""
 
+import re
 from bs4 import BeautifulSoup
 from ...crawler.parser import metadata as page_metadata
 from ...crawler.policy import resource_type
@@ -63,6 +64,12 @@ def extract_html(html, url, profile):
         if quality["status"] == "accepted":
             result["metadata"]["attempts"] = attempts
             return result
+    # Do not let fallback silently replace a selected table with flattened text.
+    table_candidates = [r for r in candidates if "unresolved_table_structure" in r["metadata"]["quality"]["reasons"]]
+    if table_candidates:
+        result = table_candidates[0]
+        result["metadata"]["attempts"] = attempts
+        return result
     from trafilatura import extract
 
     content = (
@@ -78,7 +85,16 @@ def extract_html(html, url, profile):
         )
         or ""
     )
+    # Markdown fallback is not trusted to preserve source tables or raw HTML.
+    residual = bool(re.search(r"</?[a-zA-Z][^>]*>", content))
+    if residual:
+        fragment = BeautifulSoup(content, "html.parser")
+        content, _ = clean_content(fragment, url, [])
     quality = validate_html(content, profile)
+    if residual:
+        quality.update(status="review", reasons=[*quality["reasons"], "fallback_html_repaired"])
+    if soup.find("table") is not None:
+        quality.update(status="review", reasons=[*quality["reasons"], "fallback_table_coverage_unverified"])
     if (
         attachments
         and len(BeautifulSoup(html, "html.parser").get_text(" ", strip=True)) < 200
