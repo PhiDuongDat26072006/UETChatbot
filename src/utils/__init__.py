@@ -2,6 +2,7 @@ from src.utils.helpers import (
     BASE_DIR,
     Timer,
     count_nonempty_lines,
+    get_ascii_safe_chroma_path,
     get_logger,
     load_yaml_config,
     resolve_project_path,
@@ -14,4 +15,5 @@ __all__ = [
     "Timer",
     "resolve_project_path",
     "count_nonempty_lines",
+    "get_ascii_safe_chroma_path",
 ]

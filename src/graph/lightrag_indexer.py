@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-from src.utils.helpers import get_logger, load_yaml_config
+from src.utils.helpers import get_ascii_safe_chroma_path, get_logger, load_yaml_config
 from src.graph.thesaurus_utils import (
     AcademicThesaurus,
     FORBIDDEN_ENTITIES,
@@ -751,7 +751,7 @@ class LightRAGIndexer:
                     from chromadb.config import Settings
 
                     client = chromadb.PersistentClient(
-                        path=str(self.entity_vector_dir),
+                        path=get_ascii_safe_chroma_path(self.entity_vector_dir),
                         settings=Settings(anonymized_telemetry=False),
                     )
                     client.delete_collection(name="lightrag_entity_collection")
