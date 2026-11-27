@@ -11,6 +11,7 @@ seeds:
 - https://fat.uet.vnu.edu.vn/chien-luoc-khoa
 - https://fat.uet.vnu.edu.vn/ban-chu-nhiem-khoa
 - https://fat.uet.vnu.edu.vn/cac-can-bo-giang-vien-trong-khoa
+- https://fat.uet.vnu.edu.vn/
 scope:
   hosts:
   - fat.uet.vnu.edu.vn

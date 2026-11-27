@@ -12,6 +12,8 @@ seeds:
 - https://sae.uet.vnu.edu.vn/ban-lanh-dao-vien-a6.html
 - https://sae.uet.vnu.edu.vn/bo-mon-va-phong-thi-nghiem-a7.html
 - https://sae.uet.vnu.edu.vn/giang-vien-a8.html
+- https://sae.uet.vnu.edu.vn/chuong-trinh-dao-tao-chuan-trinh-do-dai-hoc-a3.html
+- https://sae.uet.vnu.edu.vn/chuong-trinh-dao-tao-lien-ket-a11.html
 scope:
   hosts:
   - sae.uet.vnu.edu.vn

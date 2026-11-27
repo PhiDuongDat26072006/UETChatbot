@@ -37,6 +37,7 @@ seeds:
 - https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-iot/
 - https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-dam-bao-chat-luong-phan-mem/
 - https://www.fit.uet.vnu.edu.vn/phong-thi-nghiem-tri-tue-nhan-tao/
+- https://www.facebook.com/UET.FIT/
 scope:
   hosts:
   - fit.uet.vnu.edu.vn

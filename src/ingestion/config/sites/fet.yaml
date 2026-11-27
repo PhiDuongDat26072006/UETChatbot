@@ -19,6 +19,14 @@ seeds:
 - https://fet.uet.vnu.edu.vn/2024/03/30/bo-mon-vi-co-dien-tu-va-vi-he-thong/
 - https://fet.uet.vnu.edu.vn/2021/03/20/phong-thuc-tap-dien-tu-vien-thong/
 - https://fet.uet.vnu.edu.vn/2021/03/20/phong-thi-nghiem-tin-hieu-va-he-thong/
+- https://fet.uet.vnu.edu.vn/chuong-trinh-dao-tao-ky-su-ky-thuat-robot/
+- https://fet.uet.vnu.edu.vn/2024/04/07/chuong-trinh-dao-tao-ky-su-ky-thuat-may-tinh/
+- https://fet.uet.vnu.edu.vn/2024/04/07/chuong-trinh-dao-tao-ky-su-ky-thuat-robot/
+- https://fet.uet.vnu.edu.vn/2026/01/01/chuong-trinh-dao-tao-nganh-ky-thuat-dien-tu-vien-thong-ap-dung-cho-khoa-qh-2025/
+- https://fet.uet.vnu.edu.vn/2026/01/01/chuong-trinh-dao-tao-nganh-ky-thuat-dien-tu-vien-thong-ap-dung-tu-khoa-qh-2026/
+- https://fet.uet.vnu.edu.vn/category/ky-thuat-robot/
+- https://fet.uet.vnu.edu.vn/2026/01/01/chuong-trinh-dao-tao-nganh-ky-thuat-robot-ap-dung-tu-khoa-qh-2025-tro-di/
+- https://fet.uet.vnu.edu.vn/2021/03/24/gioi-thieu-ve-chuong-trinh-dao-tao-nganh-ky-thuat-may-tinh/
 scope:
   hosts:
   - fet.uet.vnu.edu.vn

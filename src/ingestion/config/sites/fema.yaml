@@ -20,6 +20,20 @@ seeds:
 - https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/6.-Quy-dinh-khen-thuong-tai-Truong-DHCN.pdf
 - https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/Quy-che-DTDH-3626-ap-dung-tu-2022.pdf
 - https://fema.uet.vnu.edu.vn/wp-content/uploads/2024/05/Quy-che-cong-tac-sinh-vien.pdf
+- https://fema.uet.vnu.edu.vn/chuan-dau-ra-cua-ctdt-dai-hoc-nganh-co-ky-thuat/
+- https://fema.uet.vnu.edu.vn/chuong-trinh-dao-tao-ky-su-nganh-ky-thuat-dieu-khien-va-tu-dong-hoa/
+- https://fema.uet.vnu.edu.vn/chuong-trinh-dao-tao-nganh-ky-thuat-dieu-khien-va-tu-dong-hoa/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-chung-ve-chuong-trinh-dao-tao-dai-hoc-nganh-co-ky-thuat/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-chung-ve-chuong-trinh-dao-tao-thac-si-ky-thuat-co-dien-tu/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-chung-ve-chuong-trinh-dao-tao-tien-si-co-ky-thuat/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-chung-ve-ctdt-cdt/
+- https://fema.uet.vnu.edu.vn/gioi-thieu-ctdt-thac-si/
+- https://fema.uet.vnu.edu.vn/khung-chuong-trinh-dao-tao-cu-nhan-cong-nghe-ky-thuat-co-dien-tu/
+- https://fema.uet.vnu.edu.vn/khung-chuong-trinh-dao-tao-nganh-co-ky-thuat-ap-dung-cho-khoa-qh-2022-tro-di/
+- https://fema.uet.vnu.edu.vn/khung-chuong-trinh-dao-tao-nganh-ky-thuat-dieu-khien-va-tu-dong-hoa-ap-dung-tu-khoa-qh-2022/
+- https://fema.uet.vnu.edu.vn/khung-chuong-trinh-dao-tao-thac-si-co-ky-thuat-2/
+- https://fema.uet.vnu.edu.vn/diem-trung-tuyen-vao-khoa-co-hoc-ky-thuat-va-tu-dong-hoa-nam-2023/
+- https://fema.uet.vnu.edu.vn/thong-bao-diem-chuan-trung-tuyen-dai-hoc-cong-nghe-dhqghn-nam-2024/
 scope:
   hosts:
   - fema.uet.vnu.edu.vn
