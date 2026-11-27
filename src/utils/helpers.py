@@ -67,6 +67,45 @@ def resolve_project_path(path_value: str | Path, base_dir: Optional[Path] = None
     return path if path.is_absolute() else (base_dir or BASE_DIR) / path
 
 
+def get_ascii_safe_chroma_path(persist_dir: str | Path) -> str:
+    """
+    Return an ASCII-safe path for ChromaDB on Windows where hnswlib (C++) fails to open
+    paths containing non-ASCII characters (e.g. Vietnamese folder names).
+    Prefers an ASCII relative path from CWD, then Windows 8.3 short path, before returning
+    the resolved string.
+    """
+    resolved = Path(persist_dir).resolve()
+    path_str = str(resolved)
+    try:
+        path_str.encode("ascii")
+        return path_str
+    except UnicodeEncodeError:
+        pass
+
+    if sys.platform == "win32":
+        try:
+            rel_str = os.path.relpath(path_str, os.getcwd())
+            rel_str.encode("ascii")
+            return rel_str
+        except (ValueError, UnicodeEncodeError):
+            pass
+
+        try:
+            import ctypes
+
+            buf_len = ctypes.windll.kernel32.GetShortPathNameW(path_str, None, 0)
+            if buf_len > 0:
+                buf = ctypes.create_unicode_buffer(buf_len)
+                if ctypes.windll.kernel32.GetShortPathNameW(path_str, buf, buf_len):
+                    short_str = buf.value
+                    short_str.encode("ascii")
+                    return short_str
+        except Exception:
+            pass
+
+    return path_str
+
+
 def count_nonempty_lines(file_path: Path) -> int:
     """Count non-whitespace lines in a UTF-8 file, returning 0 on read error."""
     try:

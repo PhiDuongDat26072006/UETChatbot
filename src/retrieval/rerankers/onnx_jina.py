@@ -142,6 +142,13 @@ class JinaONNXReranker(BaseReranker):
                     import torch  # noqa: F401
                 except Exception:
                     pass
+                if os.name == "nt" and hasattr(os, "add_dll_directory"):
+                    cuda_bin = os.path.join(os.environ.get("CUDA_PATH", ""), "bin")
+                    if cuda_bin and os.path.isdir(cuda_bin):
+                        try:
+                            os.add_dll_directory(cuda_bin)
+                        except OSError:
+                            pass
                 if hasattr(ort, "preload_dlls"):
                     try:
                         ort.preload_dlls(cuda=True, cudnn=True)

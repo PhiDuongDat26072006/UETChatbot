@@ -48,7 +48,7 @@ from src.graph.lightrag_formatter import (
     format_dual_level_contexts,
     format_edge_line,
 )
-from src.utils.helpers import get_logger, load_yaml_config
+from src.utils.helpers import get_ascii_safe_chroma_path, get_logger, load_yaml_config
 
 logger = get_logger("graph.lightrag_retriever")
 
@@ -185,7 +185,7 @@ class LightRAGRetriever:
             from chromadb.config import Settings
 
             client = chromadb.PersistentClient(
-                path=str(self.entity_vector_dir),
+                path=get_ascii_safe_chroma_path(self.entity_vector_dir),
                 settings=Settings(anonymized_telemetry=False),
             )
             col = client.get_collection(name="lightrag_entity_collection")

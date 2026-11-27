@@ -24,7 +24,7 @@ from src.graph.entity_utils import (
 )
 from src.graph.hybrid_extractor import HybridGraphExtractor
 from src.graph.thesaurus_utils import is_forbidden_entity
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_ascii_safe_chroma_path, get_logger
 
 logger = get_logger("graph.bridge")
 
@@ -88,7 +88,7 @@ def load_lightrag_entity_chroma_vectors(entity_chroma_dir: Optional[Path]) -> Di
         from chromadb.config import Settings
 
         client = chromadb.PersistentClient(
-            path=str(entity_chroma_dir),
+            path=get_ascii_safe_chroma_path(entity_chroma_dir),
             settings=Settings(anonymized_telemetry=False),
         )
         col = client.get_collection(name="lightrag_entity_collection")

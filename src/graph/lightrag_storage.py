@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.graph.lightrag_schema import EntityRegistry
-from src.utils.helpers import get_logger
+from src.utils.helpers import get_ascii_safe_chroma_path, get_logger
 
 logger = get_logger("graph.lightrag_indexer")
 
@@ -199,7 +199,7 @@ def vectorize_lightrag_entities(
         target_chroma_dir = Path(chroma_dir) if chroma_dir else indexer.entity_vector_dir
         target_chroma_dir.mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(
-            path=str(target_chroma_dir),
+            path=get_ascii_safe_chroma_path(target_chroma_dir),
             settings=Settings(anonymized_telemetry=False),
         )
         collection = client.get_or_create_collection(
