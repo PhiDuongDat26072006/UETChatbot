@@ -901,6 +901,128 @@ class TestRagasCompatAndNaN(unittest.TestCase):
         self.assertIn("Quan hệ Đồ thị Tri thức", seen_prompts[0])
         self.assertIn("Chiba", seen_prompts[0])
 
+    def test_agentic_eval_ood_fail_and_trace_latencies(self):
+        """Kiểm tra Evaluator nhận diện đúng out_of_scope, fail_node (GENERATION_ERROR + resume) và bóc latency từ trace."""
+        self.assertTrue(
+            is_generation_error_response(
+                "Xin lỗi bạn, hệ thống kiểm tra và tra cứu thông tin đang gián đoạn dịch vụ, vui lòng thử lại sau."
+            )
+        )
+        self.assertTrue(
+            is_refusal_response(
+                "Chào bạn! Tôi là UET Chatbot. Nội dung bạn hỏi hiện nằm ngoài phạm vi hỗ trợ của tôi."
+            )
+        )
+
+        class _MockAgenticPipeline(BaseRAGPipeline):
+            def __init__(self):
+                self.embedding_model = _DummyEmbedder()
+                self.agent_graph = object()
+                self.calls = 0
+
+            def query(self, query: UserQuery, top_k: int = 5) -> Response:
+                self.calls += 1
+                qlow = query.query_text.lower()
+                if "giá vàng" in qlow:
+                    return Response(
+                        query_id=query.query_id,
+                        answer="Chào bạn! Tôi là UET Chatbot.",
+                        sources=[],
+                        model_name="mock-agent",
+                        latency_seconds=1.1,
+                        metadata={
+                            "status": "out_of_scope",
+                            "route": "OUT_OF_SCOPE",
+                            "trace": [{"node": "router_node", "latency_s": 1.0}],
+                        },
+                    )
+                if "lỗi api" in qlow:
+                    return Response(
+                        query_id=query.query_id,
+                        answer="Xin lỗi bạn, hệ thống kiểm tra và tra cứu thông tin đang gián đoạn dịch vụ.",
+                        sources=[],
+                        model_name="mock-agent",
+                        latency_seconds=2.5,
+                        metadata={
+                            "status": "fail",
+                            "route": "QUALIFIED_QUESTION",
+                            "trace": [
+                                {"node": "retrieval_node", "latency_s": 0.4},
+                                {"node": "generation_node", "latency_s": 1.8},
+                            ],
+                        },
+                    )
+                return Response(
+                    query_id=query.query_id,
+                    answer="Điều kiện tốt nghiệp sớm là GPA >= 3.0 và tích lũy tối thiểu 90 tín chỉ.",
+                    sources=[
+                        RetrievedContext(
+                            chunk_id="c_1",
+                            text="Sinh viên tốt nghiệp sớm cần GPA >= 3.0 và tích lũy tối thiểu 90 tín chỉ.",
+                            similarity_score=0.92,
+                            rank=1,
+                            metadata={"document_id": "d_1", "title": "Quy chế"},
+                        )
+                    ],
+                    model_name="mock-agent",
+                    latency_seconds=3.2,
+                    metadata={
+                        "status": "ok",
+                        "route": "QUALIFIED_QUESTION",
+                        "trace": [
+                            {"node": "retrieval_node", "latency_s": 0.65},
+                            {"node": "generation_node", "latency_s": 1.25, "usage": {"total_tokens": 120}},
+                        ],
+                    },
+                )
+
+        dataset = [
+            EvaluationSample(
+                id="s_ok",
+                query="Điều kiện tốt nghiệp sớm?",
+                ground_truth="GPA >= 3.0 và tích lũy 90 tín chỉ.",
+                metadata={"type": "factoid", "target_document_ids": ["d_1"], "target_chunk_ids": {"c_1": 2}},
+            ),
+            EvaluationSample(
+                id="s_ood",
+                query="Giá vàng hôm nay bao nhiêu?",
+                ground_truth="Ngoài phạm vi UET.",
+                metadata={"type": "out_of_domain", "unit": "out_of_domain"},
+            ),
+            EvaluationSample(
+                id="s_fail",
+                query="Câu hỏi gặp lỗi API?",
+                ground_truth="Nội dung mẫu.",
+                metadata={"type": "factoid", "target_document_ids": ["d_1"], "target_chunk_ids": {"c_1": 2}},
+            ),
+        ]
+
+        pipe = _MockAgenticPipeline()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snap_path = Path(tmpdir) / "snap.json"
+            snap = generate_predictions(pipe, dataset, top_k=5, delay_between_queries=0.0, output_path=snap_path, resume=False)
+            preds = {p["sample_id"]: p for p in snap["predictions"]}
+
+            self.assertEqual(preds["s_ok"]["retrieval_latency_s"], 0.65)
+            self.assertEqual(preds["s_ok"]["llm_latency_s"], 1.25)
+            self.assertEqual(preds["s_ok"]["token_usage"], {"total_tokens": 120})
+            self.assertEqual(preds["s_ok"]["agent_status"], "ok")
+            self.assertEqual(preds["s_ood"]["agent_status"], "out_of_scope")
+            self.assertEqual(preds["s_fail"]["agent_status"], "fail")
+
+            report = score_predictions(snap, top_k=5, use_judge=False, enable_semantic=False)
+            self.assertEqual(report["summary"]["ood_refusal_accuracy"], 1.0)
+            self.assertEqual(report["summary"]["generation_error_count"], 1)
+            self.assertEqual(report["error_taxonomy"]["GENERATION_ERROR"], 1)
+            self.assertEqual(report["error_taxonomy"]["OOD_FAILURE"], 0)
+            self.assertIsNotNone(report["latency_metrics"]["avg_retrieval_latency_s"])
+            self.assertIsNotNone(report["latency_metrics"]["avg_llm_latency_s"])
+
+            # Kiểm tra --resume: giữ s_ok & s_ood, nhưng chạy lại s_fail
+            pipe.calls = 0
+            generate_predictions(pipe, dataset, top_k=5, delay_between_queries=0.0, output_path=snap_path, resume=True)
+            self.assertEqual(pipe.calls, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,7 @@ if str(BASE_DIR) not in sys.path:
 
 from src.base import UserQuery, RetrievedContext, AugmentedPrompt
 from src.prompts.prompt_templates import UETPromptAugmenter, DEFAULT_UET_SYSTEM_PROMPT
+from src.prompts.prompts import JEV_ROUTE_CRITERIA, JEV_ROUTE_INSTRUCTIONS
 
 
 class TestUETPromptAugmenter(unittest.TestCase):
@@ -66,6 +67,15 @@ class TestUETPromptAugmenter(unittest.TestCase):
         self.assertEqual(len(prompt.contexts), 2)
         self.assertIn(self.sample_query.query_text, prompt.formatted_prompt)
         self.assertIn("Quy chế Học bổng", prompt.formatted_prompt)
+
+    def test_router_criteria_and_answer_first_prompt(self):
+        """Kiểm tra Router giữ 2 nhãn chuẩn, bao phủ rộng chủ đề UET và System Prompt có Answer-first + Soft Follow-up."""
+        self.assertEqual(set(JEV_ROUTE_CRITERIA.keys()), {"OUT_OF_SCOPE", "QUALIFIED_QUESTION"})
+        self.assertIn("QUALIFIED_QUESTION", JEV_ROUTE_INSTRUCTIONS)
+        self.assertIn("sức khỏe tinh thần", JEV_ROUTE_INSTRUCTIONS.lower())
+        self.assertIn("acm/icpc", JEV_ROUTE_INSTRUCTIONS.lower())
+        self.assertIn("Answer-first", DEFAULT_UET_SYSTEM_PROMPT)
+        self.assertIn("Chuẩn", DEFAULT_UET_SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

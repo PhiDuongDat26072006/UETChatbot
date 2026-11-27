@@ -400,6 +400,72 @@ class TestRetrievalPipeline(unittest.TestCase):
         self.assertGreater(results[0].similarity_score, 0.99)
         self.assertTrue(all(r.similarity_score > 0.1 for r in results))
 
+    def test_jina_reranker_gpu_toggle_and_adjacent_without_pre_merge(self):
+        """Kiểm tra công tắc bật/tắt CUDAExecutionProvider (param, env, config) và adjacent expansion độc lập merge_contiguous_chunks."""
+        import os
+        from unittest.mock import patch
+        from src.retrieval.reranker import JinaONNXReranker
+
+        # 1. Tham số tường minh use_gpu=False -> ép chỉ CPUExecutionProvider
+        use_gpu, provs = JinaONNXReranker.resolve_providers(use_gpu=False)
+        self.assertFalse(use_gpu)
+        self.assertEqual(provs, ["CPUExecutionProvider"])
+
+        # 2. Tham số tường minh use_gpu=True -> ưu tiên CUDAExecutionProvider trước CPU
+        use_gpu, provs = JinaONNXReranker.resolve_providers(use_gpu=True)
+        self.assertTrue(use_gpu)
+        self.assertEqual(provs[0], "CUDAExecutionProvider")
+        self.assertIn("CPUExecutionProvider", provs)
+
+        # 3. Biến môi trường RERANKER_USE_GPU=0 ghi đè config use_gpu=True
+        with patch.dict(os.environ, {"RERANKER_USE_GPU": "0"}, clear=False):
+            use_gpu, provs = JinaONNXReranker.resolve_providers(cfg_use_gpu=True)
+            self.assertFalse(use_gpu)
+            self.assertEqual(provs, ["CPUExecutionProvider"])
+
+        with patch.dict(os.environ, {"RERANKER_USE_GPU": "1"}, clear=False):
+            use_gpu, provs = JinaONNXReranker.resolve_providers(cfg_use_gpu=False)
+            self.assertTrue(use_gpu)
+            self.assertEqual(provs[0], "CUDAExecutionProvider")
+
+        # 4. enable_adjacent_expansion=True vẫn hoạt động khi merge_contiguous_chunks=False (giữ nguyên chunk_id)
+        chunks = [
+            DataChunk(chunk_id="lst_0", document_id="doc_list", text="Phòng lab 1: AI; Phòng lab 2: IoT", chunk_index=0, metadata={"document_id": "doc_list", "chunk_index": 0}),
+            DataChunk(chunk_id="lst_1", document_id="doc_list", text="Phòng lab 3: Blockchain; Phòng lab 4: Tin Sinh Y Học", chunk_index=1, metadata={"document_id": "doc_list", "chunk_index": 1}),
+        ]
+
+        class _ListStore(MockVectorStore):
+            def search(self, query_vector, top_k=5, filters=None):
+                return [RetrievedContext(chunk_id="lst_0", text=chunks[0].text, similarity_score=0.95, rank=1, metadata=chunks[0].metadata)]
+
+        class _ListBM25:
+            def __init__(self, all_chunks):
+                self.chunks = all_chunks
+
+            def search(self, query: str, top_k: int = 50):
+                return [RetrievedContext(chunk_id="lst_0", text=chunks[0].text, similarity_score=10.0, rank=1, metadata=chunks[0].metadata)]
+
+        retriever = UETRetriever(
+            embedding_model=MockEmbeddingModel(),
+            vector_store=_ListStore(),
+            bm25_index=_ListBM25(chunks),
+            reranker=HeuristicReranker(),
+            config={
+                "retrieval": {
+                    "enable_mmr": False,
+                    "enable_adjacent_expansion": True,
+                    "adjacent_expansion_top_k": 2,
+                    "adjacent_window_size": 1,
+                    "merge_contiguous_chunks": False,
+                }
+            },
+        )
+        res = retriever.retrieve(UserQuery(query_text="Phòng thí nghiệm AI"), top_k=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].chunk_id, "lst_0")
+        self.assertIn("Blockchain", res[0].text)
+        self.assertEqual(res[0].metadata["expanded_chunk_ids"], ["lst_0", "lst_1"])
+
     def test_rrf_per_branch_recall_floor_prevents_vector_starvation(self):
         """Đảm bảo ứng viên Vector Top-1..2 không bị loại trước Reranker khi vector_weight << bm25_weight."""
         bm25_res = [

@@ -5,6 +5,7 @@ Sử dụng thư viện Rich để mang lại trải nghiệm chat terminal tr�
 
 from __future__ import annotations
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +22,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.base import UserQuery
-from src.pipeline import get_rag_pipeline
+from src.pipeline import get_rag_pipeline, get_active_pipeline, describe_pipeline_mode
 
 
 def run_cli(engine: Optional[str] = None):
@@ -49,10 +50,16 @@ def run_cli(engine: Optional[str] = None):
     )
 
     with console.status("[bold green]Đang khởi động cỗ máy RAG và tải cơ sở tri thức...[/bold green]"):
-        rag_pipeline = get_rag_pipeline()
+        rag_pipeline = get_active_pipeline()
 
     db_count = rag_pipeline.vector_store.count()
-    console.print(f"[green]✔ Hệ thống đã sẵn sàng với [bold]{db_count}[/bold] chunks vector tri thức.[/green]\n")
+    active_mode_label = describe_pipeline_mode(rag_pipeline)
+    console.print(
+        f"[green]✔ Hệ thống đã sẵn sàng với [bold]{db_count}[/bold] chunks vector tri thức "
+        f"| Chế độ: [bold cyan]{active_mode_label}[/bold cyan].[/green]\n"
+    )
+
+    cli_session_id = f"cli_{uuid.uuid4().hex[:8]}"
 
     while True:
         try:
@@ -63,18 +70,24 @@ def run_cli(engine: Optional[str] = None):
 
             cmd = user_input.lower()
             if cmd in ["exit", "quit", "q"]:
+                if hasattr(rag_pipeline, "close_session"):
+                    rag_pipeline.close_session(cli_session_id)
                 console.print("[cyan]Tạm biệt! Chúc bạn học tập tốt tại UET.[/cyan]")
                 break
 
             if cmd == "clear":
+                if hasattr(rag_pipeline, "close_session"):
+                    rag_pipeline.close_session(cli_session_id)
                 console.clear()
                 console.print(f"[bold cyan]{banner}[/bold cyan]")
+                cli_session_id = f"cli_{uuid.uuid4().hex[:8]}"
                 continue
 
             if cmd == "stats":
                 table = Table(title="📊 Thống kê Hệ thống RAG UET")
                 table.add_column("Thông số", style="cyan")
                 table.add_column("Giá trị", style="green")
+                table.add_row("Chế độ đang chạy", active_mode_label)
                 table.add_row("Cơ sở dữ liệu Vector", "ChromaDB (database/vector_db/)")
                 table.add_row("Số lượng văn bản đã lập chỉ mục", str(db_count))
                 table.add_row("Mô hình LLM", rag_pipeline.llm.model_name)
@@ -95,22 +108,58 @@ def run_cli(engine: Optional[str] = None):
                 )
                 continue
 
-            # Thực hiện truy vấn RAG
-            with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
-                query = UserQuery(query_text=user_input)
-                response = rag_pipeline.query(query, engine=engine)
+            # Thực hiện truy vấn RAG (hiển thị tiến độ trực tiếp theo từng bước nếu là Agentic Pipeline)
+            query = UserQuery(query_text=user_input, session_id=cli_session_id)
+            answer_text = ""
+            response_sources = []
+            response_model = getattr(rag_pipeline.llm, "model_name", "AI Engine")
+
+            if hasattr(rag_pipeline, "stream_events"):
+                token_parts = []
+                with console.status("[bold cyan]🔍 Đang xử lý câu hỏi...[/bold cyan]") as status:
+                    for event in rag_pipeline.stream_events(query):
+                        ev_type = event.get("type")
+                        if ev_type == "status" and event.get("message"):
+                            status.update(f"[bold cyan]🔍 {event['message']}[/bold cyan]")
+                        elif ev_type == "sources":
+                            response_sources = list(event.get("sources") or [])
+                            if event.get("model_name"):
+                                response_model = event["model_name"]
+                        elif ev_type == "token" and event.get("content"):
+                            token_parts.append(event["content"])
+                        elif ev_type == "done":
+                            if event.get("answer"):
+                                answer_text = event["answer"]
+                            if event.get("sources") is not None:
+                                response_sources = list(event.get("sources") or [])
+                            if event.get("model_name"):
+                                response_model = event["model_name"]
+                if not answer_text:
+                    answer_text = "".join(token_parts)
+            else:
+                with console.status("[bold cyan]🔍 Đang tra cứu văn bản liên quan và sinh câu trả lời qua AI...[/bold cyan]"):
+                    if engine is not None:
+                        try:
+                            response = rag_pipeline.query(query, engine=engine)
+                        except TypeError:
+                            response = rag_pipeline.query(query)
+                    else:
+                        response = rag_pipeline.query(query)
+                    answer_text = response.answer
+                    response_sources = list(response.sources or [])
+                    response_model = response.model_name or response_model
 
             console.print()
             console.print(
                 Panel(
-                    Markdown(response.answer),
-                    title=f"🤖 Trợ Lý UET ({response.model_name or 'AI Engine'})",
+                    Markdown(answer_text),
+                    title=f"🤖 Trợ Lý UET ({response_model})",
                     border_style="green",
                 )
             )
 
             # Hiển thị trích dẫn nguồn
-            if response.sources:
+            if response_sources:
                 sources_table = Table(title="📚 Tài liệu nguồn trích dẫn", show_header=True, header_style="bold magenta")
                 sources_table.add_column("#", style="dim", width=4)
                 sources_table.add_column("Điểm Rerank", style="yellow", width=12)
@@ -118,7 +167,7 @@ def run_cli(engine: Optional[str] = None):
                 sources_table.add_column("Tên tài liệu / Văn bản", style="cyan")
                 sources_table.add_column("Trích đoạn nội dung", style="white")
 
-                for idx, src in enumerate(response.sources[:3], 1):
+                for idx, src in enumerate(response_sources[:3], 1):
                     meta = src.metadata or {}
                     title = meta.get("title") or meta.get("source") or "Tài liệu UET"
                     method = meta.get("search_source") or ("BM25 + Vector" if meta.get("bm25_rank") and meta.get("vector_rank") else "Vector Search" if meta.get("vector_rank") else "BM25")

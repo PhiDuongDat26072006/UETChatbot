@@ -42,20 +42,33 @@ export class UETApiClient {
     }
 
     /**
+     * Sinh hoặc lấy sessionId duy nhất cho phiên hội thoại (Phase 5.2, D9)
+     */
+    getOrCreateSessionId() {
+        let sid = sessionStorage.getItem("uet_chat_session_id");
+        if (!sid) {
+            sid = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+            sessionStorage.setItem("uet_chat_session_id", sid);
+        }
+        return sid;
+    }
+
+    /**
      * Gửi câu hỏi đến RAG Pipeline và nhận câu trả lời cùng trích dẫn nguồn
      */
-    async sendQuery(queryText, sessionId = "default_session", topK = null) {
+    async sendQuery(queryText, sessionId = null, topK = null) {
         if (!queryText || !queryText.trim()) {
             throw new Error("Nội dung câu hỏi không được để trống.");
         }
 
+        const activeSessionId = sessionId || this.getOrCreateSessionId();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
         try {
             const payload = {
                 query: queryText.trim(),
-                session_id: sessionId,
+                session_id: activeSessionId,
             };
             if (topK && Number.isInteger(topK)) {
                 payload.top_k = topK;
