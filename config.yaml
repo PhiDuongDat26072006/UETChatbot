@@ -2,6 +2,9 @@
 # CẤU HÌNH THAM SỐ TOÀN DIỆN CHO HỆ THỐNG UET RAG CHATBOT
 # =========================================================================
 
+# =========================================================================
+# 1. ĐƯỜNG DẪN DỮ LIỆU & CƠ SỞ DỮ LIỆU (PATHS)
+# =========================================================================
 paths:
   data_dir: "data/raw_data"
   processed_dir: "data/processed_data"
@@ -13,6 +16,9 @@ paths:
   eval_dataset_dir: "data/eval_data/"
   eval_dataset_file: "data/eval_data/e2e_eval_100_annotated.json"
 
+# =========================================================================
+# 2. PHÂN ĐOẠN VĂN BẢN (CHUNKING)
+# =========================================================================
 chunking:
   chunk_size: 800
   chunk_overlap: 150
@@ -32,6 +38,9 @@ chunking:
     - " "
     - ""
 
+# =========================================================================
+# 3. MÔ HÌNH NHÚNG NGỮ NGHĨA (EMBEDDING)
+# =========================================================================
 embedding:
   # Mô hình embedding chuẩn hóa cho toàn bộ hệ thống UET Chatbot
   # BAAI/bge-m3 ONNX FP32 (1024 chiều, chạy cục bộ offline qua onnxruntime)
@@ -40,16 +49,20 @@ embedding:
   onnx_path: "weights/bge-m3/onnx/model.onnx"
   dimension: 1024
 
+# =========================================================================
+# 4. TRUY XUẤT NGỮ CẢNH & TÁI XẾP HẠNG (RETRIEVAL)
+# =========================================================================
 retrieval:
-  bm25_top_k: 50               # Số ứng viên BM25 lấy ra
-  vector_top_k: 50             # Số ứng viên Vector search lấy ra
-  candidate_pool_size: 25      # Số ứng viên sau khi ghép Hybrid Search đưa vào Reranker (tối ưu tốc độ & độ phủ)
-  fusion_method: "rrf"         # Thuật toán ghép: "rrf" hoặc "linear"
-  rrf_k: 30                    # Hằng số làm mượt RRF (ưu ái Top ranks rõ hơn)
-  bm25_weight: 0.50            # Trọng số nhánh BM25 Search (ưu tiên từ khóa chính xác/mã ngành/năm)
-  vector_weight: 0.20          # Trọng số nhánh Vector Search
+  # --- 4.1 Hybrid Search (BM25 + Vector + RRF) ---
+  bm25_top_k: 50                        # Số ứng viên BM25 lấy ra
+  vector_top_k: 50                      # Số ứng viên Vector search lấy ra
+  candidate_pool_size: 25               # Số ứng viên sau khi ghép Hybrid Search đưa vào Reranker (tối ưu tốc độ & độ phủ)
+  fusion_method: "rrf"                  # Thuật toán ghép: "rrf" hoặc "linear"
+  rrf_k: 30                             # Hằng số làm mượt RRF (ưu ái Top ranks rõ hơn)
+  bm25_weight: 0.50                     # Trọng số nhánh BM25 Search (ưu tiên từ khóa chính xác/mã ngành/năm)
+  vector_weight: 0.20                   # Trọng số nhánh Vector Search
 
-  # Cấu hình Nhánh Đồ thị Chính (LightRAG-First + Cầu nối ChunkBridge/Regex phụ trợ)
+  # --- 4.2 Nhánh Đồ thị Chính (LightRAG-First + Cầu nối ChunkBridge/Regex phụ trợ) ---
   enable_graph: true
   graph_top_k: 60
   graph_weight: 0.30
@@ -57,15 +70,15 @@ retrieval:
   graph_max_hops: 2
   graph_seed_top_m: 10
 
-  # Cấu hình Maximal Marginal Relevance (MMR)
-  enable_mmr: false            # Tắt trước Reranker để không đuổi chunk bảng/quy chế; dùng hậu kiểm nếu bật
-  mmr_stage: "post_rerank"     # "pre_rerank" hoặc "post_rerank"
-  mmr_lambda: 0.75             # Cân bằng giữa Relevance (1.0) và Diversity (0.0)
-  mmr_top_n: 40                # Số lượng ứng viên giữ lại nếu bật MMR
-  mmr_similarity_threshold: 0.92  # Chỉ phạt redundancy khi cosine >= ngưỡng này
-  mmr_protect_tabular: true    # Không phạt các chunk thuộc cùng tài liệu dạng bảng (tabular)
+  # --- 4.3 Maximal Marginal Relevance (MMR) ---
+  enable_mmr: false                     # Tắt trước Reranker để không đuổi chunk bảng/quy chế; dùng hậu kiểm nếu bật
+  mmr_stage: "post_rerank"              # "pre_rerank" hoặc "post_rerank"
+  mmr_lambda: 0.75                      # Cân bằng giữa Relevance (1.0) và Diversity (0.0)
+  mmr_top_n: 40                         # Số lượng ứng viên giữ lại nếu bật MMR
+  mmr_similarity_threshold: 0.92        # Chỉ phạt redundancy khi cosine >= ngưỡng này
+  mmr_protect_tabular: true             # Không phạt các chunk thuộc cùng tài liệu dạng bảng (tabular)
 
-  # Cấu hình Reranker & Score Blending
+  # --- 4.4 Reranker & Score Blending ---
   reranker_type: "onnx"                 # "auto", "heuristic", "flashrank", "cross_encoder", "onnx", "viranker"
   reranker_model: "weights/jina-reranker-v2-base-multilingual"
   onnx_filename: "weights/jina-reranker-v2-base-multilingual/onnx/model.onnx"
@@ -80,37 +93,23 @@ retrieval:
   final_top_k: 6                        # Số đoạn cuối cùng trả về cho LLM (tăng từ 5 -> 6 để bao phủ tốt câu liệt kê)
   score_threshold: null                 # Ngưỡng điểm tối thiểu (tùy chọn)
 
-  # Cấu hình phân bổ slot trong chế độ Hybrid (LightRAG + Vector)
+  # --- 4.5 Phân bổ slot trong chế độ Hybrid (LightRAG + Vector) ---
   hybrid_graph_ratio: 0.2               # Tỷ lệ slot tối đa dành cho ngữ cảnh đồ thị LightRAG (20%)
   hybrid_max_graph_k: 2                 # Trần số lượng ngữ cảnh LightRAG tối đa để không lấn át Vector chunks
 
-  # Cấu hình Mở rộng ngữ cảnh Liền kề (Adjacent Chunk Expansion & Contiguous Merging)
+  # --- 4.6 Mở rộng ngữ cảnh Liền kề & Toàn bảng (Expansion) ---
   enable_adjacent_expansion: true       # Bật/tắt mở rộng ngữ cảnh liền kề
   adjacent_expansion_top_k: 3           # Chỉ mở rộng ngữ cảnh cho Top K chunk điểm cao nhất (Top 3)
   adjacent_window_size: 1               # Bán kính cửa sổ liền kề (1 = lấy chunk_index - 1 và + 1)
   merge_contiguous_chunks: false        # Giữ false để không ghép/đổi chunk_id trước Reranker (tránh lệch IR eval & phình token)
 
-  # Cấu hình Mở rộng Toàn bảng cho câu hỏi dạng danh sách/liệt kê (Tabular Sibling Expansion)
   enable_tabular_expansion: true        # Tự động gom toàn bộ dòng cùng bảng khi câu hỏi yêu cầu danh sách/liệt kê
   tabular_expansion_max_chunks: 25      # Số chunk anh em tối đa gộp cho 1 bảng (tránh phình prompt ở CTĐT ~90 chunk)
   tabular_expansion_max_chars: 7000     # Giới hạn ký tự tối đa sau khi gộp 1 bảng
 
-# Cấu hình JEV Decision Model (Hỗ trợ Custom Model/Tunnel như tests/test_tunnel.py hoặc OpenRouter)
-jev:
-  endpoint:  "https://cole-print-mel-calling.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
-  model: "strands-decider-12B-gemma4-v1-2610"
-  connect_timeout_s: 5
-  read_timeout_s: 30
-  timeout_s: 30
-  max_retries: 1                     # chỉ lỗi kết nối / một 5xx đơn lẻ; KHÔNG retry read-timeout hoặc 500 lặp lại
-  retry_jitter_s: [0.2, 0.8]
-  max_concurrency: 1                 # khớp --max-concurrency 1 của server
-  breaker:
-    failures: 2
-    open_s: 20
-  health_path: "/health"
-  session_ttl_s: 1800                # Thời gian duy trì HTTP Session (Keep-Alive) mỗi phiên chat (giây)
-
+# =========================================================================
+# 5. ĐỒ THỊ TRI THỨC HỢP NHẤT (GRAPH INDEX)
+# =========================================================================
 graph:
   merge_lightrag_kg: true               # Hợp nhất tri thức 2-Pass từ LightRAG (graph.json + entity_chroma) vào graph_index.pkl
   auto_sync_on_reindex: true            # Tự động đồng bộ lại graph_index.pkl (0 LLM) mỗi khi cập nhật indexed_data
@@ -135,55 +134,10 @@ graph:
   hop_decay: 0.65
   seed_top_m: 10
 
-llm:
-  provider: "openrouter"             # Nhà cung cấp mặc định ("openrouter", "custom_api", "groq", "sambanova", "gemini")
-  model_name: "tencent/hy4-flash"
-  candidate_models:
-    - "tencent/hy4-flash"
-    - "deepseek/deepseek-v4.1-flash-1017"
-    - "gemma-4"
-  temperature: 0.2
-  json_temperature: 0
-  max_tokens: 2048                   # Giới hạn output tokens chung (tránh OpenRouter reserve mặc định 131k tokens -> lỗi 402)
-  reasoning_effort: "none"           # Tắt reasoning tokens thừa trên OpenRouter hy4-flash để phản hồi nhanh (~4-7s)
-  enable_disk_cache: false
-  cache_file: "database/llm_cache.json"
-  session_ttl_s: 1800                # Thời gian duy trì HTTP Session (Keep-Alive) mỗi phiên chat (giây)
-
-  # Tùy chọn gọi LLM qua Custom OpenAI-compatible API / Cloudflare Tunnel (giống tests/test_gemma_host.py)
-  custom_api:
-    base_url: "https://referrals-journalism-horn-currently.trycloudflare.com"
-    model: "gemma-4"
-    api_key: ""                      # Để trống nếu server tự host không yêu cầu Bearer token
-    max_tokens: 2048
-    connect_timeout_s: 10
-    timeout_s: 120
-    health_path: "/health"
-    enable_thinking: false           # Gửi chat_template_kwargs: {"enable_thinking": false}
-    stream: true                     # Bật "stream": true (SSE + decode UTF-8) cho Custom API
-
-  # Cấu hình đa luồng phân tải (Multi-Provider Queue cho Evaluation)
-  providers:
-    custom_api:
-      model: "gemma-4"
-      delay_seconds: 0.5
-    openrouter:
-      model: "tencent/hy4-flash"
-      delay_seconds: 1.0       # OpenRouter (Tencent Hy4 Flash)
-    groq:
-      model: "qwen/qwen3.8-27b"
-      delay_seconds: 2.0       # 30 câu/phút
-    sambanova:
-      model: "DeepSeek-V3.1"
-      delay_seconds: 2.5       # 24 câu/phút
-    gemini:
-      model: "gemini-3.5-flash"
-      delay_seconds: 4.0       # 15 câu/phút
-
+# =========================================================================
+# 6. PHÂN HỆ LIGHTRAG KNOWLEDGE GRAPH
+# =========================================================================
 lightrag:
-  # =========================================================================
-  # CẤU HÌNH LIGHTRAG KNOWLEDGE GRAPH
-  # =========================================================================
   enabled: true                         # Bật/tắt truy xuất qua LightRAG (đặt true khi kích hoạt Knowledge Graph)
 
   # Đường dẫn lưu trữ
@@ -218,30 +172,93 @@ lightrag:
   entity_similarity_threshold: 0.72     # Ngưỡng Cosine Similarity tối thiểu khi khớp thực thể qua entity_chroma
   entity_vector_top_k: 3                # Số node ứng viên lấy từ entity_chroma cho mỗi thực thể truy vấn
 
-  # Cấu hình Query Router & Smart PA1 Trigger (Lựa chọn 1)
+  # Cấu hình Query Router & Smart PA1 Trigger
   router:
     mode: "auto"                        # "auto", "always_hybrid", "always_lightrag", "always_vector"
     llm_extraction_mode: "auto"         # "auto" (chỉ bật PA1 LLM cho câu quan hệ/khẩu ngữ), "always", "off"
     confidence_threshold: 0.65
 
-api:
-  host: "127.0.0.1"
-  port: 8000
-  title: "UET Academic Regulations Chatbot API"
-  version: "1.0.0"
+# =========================================================================
+# 7. MÔ HÌNH NGÔN NGỮ LỚN (LLM CLIENTS & PROVIDERS)
+# =========================================================================
+llm:
+  provider: "openrouter"                # Nhà cung cấp mặc định ("openrouter", "custom_api", "groq", "sambanova", "gemini")
+  model_name: "tencent/hy4-flash"
+  candidate_models:
+    - "tencent/hy4-flash"
+    - "deepseek/deepseek-v4.1-flash-1017"
+    - "gemma-4"
+  temperature: 0.2
+  json_temperature: 0
+  max_tokens: 2048                      # Giới hạn output tokens chung (tránh OpenRouter reserve mặc định 131k tokens -> lỗi 402)
+  reasoning_effort: "none"              # Tắt reasoning tokens thừa trên OpenRouter hy4-flash để phản hồi nhanh (~4-7s)
+  enable_disk_cache: false
+  cache_file: "database/llm_cache.json"
+  session_ttl_s: 1800                   # Thời gian duy trì HTTP Session (Keep-Alive) mỗi phiên chat (giây)
 
+  # Tùy chọn gọi LLM qua Custom OpenAI-compatible API / Cloudflare Tunnel
+  custom_api:
+    base_url: "https://referrals-journalism-horn-currently.trycloudflare.com"
+    model: "gemma-4"
+    api_key: ""                         # Để trống nếu server tự host không yêu cầu Bearer token
+    max_tokens: 2048
+    connect_timeout_s: 10
+    timeout_s: 120
+    health_path: "/health"
+    enable_thinking: false              # Gửi chat_template_kwargs: {"enable_thinking": false}
+    stream: true                        # Bật "stream": true (SSE + decode UTF-8) cho Custom API
+
+  # Cấu hình đa luồng phân tải (Multi-Provider Queue cho Evaluation)
+  providers:
+    custom_api:
+      model: "gemma-4"
+      delay_seconds: 0.5
+    openrouter:
+      model: "tencent/hy4-flash"
+      delay_seconds: 1.0                # OpenRouter (Tencent Hy4 Flash)
+    groq:
+      model: "qwen/qwen3.8-27b"
+      delay_seconds: 2.0                # 30 câu/phút
+    sambanova:
+      model: "DeepSeek-V3.1"
+      delay_seconds: 2.5                # 24 câu/phút
+    gemini:
+      model: "gemini-3.5-flash"
+      delay_seconds: 4.0                # 15 câu/phút
+
+# =========================================================================
+# 8. MÔ HÌNH QUYẾT ĐỊNH JEV (DECISION MODEL)
+# =========================================================================
+jev:
+  endpoint: "https://cole-print-mel-calling.trycloudflare.com/v1/systemone" # URL Tunnel / Kaggle AI / Custom Model
+  model: "strands-decider-12B-gemma4-v1-2610"
+  connect_timeout_s: 5
+  read_timeout_s: 30
+  timeout_s: 30
+  max_retries: 1                        # Chỉ lỗi kết nối / một 5xx đơn lẻ; KHÔNG retry read-timeout hoặc 500 lặp lại
+  retry_jitter_s: [0.2, 0.8]
+  max_concurrency: 1                    # Khớp --max-concurrency 1 của server
+  breaker:
+    failures: 2
+    open_s: 20
+  health_path: "/health"
+  session_ttl_s: 1800                   # Thời gian duy trì HTTP Session (Keep-Alive) mỗi phiên chat (giây)
+
+# =========================================================================
+# 9. HỆ THỐNG AGENTIC RAG (LANGGRAPH)
+# =========================================================================
 agent:
-  default_model: null                  # null = tự dùng model theo llm.provider đang chọn (gemma-4 / openrouter / ...)
-  recursion_limit: 100                 # Đảm bảo đủ cho các vòng truy xuất + retry
+  default_model: null                   # null = tự dùng model theo llm.provider đang chọn (gemma-4 / openrouter / ...)
+  recursion_limit: 100                  # Đảm bảo đủ cho các vòng truy xuất + retry
 
   noul_threshold:
-    answer: 0.5                        # Ngưỡng JEV answer_eval_node (ĐỦ / THIẾU)
+    answer: 0.5                         # Ngưỡng JEV answer_eval_node (ĐỦ / THIẾU)
 
   contexts:
-    max_chunks: 8                      # Số chunk tích lũy tối đa truyền vào LLM
+    max_chunks: 8                       # Số chunk tích lũy tối đa truyền vào LLM
 
   retrieval:
-    faculty_filter: "soft"             # soft | hard | off
+    faculty_filter: "soft"              # soft | hard | off
     shared_faculties: [uet, tuyensinh, handbook]
     min_results_after_filter: 10
 
@@ -260,7 +277,7 @@ agent:
   # Answer Eval Node: JEV đánh giá (query, answer), không gửi chunk
   answer_eval:
     engine: "jev"
-    max_retries: 3                     # retry <= 3 thì sinh follow-up, > 3 thì trả RESPONSE partial
+    max_retries: 3                      # retry <= 3 thì sinh follow-up, > 3 thì trả RESPONSE partial
 
   # Follow-up Query Node: LLM xác định phần thiếu và sinh 1-2 truy vấn tìm kiếm mới
   followup:
@@ -277,17 +294,34 @@ agent:
   trace:
     verbose: false
 
-# Các mẫu phản hồi cố định (0 token LLM) - Thống nhất xưng hô "bạn"
+# =========================================================================
+# 10. CẤU HÌNH PROMPT HỆ THỐNG (PROMPT)
+# =========================================================================
+prompt:
+  include_few_shot: false               # Tắt few-shot dài để giảm input tokens và tăng tốc LLM generation
+  # Để trống (null) để sử dụng trực tiếp DEFAULT_UET_SYSTEM_PROMPT gọn mới trong src/prompts/prompts.py
+  system_prompt: null
+
+# =========================================================================
+# 11. CÁC MẪU PHẢN HỒI CỐ ĐỊNH (TEMPLATES - 0 TOKEN LLM)
+# =========================================================================
 templates:
   out_of_scope: "Chào bạn! Tôi là UET Chatbot - Trợ lý ảo tư vấn quy chế đào tạo và tuyển sinh của Trường Đại học Công nghệ (VNU-UET). Nội dung bạn hỏi hiện nằm ngoài phạm vi hỗ trợ của tôi. Rất vui được phục vụ bạn nếu bạn cần tìm hiểu thông tin học vụ, quy chế, điểm chuẩn hay học phí của UET nhé!"
   fail_service: "Xin lỗi bạn, hệ thống kiểm tra và tra cứu thông tin đang gián đoạn dịch vụ, vui lòng thử lại sau ít phút hoặc liên hệ trực tiếp Phòng Đào tạo (Phòng 105-E3) để được hỗ trợ nhé."
   answer_incomplete_note: "\n\n> **Lưu ý:** Câu trả lời trên có thể chưa đầy đủ hoàn toàn mọi ý trong câu hỏi của bạn{missing_suffix}. Bạn có thể liên hệ Phòng Đào tạo (Phòng 105-E3, SĐT: 024.3754.7865) hoặc Cổng thông tin đào tạo UET để xác nhận thêm thông tin chi tiết nhé."
 
-prompt:
-  include_few_shot: false              # Tắt few-shot dài để giảm input tokens và tăng tốc LLM generation
-  # Để trống (null) để sử dụng trực tiếp DEFAULT_UET_SYSTEM_PROMPT gọn mới trong src/prompts/prompts.py
-  system_prompt: null
+# =========================================================================
+# 12. CỔNG GIAO DIỆN WEB & API (API)
+# =========================================================================
+api:
+  host: "127.0.0.1"
+  port: 8000
+  title: "UET Academic Regulations Chatbot API"
+  version: "1.0.0"
 
+# =========================================================================
+# 13. ĐÁNH GIÁ CHẤT LƯỢNG & LLM JUDGE (EVALUATION)
+# =========================================================================
 evaluation:
   judge:
     provider: "openrouter"
@@ -298,7 +332,7 @@ evaluation:
     fallback_provider: "groq"
     fallback_model: "openai/gpt-oss-120b"
     temperature: 0.0
-    max_tokens: 2048                   # Giới hạn vừa đủ cho JSON Judge (tránh OpenRouter reserve 8192 -> lỗi 402 khi credit thấp)
+    max_tokens: 2048                    # Giới hạn vừa đủ cho JSON Judge (tránh OpenRouter reserve 8192 -> lỗi 402 khi credit thấp)
     reasoning_effort: "none"
     max_retries: 2
     delay_seconds: 1.0

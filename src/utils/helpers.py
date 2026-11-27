@@ -61,6 +61,21 @@ def load_yaml_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def resolve_project_path(path_value: str | Path, base_dir: Optional[Path] = None) -> Path:
+    """Resolve a path relative to the project root unless it is already absolute."""
+    path = Path(path_value)
+    return path if path.is_absolute() else (base_dir or BASE_DIR) / path
+
+
+def count_nonempty_lines(file_path: Path) -> int:
+    """Count non-whitespace lines in a UTF-8 file, returning 0 on read error."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as fp:
+            return sum(1 for line in fp if line.strip())
+    except Exception:
+        return 0
+
+
 class Timer:
     """Context manager đo thời gian thực thi (latency)."""
 
