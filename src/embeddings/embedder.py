@@ -37,11 +37,47 @@ class UETEmbedder(BaseEmbeddingModel):
     Đồng bộ cấu hình trực tiếp từ config.yaml.
     """
 
+    @staticmethod
+    def _parse_bool_flag(val: Any) -> Optional[bool]:
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return bool(val)
+        if isinstance(val, str):
+            low = val.strip().lower()
+            if low in ("1", "true", "yes", "on", "gpu", "cuda"):
+                return True
+            if low in ("0", "false", "no", "off", "cpu"):
+                return False
+        return None
+
+    @classmethod
+    def resolve_providers(
+        cls,
+        use_gpu: Optional[bool] = None,
+        cfg_use_gpu: Optional[bool] = None,
+    ) -> tuple[bool, List[str]]:
+        """Xác định chế độ GPU/CPU cho ONNX Embedding (mặc định CPU để nhường VRAM cho Reranker)."""
+        resolved_gpu = cls._parse_bool_flag(use_gpu)
+        if resolved_gpu is None:
+            env_gpu = os.getenv("EMBEDDING_USE_GPU")
+            if env_gpu is not None and env_gpu.strip() != "":
+                resolved_gpu = cls._parse_bool_flag(env_gpu)
+        if resolved_gpu is None:
+            resolved_gpu = cls._parse_bool_flag(cfg_use_gpu)
+        if resolved_gpu is None:
+            resolved_gpu = False
+
+        if not resolved_gpu:
+            return False, ["CPUExecutionProvider"]
+        return True, ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
     def __init__(
         self,
         model_name: Optional[str] = None,
         dimension: Optional[int] = None,
         config: Optional[Dict[str, Any]] = None,
+        use_gpu: Optional[bool] = None,
     ):
         raw_cfg = config or load_yaml_config()
         emb_cfg = raw_cfg.get("embedding", {}) if raw_cfg else {}
@@ -58,6 +94,10 @@ class UETEmbedder(BaseEmbeddingModel):
         )
         self._provider = str(emb_cfg.get("provider", "onnx")).lower()
         self._onnx_path = emb_cfg.get("onnx_path", "weights/bge-m3/onnx/model.onnx")
+        self._use_gpu, self._req_providers = self.resolve_providers(
+            use_gpu=use_gpu,
+            cfg_use_gpu=emb_cfg.get("use_gpu"),
+        )
 
         self._st_model = None
         self._chroma_ef = None
@@ -86,12 +126,18 @@ class UETEmbedder(BaseEmbeddingModel):
                     if not tok_path.exists():
                         tok_path = BASE_DIR / "weights" / "bge-m3"
 
-                    logger.info(f"Đang tải mô hình ONNX FP32 BGE-M3 từ '{resolved_onnx}'...")
+                    logger.info(
+                        f"Đang tải mô hình ONNX FP32 BGE-M3 từ '{resolved_onnx}' "
+                        f"(use_gpu={self._use_gpu})..."
+                    )
                     self._tokenizer = AutoTokenizer.from_pretrained(str(tok_path.resolve()))
 
                     sess_options = ort.SessionOptions()
                     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    if "CUDAExecutionProvider" in ort.get_available_providers():
+                    sess_options.intra_op_num_threads = max(1, min(10, (os.cpu_count() or 4) - 2))
+                    sess_options.inter_op_num_threads = 1
+                    wants_cuda = self._use_gpu and "CUDAExecutionProvider" in ort.get_available_providers()
+                    if wants_cuda:
                         try:
                             import torch  # noqa: F401
                         except Exception:
@@ -116,12 +162,14 @@ class UETEmbedder(BaseEmbeddingModel):
                             )
                         except Exception as cuda_err:
                             logger.warning(f"ONNX CUDAExecutionProvider lỗi ({cuda_err}); fallback sang CPUExecutionProvider.")
+                            sess_options.enable_cpu_mem_arena = False
                             self._onnx_session = ort.InferenceSession(
                                 str(resolved_onnx.resolve()),
                                 sess_options=sess_options,
                                 providers=["CPUExecutionProvider"],
                             )
                     else:
+                        sess_options.enable_cpu_mem_arena = False
                         self._onnx_session = ort.InferenceSession(
                             str(resolved_onnx.resolve()),
                             sess_options=sess_options,
@@ -148,7 +196,8 @@ class UETEmbedder(BaseEmbeddingModel):
                 if local_dir.exists():
                     target_model = str(local_dir.resolve())
                 logger.info(f"Đang tải mô hình SentenceTransformer '{target_model}' ({self._dimension} chiều)...")
-                self._st_model = SentenceTransformer(target_model)
+                st_kwargs: Dict[str, Any] = {} if self._use_gpu else {"device": "cpu"}
+                self._st_model = SentenceTransformer(target_model, **st_kwargs)
                 st_device = getattr(self._st_model, "device", "unknown")
                 logger.info(
                     f"Đã khởi tạo thành công mô hình embedding '{self._model_name}' "

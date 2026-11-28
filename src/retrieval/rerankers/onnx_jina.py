@@ -222,12 +222,9 @@ class JinaONNXReranker(BaseReranker):
             clean_query = _clean_text_for_reranker(query)
             cleaned_texts = [_clean_text_for_reranker(c.text, c.metadata) for c in candidates]
             sorted_indices = sorted(range(len(candidates)), key=lambda idx: len(cleaned_texts[idx]))
-            active_provs = getattr(self, "_active_providers", [])
-            eff_batch_size = (
-                max(self.batch_size, 32)
-                if ("CUDAExecutionProvider" in active_provs or "DmlExecutionProvider" in active_provs)
-                else self.batch_size
-            )
+            # Tôn trọng batch_size cấu hình (mặc định 8) trên cả GPU và CPU
+            # để tránh tràn VRAM (Shared GPU Memory thrashing) và giữ tác dụng gom micro-batch theo độ dài.
+            eff_batch_size = max(1, int(getattr(self, "batch_size", 8) or 8))
 
             for i in range(0, len(sorted_indices), eff_batch_size):
                 batch_indices = sorted_indices[i : i + eff_batch_size]

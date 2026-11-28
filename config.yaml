@@ -48,6 +48,7 @@ embedding:
   model_name: "weights/bge-m3"
   onnx_path: "weights/bge-m3/onnx/model.onnx"
   dimension: 1024
+  use_gpu: true                        # false = chạy CPU để nhường ~2,16 GB VRAM cho Jina Reranker (override bằng env EMBEDDING_USE_GPU=0/1)
 
 # =========================================================================
 # 4. TRUY XUẤT NGỮ CẢNH & TÁI XẾP HẠNG (RETRIEVAL)
@@ -85,7 +86,7 @@ retrieval:
   reranker_use_gpu: true                # true = ưu tiên CUDAExecutionProvider (tự fallback CPU), false = ép chạy CPU (có thể override bằng env RERANKER_USE_GPU=0/1)
   rerank_top_n: 15                      # Số đoạn giữ lại sau Reranker
   rerank_max_length: 512                # Tối ưu tốc độ cho chunk ~800 ký tự
-  rerank_batch_size: 16                 # Micro-batch sắp xếp theo độ dài giảm padding dư thừa
+  rerank_batch_size: 8                  # Micro-batch theo độ dài (tránh tràn VRAM và giảm padding thừa trên GPU/CPU)
   rerank_blend_alpha: 0.65              # Hòa trộn 0.65 * Rerank + 0.35 * Hybrid (giữ khớp năm/mã)
   rerank_weight: 0.65                   # Alias tương thích ngược cho trọng số Reranker
   rrf_blend_weight: 0.35                # Alias tương thích ngược cho trọng số Hybrid/RRF
@@ -263,7 +264,7 @@ agent:
     min_results_after_filter: 10
 
   reranker:
-    batch_size: 16
+    batch_size: 8
     max_length: 512
     candidates: 25
     providers: [CUDAExecutionProvider, CPUExecutionProvider]

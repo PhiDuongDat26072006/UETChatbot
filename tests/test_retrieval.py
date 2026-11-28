@@ -351,7 +351,7 @@ class TestRetrievalPipeline(unittest.TestCase):
         self.assertEqual(res[0].text.count("[META: Bảng điểm]"), 1)
 
     def test_jina_gpu_effective_batch_scores_all_candidates(self):
-        """Đảm bảo trên CUDA (eff_batch_size=32), mọi ứng viên đều được chấm điểm và không bị bỏ sót [batch_size:eff_batch_size]."""
+        """Đảm bảo trên CUDA, JinaONNXReranker tôn trọng batch_size cấu hình và chấm đủ mọi ứng viên."""
         import numpy as np
         from src.retrieval.reranker import JinaONNXReranker
 
@@ -393,12 +393,42 @@ class TestRetrievalPipeline(unittest.TestCase):
         ]
 
         results = ranker.rerank("truy vấn test", candidates, top_n=60)
-        self.assertEqual(batch_sizes, [32, 28])
+        self.assertEqual(batch_sizes, [8, 8, 8, 8, 8, 8, 8, 4])
         self.assertEqual(len(results), 60)
-        # c_15 nằm trong vùng [8..31] từng bị bỏ qua khi lỗi; nay phải đứng top 1
+        # c_15 phải đứng top 1 và không có ứng viên nào bị bỏ sót
         self.assertEqual(results[0].chunk_id, "c_15")
         self.assertGreater(results[0].similarity_score, 0.99)
         self.assertTrue(all(r.similarity_score > 0.1 for r in results))
+
+    def test_embedder_gpu_toggle_defaults_to_cpu(self):
+        """Đảm bảo UETEmbedder mặc định chạy CPU để nhường VRAM cho Reranker và hỗ trợ env/param override."""
+        import os
+        from unittest.mock import patch
+        from src.embeddings import UETEmbedder
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EMBEDDING_USE_GPU", None)
+            use_gpu, provs = UETEmbedder.resolve_providers()
+            self.assertFalse(use_gpu)
+            self.assertEqual(provs, ["CPUExecutionProvider"])
+
+            use_gpu, provs = UETEmbedder.resolve_providers(cfg_use_gpu=True)
+            self.assertTrue(use_gpu)
+            self.assertEqual(provs[0], "CUDAExecutionProvider")
+
+            use_gpu, provs = UETEmbedder.resolve_providers(use_gpu=False, cfg_use_gpu=True)
+            self.assertFalse(use_gpu)
+            self.assertEqual(provs, ["CPUExecutionProvider"])
+
+        with patch.dict(os.environ, {"EMBEDDING_USE_GPU": "1"}, clear=False):
+            use_gpu, provs = UETEmbedder.resolve_providers(cfg_use_gpu=False)
+            self.assertTrue(use_gpu)
+            self.assertEqual(provs[0], "CUDAExecutionProvider")
+
+        with patch.dict(os.environ, {"EMBEDDING_USE_GPU": "0"}, clear=False):
+            use_gpu, provs = UETEmbedder.resolve_providers(cfg_use_gpu=True)
+            self.assertFalse(use_gpu)
+            self.assertEqual(provs, ["CPUExecutionProvider"])
 
     def test_jina_reranker_gpu_toggle_and_adjacent_without_pre_merge(self):
         """Kiểm tra công tắc bật/tắt CUDAExecutionProvider (param, env, config) và adjacent expansion độc lập merge_contiguous_chunks."""
